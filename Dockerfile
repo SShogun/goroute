@@ -16,7 +16,7 @@ WORKDIR /root/
 
 COPY --from=builder /app/goroute /usr/local/bin/goroute
 
-EXPOSE 20128
+EXPOSE 8128
 VOLUME ["/root/.goroute"]
 
-ENTRYPOINT ["goroute", "serve", "--port", "20128"]
+ENTRYPOINT ["goroute", "serve", "--port", "8128"]

@@ -131,7 +131,7 @@ func setupClaude(home string) error {
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 
 	data := map[string]interface{}{
-		"customBaseUrl": "http://127.0.0.1:20128",
+		"customBaseUrl": "http://127.0.0.1:8128",
 	}
 	bytes, _ := json.MarshalIndent(data, "", "  ")
 	if err := os.WriteFile(settingsPath, bytes, 0600); err != nil {
@@ -142,7 +142,7 @@ func setupClaude(home string) error {
 	fmt.Printf("   Wrote settings to: %s\n", settingsPath)
 	fmt.Println("\nLaunch with:")
 	fmt.Println("  goroute run claude")
-	fmt.Println("  OR: ANTHROPIC_BASE_URL=\"http://127.0.0.1:20128\" ANTHROPIC_AUTH_TOKEN=\"goroute\" claude")
+	fmt.Println("  OR: ANTHROPIC_BASE_URL=\"http://127.0.0.1:8128\" ANTHROPIC_AUTH_TOKEN=\"goroute\" claude")
 	return nil
 }
 
@@ -161,7 +161,7 @@ tool_output_token_limit = 32768
 
 [model_providers.goroute]
 name = "GoRoute"
-base_url = "http://127.0.0.1:20128/v1"
+base_url = "http://127.0.0.1:8128/v1"
 env_key = "OPENAI_API_KEY"
 wire_api = "responses"
 requires_openai_auth = false
@@ -200,7 +200,7 @@ func setupOpenCode(home string) error {
 
 	existing["goroute"] = map[string]interface{}{
 		"type":    "openai-compatible",
-		"baseURL": "http://127.0.0.1:20128/v1",
+		"baseURL": "http://127.0.0.1:8128/v1",
 		"apiKey":  "goroute",
 	}
 
@@ -224,7 +224,7 @@ func setupCursor(home string) error {
 		if raw, err := os.ReadFile(settingsPath); err == nil {
 			_ = json.Unmarshal(raw, &existing)
 		}
-		existing["cursor.openaiBaseUrl"] = "http://127.0.0.1:20128/v1"
+		existing["cursor.openaiBaseUrl"] = "http://127.0.0.1:8128/v1"
 		existing["cursor.openaiApiKey"] = "goroute"
 		if bytes, err := json.MarshalIndent(existing, "", "  "); err == nil {
 			_ = os.WriteFile(settingsPath, bytes, 0600)
@@ -235,7 +235,7 @@ func setupCursor(home string) error {
 	fmt.Println("✅ Cursor IDE Configuration Details:")
 	fmt.Println("  1. Open Cursor Settings (Ctrl+,) → Models")
 	fmt.Println("  2. Turn on 'Override OpenAI Base URL' and enter:")
-	fmt.Println("     http://127.0.0.1:20128/v1")
+	fmt.Println("     http://127.0.0.1:8128/v1")
 	fmt.Println("  3. Set 'OpenAI API Key' to:")
 	fmt.Println("     goroute")
 	fmt.Println("  4. Add model: claude-3-7-sonnet or gemini-2.5-pro")
@@ -256,7 +256,7 @@ func setupCline(home string) error {
 	state := map[string]interface{}{
 		"actModeApiProvider":     "openai",
 		"planModeApiProvider":    "openai",
-		"openAiBaseUrl":          "http://127.0.0.1:20128",
+		"openAiBaseUrl":          "http://127.0.0.1:8128",
 		"openAiModelId":          "claude-3-7-sonnet",
 		"planModeOpenAiModelId":  "claude-3-7-sonnet",
 	}
@@ -267,7 +267,7 @@ func setupCline(home string) error {
 	fmt.Printf("   Wrote secrets to: %s\n", secretsPath)
 	fmt.Println("\nFor VS Code Extension UI:")
 	fmt.Println("  - Provider: OpenAI Compatible")
-	fmt.Println("  - Base URL: http://127.0.0.1:20128")
+	fmt.Println("  - Base URL: http://127.0.0.1:8128")
 	fmt.Println("  - API Key:  goroute")
 	return nil
 }
@@ -283,7 +283,7 @@ func setupRoo(home string) error {
 			"apiConfigs": map[string]interface{}{
 				"GoRoute": map[string]interface{}{
 					"apiProvider":   "openai",
-					"openAiBaseUrl": "http://127.0.0.1:20128/v1",
+					"openAiBaseUrl": "http://127.0.0.1:8128/v1",
 					"openAiApiKey":  "goroute",
 					"openAiModelId": "claude-3-7-sonnet",
 				},
@@ -309,7 +309,7 @@ func setupKilo(home string) error {
 	auth := map[string]interface{}{
 		"openai-compatible": map[string]string{
 			"apiKey":  "goroute",
-			"baseUrl": "http://127.0.0.1:20128/v1",
+			"baseUrl": "http://127.0.0.1:8128/v1",
 			"model":   "claude-3-7-sonnet",
 		},
 	}
@@ -325,7 +325,7 @@ func setupKilo(home string) error {
 
 func setupAider(home string) error {
 	aiderConf := filepath.Join(home, ".aider.conf.yml")
-	content := `openai-api-base: http://127.0.0.1:20128/v1
+	content := `openai-api-base: http://127.0.0.1:8128/v1
 openai-api-key: goroute
 model: openai/claude-3-7-sonnet
 `
@@ -351,13 +351,13 @@ models:
   - name: "GoRoute: claude-3-7-sonnet"
     provider: openai
     model: claude-3-7-sonnet
-    apiBase: http://127.0.0.1:20128/v1
+    apiBase: http://127.0.0.1:8128/v1
     apiKey: goroute
     roles: [chat, edit, apply]
   - name: "GoRoute: gemini-2.5-pro"
     provider: openai
     model: gemini-2.5-pro
-    apiBase: http://127.0.0.1:20128/v1
+    apiBase: http://127.0.0.1:8128/v1
     apiKey: goroute
     roles: [chat, edit, apply]
 `
@@ -380,7 +380,7 @@ func setupCrush(home string) error {
   "providers": {
     "goroute": {
       "type": "openai-compat",
-      "base_url": "http://127.0.0.1:20128/v1",
+      "base_url": "http://127.0.0.1:8128/v1",
       "api_key": "goroute",
       "models": [
         {"id": "claude-3-7-sonnet", "name": "GoRoute Claude 3.7 Sonnet"},
@@ -406,7 +406,7 @@ func setupGoose(home string) error {
 	confPath := filepath.Join(gooseDir, "config.yaml")
 
 	content := `GOOSE_PROVIDER: openai
-OPENAI_HOST: http://127.0.0.1:20128
+OPENAI_HOST: http://127.0.0.1:8128
 GOOSE_MODEL: claude-3-7-sonnet
 `
 	if err := os.WriteFile(confPath, []byte(content), 0600); err != nil {
@@ -425,7 +425,7 @@ func setupQwen(home string) error {
 	confPath := filepath.Join(qwenDir, "settings.json")
 
 	data := map[string]string{
-		"baseUrl": "http://127.0.0.1:20128/v1",
+		"baseUrl": "http://127.0.0.1:8128/v1",
 		"apiKey":  "goroute",
 		"model":   "claude-3-7-sonnet",
 	}
@@ -443,7 +443,7 @@ func setupQwen(home string) error {
 func setupGemini(home string) error {
 	fmt.Println("✅ Google Gemini CLI Configuration:")
 	fmt.Println("   Set the following environment variables in your shell:")
-	fmt.Println("     export GOOGLE_GEMINI_BASE_URL=\"http://127.0.0.1:20128\"")
+	fmt.Println("     export GOOGLE_GEMINI_BASE_URL=\"http://127.0.0.1:8128\"")
 	fmt.Println("     export GEMINI_API_KEY=\"goroute\"")
 	fmt.Println("\n   Or run directly with:")
 	fmt.Println("     goroute run gemini")
@@ -455,7 +455,7 @@ func setup5dive(home string) error {
 	fmt.Println("   To connect your 5dive agent fleet to GoRoute, run:")
 	fmt.Println("     5dive agent auth set claude \\")
 	fmt.Println("       --provider=openai \\")
-	fmt.Println("       --base-url=http://127.0.0.1:20128 \\")
+	fmt.Println("       --base-url=http://127.0.0.1:8128 \\")
 	fmt.Println("       --auth-profile=goroute \\")
 	fmt.Println("       --model=claude-3-7-sonnet")
 	return nil

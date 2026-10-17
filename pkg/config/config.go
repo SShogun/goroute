@@ -53,7 +53,7 @@ func DefaultConfig() *Config {
 	home, _ := os.UserHomeDir()
 	return &Config{
 		Server: ServerConfig{
-			Port:       20128,
+			Port:       8128,
 			Host:       "127.0.0.1",
 			StorageDir: filepath.Join(home, ".goroute"),
 		},

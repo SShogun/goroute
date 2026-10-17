@@ -15,7 +15,7 @@ func TestLoadConfig(t *testing.T) {
 
 	yamlContent := `
 server:
-  port: 20128
+  port: 8128
   host: "127.0.0.1"
   storage_dir: "` + tmpDir + `"
 
@@ -41,8 +41,8 @@ combos:
 		t.Fatalf("unexpected error loading config: %v", err)
 	}
 
-	if cfg.Server.Port != 20128 {
-		t.Errorf("expected port 20128, got %d", cfg.Server.Port)
+	if cfg.Server.Port != 8128 {
+		t.Errorf("expected port 8128, got %d", cfg.Server.Port)
 	}
 
 	if len(cfg.Providers) != 1 {

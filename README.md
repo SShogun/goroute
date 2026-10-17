@@ -16,7 +16,7 @@ Gateways like OmniRoute provide great features (OAuth flows, multi-account rotat
 - 🔄 **Multi-Account Rotation**: Connect multiple accounts for the same provider; GoRoute rotates requests across them.
 - 🔀 **Smart Combos & Failover**: Automatic cascading retry on HTTP 429 (rate-limit) or 5xx upstream errors without failing the client request.
 - 📊 **Sliding-Window Quota & Cooldowns**: Automatically pauses accounts that hit limits.
-- 🔌 **Universal OpenAI Endpoint**: Drop-in compatible with Claude Code, Cursor, Cline, OpenCode, Codex, and standard OpenAI SDKs (`http://localhost:20128/v1`).
+- 🔌 **Universal OpenAI Endpoint**: Drop-in compatible with Claude Code, Cursor, Cline, OpenCode, Codex, and standard OpenAI SDKs (`http://localhost:8128/v1`).
 - 🖥️ **Embedded Zero-Overhead Dashboard**: Modern status UI served from binary with zero background sockets.
 
 ---
@@ -50,7 +50,7 @@ sudo mv goroute /usr/local/bin/
 
 ### 3. Docker
 ```bash
-docker run -d -p 20128:20128 -v ~/.goroute:/root/.goroute goroute:latest
+docker run -d -p 8128:8128 -v ~/.goroute:/root/.goroute goroute:latest
 ```
 
 ---
@@ -69,15 +69,15 @@ goroute serve
 ```
 Output:
 ```
-⚡ GoRoute starting on http://127.0.0.1:20128
-   Universal OpenAI endpoint: http://127.0.0.1:20128/v1
-   Dashboard available at:    http://127.0.0.1:20128/
+⚡ GoRoute starting on http://127.0.0.1:8128
+   Universal OpenAI endpoint: http://127.0.0.1:8128/v1
+   Dashboard available at:    http://127.0.0.1:8128/
    Memory footprint:          < 15 MB RAM
 ```
 
 ### 3. Connect Your Tools
 Point your IDE or CLI to:
-- **Base URL**: `http://127.0.0.1:20128/v1`
+- **Base URL**: `http://127.0.0.1:8128/v1`
 - **API Key**: `any-key`
 
 ---
@@ -86,7 +86,7 @@ Point your IDE or CLI to:
 
 ```yaml
 server:
-  port: 20128
+  port: 8128
   host: "127.0.0.1"
 
 providers:

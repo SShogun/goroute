@@ -63,15 +63,15 @@ func runExecutableWithGoRoute(args []string) error {
 	// Inherit existing environment and inject universal proxy settings
 	env := os.Environ()
 	proxyVars := []string{
-		"OPENAI_BASE_URL=http://127.0.0.1:20128/v1",
-		"OPENAI_API_BASE=http://127.0.0.1:20128/v1",
+		"OPENAI_BASE_URL=http://127.0.0.1:8128/v1",
+		"OPENAI_API_BASE=http://127.0.0.1:8128/v1",
 		"OPENAI_API_KEY=goroute",
-		"ANTHROPIC_BASE_URL=http://127.0.0.1:20128",
+		"ANTHROPIC_BASE_URL=http://127.0.0.1:8128",
 		"ANTHROPIC_AUTH_TOKEN=goroute",
 		"CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY=1",
 		"GOOSE_PROVIDER=openai",
-		"OPENAI_HOST=http://127.0.0.1:20128",
-		"GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:20128",
+		"OPENAI_HOST=http://127.0.0.1:8128",
+		"GOOGLE_GEMINI_BASE_URL=http://127.0.0.1:8128",
 		"GEMINI_API_KEY=goroute",
 	}
 

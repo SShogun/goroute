@@ -132,7 +132,7 @@ func NewServeCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().IntVarP(&port, "port", "p", 20128, "Port to listen on")
+	cmd.Flags().IntVarP(&port, "port", "p", 8128, "Port to listen on")
 	cmd.Flags().StringVarP(&cfgPath, "config", "c", "", "Config file path")
 	cmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Disable the embedded web dashboard completely")
 	return cmd
@@ -323,16 +323,16 @@ func NewStatusCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Check running GoRoute gateway status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := http.Get("http://127.0.0.1:20128/health")
+			resp, err := http.Get("http://127.0.0.1:8128/health")
 			if err != nil {
-				fmt.Println("❌ GoRoute server is NOT running on port 20128.")
+				fmt.Println("❌ GoRoute server is NOT running on port 8128.")
 				fmt.Println("   Start it with: goroute serve")
 				return nil
 			}
 			defer resp.Body.Close()
 
-			fmt.Println("✅ GoRoute is ACTIVE on http://127.0.0.1:20128")
-			modelsResp, err := http.Get("http://127.0.0.1:20128/v1/models")
+			fmt.Println("✅ GoRoute is ACTIVE on http://127.0.0.1:8128")
+			modelsResp, err := http.Get("http://127.0.0.1:8128/v1/models")
 			if err == nil {
 				defer modelsResp.Body.Close()
 				var data struct {
@@ -523,7 +523,7 @@ func NewModelsCmd() *cobra.Command {
 		Use:   "models",
 		Short: "List all active models and combos available in GoRoute",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			resp, err := http.Get("http://127.0.0.1:20128/v1/models")
+			resp, err := http.Get("http://127.0.0.1:8128/v1/models")
 			if err != nil {
 				defaultCfg, _ := defaultPaths()
 				cfg, err := config.Load(defaultCfg)
