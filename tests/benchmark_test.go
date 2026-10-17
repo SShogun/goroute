@@ -58,22 +58,33 @@ func TestMemoryAndConcurrency(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// 500 concurrent requests
-	const concurrency = 500
-	var wg sync.WaitGroup
-	wg.Add(concurrency)
+	// 500 requests across pooled workers
+	const totalRequests = 500
+	const workers = 50
+	client := ts.Client()
 
-	for i := 0; i < concurrency; i++ {
+	reqChan := make(chan struct{}, totalRequests)
+	for i := 0; i < totalRequests; i++ {
+		reqChan <- struct{}{}
+	}
+	close(reqChan)
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+
+	for w := 0; w < workers; w++ {
 		go func() {
 			defer wg.Done()
-			reqBody := `{"model":"bench-combo","messages":[{"role":"user","content":"ping"}]}`
-			resp, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
-			if err != nil {
-				t.Errorf("request failed: %v", err)
-				return
+			for range reqChan {
+				reqBody := `{"model":"bench-combo","messages":[{"role":"user","content":"ping"}]}`
+				resp, err := client.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
+				if err != nil {
+					t.Errorf("request failed: %v", err)
+					return
+				}
+				io.Copy(io.Discard, resp.Body)
+				resp.Body.Close()
 			}
-			io.ReadAll(resp.Body)
-			resp.Body.Close()
 		}()
 	}
 

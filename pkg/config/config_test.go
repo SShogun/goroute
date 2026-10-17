@@ -17,7 +17,7 @@ func TestLoadConfig(t *testing.T) {
 server:
   port: 8128
   host: "127.0.0.1"
-  storage_dir: "` + tmpDir + `"
+  storage_dir: "` + filepath.ToSlash(tmpDir) + `"
 
 providers:
   - id: "test-openai"
