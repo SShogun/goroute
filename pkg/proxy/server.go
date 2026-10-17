@@ -14,16 +14,18 @@ import (
 )
 
 type Server struct {
-	router  *router.Router
-	limiter *quota.Limiter
-	mux     *chi.Mux
+	router          *router.Router
+	limiter         *quota.Limiter
+	enableDashboard bool
+	mux             *chi.Mux
 }
 
-func NewServer(r *router.Router, limiter *quota.Limiter) *Server {
+func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *Server {
 	s := &Server{
-		router:  r,
-		limiter: limiter,
-		mux:     chi.NewRouter(),
+		router:          r,
+		limiter:         limiter,
+		enableDashboard: enableDashboard,
+		mux:             chi.NewRouter(),
 	}
 
 	s.setupRoutes()
@@ -52,7 +54,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/health", s.handleHealth)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
-	s.mux.Handle("/*", web.Handler())
+	if s.enableDashboard {
+		s.mux.Handle("/*", web.Handler())
+	}
 }
 
 func (s *Server) Handler() http.Handler {

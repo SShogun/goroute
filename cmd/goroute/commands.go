@@ -49,6 +49,7 @@ func openBrowser(url string) {
 func NewServeCmd() *cobra.Command {
 	var port int
 	var cfgPath string
+	var noDashboard bool
 
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -115,20 +116,25 @@ func NewServeCmd() *cobra.Command {
 				r.RegisterCombo(combo.Name, combo.Strategy, targets)
 			}
 
-			srv := proxy.NewServer(r, limiter)
 			addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 
-			fmt.Printf("⚡ GoRoute starting on http://%s\n", addr)
+			if noDashboard {
+				fmt.Printf("⚡ GoRoute starting on http://%s (Headless mode, dashboard disabled)\n", addr)
+			} else {
+				fmt.Printf("⚡ GoRoute starting on http://%s\n", addr)
+				fmt.Printf("   Dashboard available at:    http://%s/\n", addr)
+			}
 			fmt.Printf("   Universal OpenAI endpoint: http://%s/v1\n", addr)
-			fmt.Printf("   Dashboard available at:    http://%s/\n", addr)
 			fmt.Printf("   Memory footprint:          < 15 MB RAM\n")
 
+			srv := proxy.NewServer(r, limiter, !noDashboard)
 			return http.ListenAndServe(addr, srv.Handler())
 		},
 	}
 
 	cmd.Flags().IntVarP(&port, "port", "p", 20128, "Port to listen on")
 	cmd.Flags().StringVarP(&cfgPath, "config", "c", "", "Config file path")
+	cmd.Flags().BoolVar(&noDashboard, "no-dashboard", false, "Disable the embedded web dashboard completely")
 	return cmd
 }
 

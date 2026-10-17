@@ -42,7 +42,7 @@ func TestProxyServerChatCompletions(t *testing.T) {
 	r.RegisterProvider(&dummyProvider{id: "dummy"})
 	limiter := quota.NewLimiter()
 
-	srv := NewServer(r, limiter)
+	srv := NewServer(r, limiter, true)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 

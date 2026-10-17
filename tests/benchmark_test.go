@@ -46,7 +46,7 @@ func TestMemoryAndConcurrency(t *testing.T) {
 		{ProviderID: "mock1", Model: "bench-model"},
 	})
 
-	srv := proxy.NewServer(r, quota.NewLimiter())
+	srv := proxy.NewServer(r, quota.NewLimiter(), false)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
