@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ziuus/goroute/pkg/cache"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/router"
@@ -16,6 +18,7 @@ import (
 type Server struct {
 	router          *router.Router
 	limiter         *quota.Limiter
+	cache           *cache.Cache
 	enableDashboard bool
 	mux             *chi.Mux
 }
@@ -24,6 +27,7 @@ func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *
 	s := &Server{
 		router:          r,
 		limiter:         limiter,
+		cache:           cache.NewCache(15*time.Minute, 2000),
 		enableDashboard: enableDashboard,
 		mux:             chi.NewRouter(),
 	}
@@ -55,6 +59,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
+	s.mux.Post("/v1/embeddings", s.handleEmbeddings)
 	if s.enableDashboard {
 		s.mux.Handle("/*", web.Handler())
 	}
@@ -97,6 +102,18 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var cacheKey string
+	if !chatReq.Stream {
+		cacheKey = s.cache.GenerateKey(&chatReq)
+		if cached, hit := s.cache.Get(cacheKey); hit {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Cache", "HIT")
+			w.WriteHeader(http.StatusOK)
+			w.Write(cached)
+			return
+		}
+	}
+
 	body, isStream, statusCode, err := s.router.Execute(r.Context(), &chatReq)
 	if err != nil {
 		http.Error(w, err.Error(), statusCode)
@@ -128,7 +145,36 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Non-streaming JSON response
+	respBytes, err := io.ReadAll(body)
+	if err != nil {
+		http.Error(w, "failed to read upstream body: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+
+	if statusCode == http.StatusOK && cacheKey != "" {
+		s.cache.Set(cacheKey, respBytes)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Cache", "MISS")
 	w.WriteHeader(statusCode)
-	io.Copy(w, body)
+	w.Write(respBytes)
+}
+
+func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
+	var embReq providers.EmbeddingRequest
+	if err := json.NewDecoder(r.Body).Decode(&embReq); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	resp, err := s.router.ExecuteEmbeddings(r.Context(), &embReq)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }

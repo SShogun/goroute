@@ -37,6 +37,14 @@ func (d *dummyProvider) Models(ctx context.Context) ([]providers.ModelInfo, erro
 	return []providers.ModelInfo{{ID: "dummy-model", Object: "model"}}, nil
 }
 
+func (d *dummyProvider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
+	return &providers.EmbeddingResponse{
+		Object: "list",
+		Model:  req.Model,
+		Data:   []providers.EmbeddingItem{{Object: "embedding", Index: 0, Embedding: []float64{0.1, 0.2, 0.3}}},
+	}, nil
+}
+
 func TestProxyServerChatCompletions(t *testing.T) {
 	r := router.NewRouter()
 	r.RegisterProvider(&dummyProvider{id: "dummy"})
@@ -46,7 +54,7 @@ func TestProxyServerChatCompletions(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	// 1. Test non-streaming
+	// 1. Test non-streaming (first call: Cache MISS)
 	reqBody := `{"model":"dummy/dummy-model","messages":[{"role":"user","content":"hi"}]}`
 	resp, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
 	if err != nil {
@@ -57,14 +65,26 @@ func TestProxyServerChatCompletions(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
+	if resp.Header.Get("X-Cache") != "MISS" {
+		t.Errorf("expected X-Cache: MISS on first call, got %s", resp.Header.Get("X-Cache"))
+	}
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "json content") {
 		t.Errorf("expected json content, got: %s", string(body))
 	}
 
+	// 1b. Test second call: Cache HIT!
+	resp2, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(reqBody))
+	if err != nil {
+		t.Fatalf("request 2 failed: %v", err)
+	}
+	defer resp2.Body.Close()
+	if resp2.Header.Get("X-Cache") != "HIT" {
+		t.Errorf("expected X-Cache: HIT on second call, got %s", resp2.Header.Get("X-Cache"))
+	}
+
 	// 2. Test streaming
-	streamReqBody := `{"model":"dummy/dummy-model","messages":[{"role":"user","content":"hi"}],"stream":true}`
-	respStream, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(streamReqBody))
+	respStream, err := http.Post(ts.URL+"/v1/chat/completions", "application/json", strings.NewReader(`{"model":"dummy/dummy-model","messages":[{"role":"user","content":"stream"}],"stream":true}`))
 	if err != nil {
 		t.Fatalf("stream request failed: %v", err)
 	}
@@ -91,5 +111,21 @@ func TestProxyServerChatCompletions(t *testing.T) {
 	json.NewDecoder(modelsResp.Body).Decode(&modelsData)
 	if len(modelsData.Data) == 0 {
 		t.Errorf("expected at least 1 model in /v1/models")
+	}
+
+	// 4. Test /v1/embeddings
+	embReqBody := `{"model":"dummy/dummy-model","input":"test string"}`
+	embResp, err := http.Post(ts.URL+"/v1/embeddings", "application/json", strings.NewReader(embReqBody))
+	if err != nil {
+		t.Fatalf("embeddings request failed: %v", err)
+	}
+	defer embResp.Body.Close()
+	if embResp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200 OK from embeddings, got %d", embResp.StatusCode)
+	}
+	var embData providers.EmbeddingResponse
+	json.NewDecoder(embResp.Body).Decode(&embData)
+	if len(embData.Data) == 0 {
+		t.Errorf("expected embeddings data in response")
 	}
 }

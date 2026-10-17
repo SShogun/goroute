@@ -25,10 +25,30 @@ type ModelInfo struct {
 	OwnedBy string `json:"owned_by"`
 }
 
+type EmbeddingRequest struct {
+	Model string      `json:"model"`
+	Input interface{} `json:"input"` // string or []string
+	User  string      `json:"user,omitempty"`
+}
+
+type EmbeddingItem struct {
+	Object    string    `json:"object"`
+	Index     int       `json:"index"`
+	Embedding []float64 `json:"embedding"`
+}
+
+type EmbeddingResponse struct {
+	Object string          `json:"object"`
+	Data   []EmbeddingItem `json:"data"`
+	Model  string          `json:"model"`
+	Usage  map[string]int  `json:"usage"`
+}
+
 type Provider interface {
 	ID() string
 	Type() string
 	ChatCompletion(ctx context.Context, req *ChatRequest) (body io.ReadCloser, isStream bool, statusCode int, err error)
+	Embeddings(ctx context.Context, req *EmbeddingRequest) (*EmbeddingResponse, error)
 	Models(ctx context.Context) ([]ModelInfo, error)
 	IsHealthy() bool
 }

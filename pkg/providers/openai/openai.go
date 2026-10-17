@@ -100,3 +100,39 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 
 	return data.Data, nil
 }
+
+func (p *Provider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("marshal embedding request: %w", err)
+	}
+
+	url := p.baseURL + "/embeddings"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("create embedding request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("execute embedding request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		errBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("upstream embeddings error (%d): %s", resp.StatusCode, string(errBody))
+	}
+
+	var embResp providers.EmbeddingResponse
+	if err := json.NewDecoder(resp.Body).Decode(&embResp); err != nil {
+		return nil, fmt.Errorf("decode embedding response: %w", err)
+	}
+
+	return &embResp, nil
+}

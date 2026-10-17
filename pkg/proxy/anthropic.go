@@ -84,25 +84,11 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Extract messages
+	// Extract messages (preserving multimodal images and blocks)
 	for _, m := range req.Messages {
-		var contentStr string
-		switch c := m.Content.(type) {
-		case string:
-			contentStr = c
-		case []interface{}:
-			for _, item := range c {
-				if block, ok := item.(map[string]interface{}); ok {
-					if txt, ok := block["text"].(string); ok {
-						contentStr += txt
-					}
-				}
-			}
-		}
-
 		chatReq.Messages = append(chatReq.Messages, providers.ChatMessage{
 			Role:    m.Role,
-			Content: contentStr,
+			Content: m.Content,
 		})
 	}
 

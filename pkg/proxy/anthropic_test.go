@@ -23,6 +23,13 @@ func (m *mockAnthropicProvider) IsHealthy() bool { return true }
 func (m *mockAnthropicProvider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 	return []providers.ModelInfo{{ID: "claude-3-7-sonnet"}}, nil
 }
+func (m *mockAnthropicProvider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
+	return &providers.EmbeddingResponse{
+		Object: "list",
+		Model:  req.Model,
+		Data:   []providers.EmbeddingItem{{Object: "embedding", Index: 0, Embedding: []float64{0.1, 0.2}}},
+	}, nil
+}
 func (m *mockAnthropicProvider) ChatCompletion(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
 	if req.Stream {
 		sseData := "data: {\"choices\":[{\"delta\":{\"content\":\"Hello world\"}}]}\n\ndata: [DONE]\n\n"

@@ -137,8 +137,8 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			return body, isStream, statusCode, nil
 		}
 
-		// If 429 (Rate limited) or 5xx (Upstream error), close body and cascade to next target!
-		if statusCode == http.StatusTooManyRequests || (statusCode >= 500 && statusCode <= 599) {
+		// If 429 (Rate limited), 401/403 (Auth/License), or 5xx (Upstream error), close body and cascade to next target!
+		if statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || (statusCode >= 500 && statusCode <= 599) {
 			if body != nil {
 				body.Close()
 			}
@@ -184,4 +184,39 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 	}
 
 	return nil, false, http.StatusNotFound, fmt.Errorf("no provider found for model: %s", req.Model)
+}
+
+func (r *Router) ExecuteEmbeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	// Check if model contains provider prefix, e.g. "openai/text-embedding-3-small"
+	if strings.Contains(req.Model, "/") {
+		parts := strings.SplitN(req.Model, "/", 2)
+		provID := parts[0]
+		modelName := parts[1]
+		if prov, ok := r.providers[provID]; ok && prov.IsHealthy() {
+			targetReq := *req
+			targetReq.Model = modelName
+			return prov.Embeddings(ctx, &targetReq)
+		}
+	}
+
+	// Try each healthy provider
+	var lastErr error
+	for _, prov := range r.providers {
+		if !prov.IsHealthy() {
+			continue
+		}
+		resp, err := prov.Embeddings(ctx, req)
+		if err == nil && resp != nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("no provider available for embeddings")
 }

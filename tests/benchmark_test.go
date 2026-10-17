@@ -35,6 +35,14 @@ func (b *benchmarkMockProvider) Models(ctx context.Context) ([]providers.ModelIn
 	return []providers.ModelInfo{{ID: "bench-model", Object: "model"}}, nil
 }
 
+func (b *benchmarkMockProvider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
+	return &providers.EmbeddingResponse{
+		Object: "list",
+		Model:  req.Model,
+		Data:   []providers.EmbeddingItem{{Object: "embedding", Index: 0, Embedding: []float64{0.01, 0.02}}},
+	}, nil
+}
+
 func TestMemoryAndConcurrency(t *testing.T) {
 	runtime.GC()
 	var mBefore runtime.MemStats

@@ -85,3 +85,58 @@ func TestAntigravityChatCompletion(t *testing.T) {
 		t.Errorf("expected non-empty response")
 	}
 }
+
+func TestMultimodalMediaParsing(t *testing.T) {
+	// Test data URI extraction
+	inline := extractInlineDataFromURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==")
+	if inline == nil {
+		t.Fatalf("expected extracted inline data, got nil")
+	}
+	if inline.MimeType != "image/png" {
+		t.Errorf("expected image/png, got %s", inline.MimeType)
+	}
+	if inline.Data != "iVBORw0KGgoAAAANSUhEUg==" {
+		t.Errorf("expected base64 data, got %s", inline.Data)
+	}
+
+	// Test OpenAI multimodal array
+	openAIMedia := []interface{}{
+		map[string]interface{}{"type": "text", "text": "Describe this image:"},
+		map[string]interface{}{
+			"type": "image_url",
+			"image_url": map[string]interface{}{
+				"url": "data:image/jpeg;base64,12345678",
+			},
+		},
+	}
+	parts := parseGeminiParts(openAIMedia)
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(parts))
+	}
+	if parts[0].Text != "Describe this image:" {
+		t.Errorf("expected text part, got: %v", parts[0].Text)
+	}
+	if parts[1].InlineData == nil || parts[1].InlineData.MimeType != "image/jpeg" {
+		t.Errorf("expected image/jpeg inline data, got: %v", parts[1].InlineData)
+	}
+
+	// Test Anthropic multimodal block
+	anthropicMedia := []interface{}{
+		map[string]interface{}{"type": "text", "text": "Analyze diagram:"},
+		map[string]interface{}{
+			"type": "image",
+			"source": map[string]interface{}{
+				"type":       "base64",
+				"media_type": "image/webp",
+				"data":       "abcdef==",
+			},
+		},
+	}
+	anthropicParts := parseGeminiParts(anthropicMedia)
+	if len(anthropicParts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(anthropicParts))
+	}
+	if anthropicParts[1].InlineData == nil || anthropicParts[1].InlineData.MimeType != "image/webp" {
+		t.Errorf("expected image/webp inline data, got: %v", anthropicParts[1].InlineData)
+	}
+}
