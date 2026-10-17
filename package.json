@@ -1,0 +1,42 @@
+{
+  "name": "goroute",
+  "version": "0.2.0",
+  "description": "Ultra-lightweight LLM gateway & multi-provider router (< 15MB RAM)",
+  "main": "bin/goroute.js",
+  "bin": {
+    "goroute": "./bin/goroute.js"
+  },
+  "scripts": {
+    "postinstall": "node ./scripts/install.js"
+  },
+  "files": [
+    "bin/goroute.js",
+    "scripts/install.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "llm",
+    "gateway",
+    "router",
+    "ai",
+    "openai",
+    "anthropic",
+    "gemini",
+    "antigravity",
+    "claude-code",
+    "cursor",
+    "opencode",
+    "aider"
+  ],
+  "author": "Zius",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ziuus/goroute.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ziuus/goroute/issues"
+  },
+  "homepage": "https://github.com/ziuus/goroute#readme"
+}
