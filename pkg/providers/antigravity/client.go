@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -187,16 +188,20 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// Normalize requested model to live upstream model
 		upstreamModel := req.Model
 		switch strings.ToLower(upstreamModel) {
-		case "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-sonnet", "claude":
+		case "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-sonnet", "claude", "claude-sonnet-4-6":
 			upstreamModel = "claude-sonnet-4-6"
-		case "claude-3-opus", "claude-opus":
+		case "claude-3-opus", "claude-opus", "claude-opus-4-6", "claude-opus-4-6-thinking":
 			upstreamModel = "claude-opus-4-6-thinking"
-		case "gemini-2.5-pro", "gemini-pro":
+		case "gemini-2.5-pro", "gemini-pro", "gemini-pro-agent":
 			upstreamModel = "gemini-pro-agent"
-		case "gemini-2.5-flash", "gemini-flash":
+		case "gemini-2.5-flash", "gemini-flash", "gemini-flash-3-8", "gemini-3.8-flash", "gemini-3.8-flash-high":
 			upstreamModel = "gemini-3.8-flash-high"
-		case "gemini-2.5-flash-lite", "gemini-flash-lite":
+		case "gemini-2.5-flash-lite", "gemini-flash-lite", "gemini-3.1-flash-lite":
 			upstreamModel = "gemini-3.1-flash-lite"
+		case "gemini-3-flash":
+			upstreamModel = "gemini-3-flash"
+		case "gpt-oss", "gpt-oss-120b", "gpt-oss-120b-medium":
+			upstreamModel = "gpt-oss-120b-medium"
 		}
 
 		payload := antigravityPayload{
@@ -253,6 +258,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
+			log.Printf("[Antigravity] HTTP request failed: %v", err)
 			continue
 		}
 
@@ -260,40 +266,56 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			if lastBody != nil {
 				lastBody.Close()
 			}
-			return TranslateGeminiSSEToOpenAI(resp.Body, req.Model), true, resp.StatusCode, nil
+			if req.Stream {
+				return TranslateGeminiSSEToOpenAI(resp.Body, req.Model), true, resp.StatusCode, nil
+			}
+			body, err := ConvertGeminiSSEToNonStreaming(resp.Body, req.Model)
+			if err != nil {
+				return nil, false, http.StatusInternalServerError, err
+			}
+			return body, false, resp.StatusCode, nil
 		}
+
+		respBytes, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		log.Printf("[Antigravity] Account %s returned HTTP %d: %s", acc.ID, resp.StatusCode, string(respBytes))
 
 		// If 429 (quota), 403 (unlicensed/permission), or 401, try next account
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
 			if lastBody != nil {
 				lastBody.Close()
 			}
-			lastBody = resp.Body
+			lastBody = io.NopCloser(bytes.NewReader(respBytes))
 			lastStatus = resp.StatusCode
 			continue
 		}
 
-		return resp.Body, true, resp.StatusCode, nil
+		return io.NopCloser(bytes.NewReader(respBytes)), req.Stream, resp.StatusCode, nil
 	}
 
 	if lastBody != nil {
-		return lastBody, true, lastStatus, nil
+		return lastBody, req.Stream, lastStatus, nil
 	}
 
 	return nil, false, http.StatusServiceUnavailable, fmt.Errorf("all antigravity accounts exhausted")
 }
 
 func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
-	// Standard models available on Antigravity
+	// Standard and aliased models available on Antigravity
 	return []providers.ModelInfo{
 		{ID: "claude-3-7-sonnet", Object: "model", OwnedBy: "antigravity"},
 		{ID: "claude-3-5-sonnet", Object: "model", OwnedBy: "antigravity"},
+		{ID: "claude-sonnet-4-6", Object: "model", OwnedBy: "antigravity"},
+		{ID: "claude-opus-4-6", Object: "model", OwnedBy: "antigravity"},
+		{ID: "claude-opus-4-6-thinking", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-2.5-pro", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-2.5-flash", Object: "model", OwnedBy: "antigravity"},
-		{ID: "claude-sonnet-4-6", Object: "model", OwnedBy: "antigravity"},
-		{ID: "claude-opus-4-6-thinking", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gemini-flash-3-8", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-3.8-flash-high", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-pro-agent", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gemini-3-flash", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gemini-3.1-flash-lite", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gpt-oss-120b-medium", Object: "model", OwnedBy: "antigravity"},
 	}, nil
 }
 

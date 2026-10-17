@@ -3,6 +3,7 @@ package proxy
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -95,6 +96,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	log.Printf("[GoRoute] Incoming /v1/chat/completions model=%s stream=%v messages=%d", chatReq.Model, chatReq.Stream, len(chatReq.Messages))
 
 	// Check rate limit/quota if configured
 	if !s.limiter.Allow(chatReq.Model) {
@@ -116,10 +118,15 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	body, isStream, statusCode, err := s.router.Execute(r.Context(), &chatReq)
 	if err != nil {
+		log.Printf("[GoRoute] Execute error: %v (code %d)", err, statusCode)
+		if statusCode < 100 || statusCode > 599 {
+			statusCode = http.StatusInternalServerError
+		}
 		http.Error(w, err.Error(), statusCode)
 		return
 	}
 	defer body.Close()
+	log.Printf("[GoRoute] Upstream returned status %d isStream=%v", statusCode, isStream)
 
 	if isStream {
 		w.Header().Set("Content-Type", "text/event-stream")

@@ -191,16 +191,23 @@ requires_openai_auth = false
 
 func getAllGoRouteModels(home string) map[string]string {
 	models := map[string]string{
-		"claude-3-7-sonnet":        "Claude 3.7 Sonnet (Hybrid/Thinking)",
-		"claude-3-5-sonnet":        "Claude 3.5 Sonnet",
-		"claude-sonnet-4-6":        "Claude Sonnet 4.6 (Live Native)",
-		"claude-opus-4-6-thinking": "Claude Opus 4.6 (Thinking)",
-		"gemini-2.5-pro":           "Gemini 2.5 Pro (Deep Reasoning)",
-		"gemini-2.5-flash":         "Gemini 2.5 Flash (Sub-Second)",
-		"gemini-3.8-flash-high":    "Gemini 3.8 Flash High",
-		"gemini-3-flash":           "Gemini 3 Flash",
-		"gemini-3.1-flash-lite":    "Gemini 3.1 Flash Lite",
-		"gpt-oss-120b-medium":      "GPT-OSS 120B (Open Weights)",
+		"agy/gemini-flash-3-8":      "Gemini 3.8 Flash High (Antigravity)",
+		"agy/claude-opus-4-6":       "Claude Opus 4.6 Thinking (Antigravity)",
+		"agy/claude-sonnet-4-6":     "Claude Sonnet 4.6 (Antigravity)",
+		"agy/gemini-pro-agent":      "Gemini Pro Agent (Antigravity)",
+		"agy/gemini-3-flash":        "Gemini 3 Flash (Antigravity)",
+		"agy/gemini-3.1-flash-lite": "Gemini 3.1 Flash Lite (Antigravity)",
+		"agy/gpt-oss-120b-medium":   "GPT-OSS 120B Medium (Antigravity)",
+		"claude-3-7-sonnet":         "Claude 3.7 Sonnet (Auto/Failover)",
+		"claude-3-5-sonnet":         "Claude 3.5 Sonnet",
+		"claude-sonnet-4-6":         "Claude Sonnet 4.6 (Live Native)",
+		"claude-opus-4-6-thinking":  "Claude Opus 4.6 (Thinking)",
+		"gemini-2.5-pro":            "Gemini 2.5 Pro (Deep Reasoning)",
+		"gemini-2.5-flash":          "Gemini 2.5 Flash (Sub-Second)",
+		"gemini-3.8-flash-high":     "Gemini 3.8 Flash High",
+		"gemini-3-flash":            "Gemini 3 Flash",
+		"gemini-3.1-flash-lite":     "Gemini 3.1 Flash Lite",
+		"gpt-oss-120b-medium":       "GPT-OSS 120B (Open Weights)",
 	}
 
 	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
@@ -220,13 +227,17 @@ func getAllGoRouteModels(home string) map[string]string {
 }
 
 func setupOpenCode(home string) error {
-	// 1. Register goroute credentials in ~/.local/share/opencode/auth.json
+	// 1. Register gr and goroute credentials in ~/.local/share/opencode/auth.json
 	authDir := filepath.Join(home, ".local", "share", "opencode")
 	_ = os.MkdirAll(authDir, 0700)
 	authPath := filepath.Join(authDir, "auth.json")
 	authExisting := make(map[string]interface{})
 	if raw, err := os.ReadFile(authPath); err == nil {
 		_ = json.Unmarshal(raw, &authExisting)
+	}
+	authExisting["gr"] = map[string]interface{}{
+		"type": "api",
+		"key":  "goroute",
 	}
 	authExisting["goroute"] = map[string]interface{}{
 		"type": "api",
@@ -255,14 +266,12 @@ func setupOpenCode(home string) error {
 		_ = json.Unmarshal(raw, &existing)
 	}
 
-	delete(existing, "goroute")
-
 	providers, ok := existing["provider"].(map[string]interface{})
 	if !ok || providers == nil {
 		providers = make(map[string]interface{})
 	}
 
-	providers["goroute"] = map[string]interface{}{
+	grProvider := map[string]interface{}{
 		"name": "GoRoute",
 		"npm":  "@ai-sdk/openai-compatible",
 		"options": map[string]interface{}{
@@ -272,15 +281,18 @@ func setupOpenCode(home string) error {
 		"models": modelsMap,
 	}
 
+	providers["gr"] = grProvider
+	providers["goroute"] = grProvider
+
 	existing["provider"] = providers
-	existing["model"] = "goroute/claude-3-7-sonnet"
-	existing["small_model"] = "goroute/gemini-2.5-flash"
+	existing["model"] = "gr/claude-3-7-sonnet"
+	existing["small_model"] = "gr/gemini-2.5-flash"
 	existing["agent"] = map[string]interface{}{
 		"build": map[string]interface{}{
-			"model": "goroute/claude-3-7-sonnet",
+			"model": "gr/claude-3-7-sonnet",
 		},
 		"plan": map[string]interface{}{
-			"model": "goroute/claude-3-7-sonnet",
+			"model": "gr/claude-3-7-sonnet",
 		},
 	}
 
@@ -298,10 +310,11 @@ func setupOpenCode(home string) error {
 			if !ok || p == nil {
 				p = make(map[string]interface{})
 			}
-			p["goroute"] = providers["goroute"]
+			p["gr"] = grProvider
+			p["goroute"] = grProvider
 			existingJsonc["provider"] = p
-			existingJsonc["model"] = "goroute/claude-3-7-sonnet"
-			existingJsonc["small_model"] = "goroute/gemini-2.5-flash"
+			existingJsonc["model"] = "gr/claude-3-7-sonnet"
+			existingJsonc["small_model"] = "gr/gemini-2.5-flash"
 			if jBytes, err := json.MarshalIndent(existingJsonc, "", "  "); err == nil {
 				_ = os.WriteFile(jsoncPath, jBytes, 0600)
 			}
@@ -311,11 +324,12 @@ func setupOpenCode(home string) error {
 	fmt.Println("✅ Configured OpenCode!")
 	fmt.Printf("   Configured %d GoRoute models across providers:\n", len(modelsMap))
 	for m := range allModels {
-		fmt.Printf("   • goroute/%s\n", m)
+		fmt.Printf("   • gr/%s\n", m)
 	}
 	fmt.Printf("   Wrote configuration to: %s\n", configPath)
 	fmt.Printf("   Authenticated provider key in: %s\n", authPath)
-	fmt.Println("   Active model set to: goroute/claude-3-7-sonnet")
+	fmt.Println("   Active model set to: gr/claude-3-7-sonnet")
+	fmt.Println("   Uniform format: gr/agy/gemini-flash-3-8, gr/agy/claude-opus-4-6, etc.")
 	fmt.Println("   Launch with: opencode (or goroute run opencode)")
 	return nil
 }

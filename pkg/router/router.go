@@ -86,16 +86,30 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 
 // Execute routes the request, executing automatic failover or load balancing
 func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
+	model := req.Model
+	if strings.HasPrefix(model, "gr/") {
+		model = strings.TrimPrefix(model, "gr/")
+	} else if strings.HasPrefix(model, "goroute/") {
+		model = strings.TrimPrefix(model, "goroute/")
+	}
+
+	if strings.HasPrefix(model, "agy/") {
+		model = "antigravity/" + strings.TrimPrefix(model, "agy/")
+	}
+
+	normReq := *req
+	normReq.Model = model
+
 	r.mu.RLock()
-	combo, isCombo := r.combos[req.Model]
+	combo, isCombo := r.combos[normReq.Model]
 	r.mu.RUnlock()
 
 	if isCombo && len(combo.Targets) > 0 {
-		return r.executeCombo(ctx, combo, req)
+		return r.executeCombo(ctx, combo, &normReq)
 	}
 
 	// Direct model or provider/model lookup
-	return r.executeDirect(ctx, req)
+	return r.executeDirect(ctx, &normReq)
 }
 
 func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
