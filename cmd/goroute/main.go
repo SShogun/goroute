@@ -18,7 +18,15 @@ providing multi-account rotation, OAuth PKCE flows, and automatic fallback casca
 		Version: version,
 	}
 
-	rootCmd.AddCommand(NewServeCmd(), NewAuthCmd(), NewStatusCmd(), NewImportCmd())
+	rootCmd.AddCommand(
+		NewServeCmd(),
+		NewAuthCmd(),
+		NewStatusCmd(),
+		NewImportCmd(),
+		NewProviderCmd(),
+		NewComboCmd(),
+		NewModelsCmd(),
+	)
 	return rootCmd
 }
 

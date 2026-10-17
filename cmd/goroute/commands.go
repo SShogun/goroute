@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/ziuus/goroute/pkg/config"
@@ -336,6 +337,173 @@ func NewStatusCmd() *cobra.Command {
 						fmt.Printf("   • %s (%s)\n", m.ID, m.OwnedBy)
 					}
 				}
+			}
+			return nil
+		},
+	}
+}
+
+func NewProviderCmd() *cobra.Command {
+	providerCmd := &cobra.Command{
+		Use:   "provider",
+		Short: "Manage custom providers and endpoints",
+	}
+
+	var pType, baseURL, apiKey string
+	addCmd := &cobra.Command{
+		Use:   "add [id]",
+		Short: "Add a custom endpoint or API key provider",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			defaultCfg, _ := defaultPaths()
+			cfg, err := config.Load(defaultCfg)
+			if err != nil {
+				cfg = config.DefaultConfig()
+			}
+
+			found := false
+			for i, p := range cfg.Providers {
+				if p.ID == id {
+					cfg.Providers[i].BaseURL = baseURL
+					cfg.Providers[i].APIKey = apiKey
+					cfg.Providers[i].Type = pType
+					found = true
+					break
+				}
+			}
+			if !found {
+				cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+					ID:      id,
+					Type:    pType,
+					BaseURL: baseURL,
+					APIKey:  apiKey,
+				})
+			}
+
+			if err := cfg.Save(defaultCfg); err != nil {
+				return err
+			}
+
+			fmt.Printf("✅ Provider '%s' saved successfully!\n", id)
+			fmt.Printf("   Type:     %s\n", pType)
+			fmt.Printf("   Base URL: %s\n", baseURL)
+			return nil
+		},
+	}
+
+	addCmd.Flags().StringVar(&pType, "type", "openai", "Provider type (openai, antigravity)")
+	addCmd.Flags().StringVar(&baseURL, "url", "", "Custom Base URL endpoint (e.g. https://api.deepseek.com/v1)")
+	addCmd.Flags().StringVar(&apiKey, "key", "", "API Key for authentication")
+	_ = addCmd.MarkFlagRequired("url")
+
+	providerCmd.AddCommand(addCmd)
+	return providerCmd
+}
+
+func NewComboCmd() *cobra.Command {
+	comboCmd := &cobra.Command{
+		Use:   "combo",
+		Short: "Manage smart fallback combos and cascades",
+	}
+
+	var strategy, targetsStr string
+	addCmd := &cobra.Command{
+		Use:   "add [name]",
+		Short: "Create or update a failover combo",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			defaultCfg, _ := defaultPaths()
+			cfg, err := config.Load(defaultCfg)
+			if err != nil {
+				cfg = config.DefaultConfig()
+			}
+
+			targetList := strings.Split(targetsStr, ",")
+			var targets []config.ComboTarget
+			for _, t := range targetList {
+				parts := strings.Split(strings.TrimSpace(t), "/")
+				if len(parts) == 2 {
+					targets = append(targets, config.ComboTarget{
+						ProviderID: parts[0],
+						Model:      parts[1],
+					})
+				}
+			}
+
+			if len(targets) == 0 {
+				return fmt.Errorf("invalid targets. Example format: --targets 'antigravity/claude-3-7-sonnet,tokenrouter/claude-3-7-sonnet'")
+			}
+
+			found := false
+			for i, c := range cfg.Combos {
+				if c.Name == name {
+					cfg.Combos[i].Strategy = strategy
+					cfg.Combos[i].Targets = targets
+					found = true
+					break
+				}
+			}
+			if !found {
+				cfg.Combos = append(cfg.Combos, config.ComboConfig{
+					Name:     name,
+					Strategy: strategy,
+					Targets:  targets,
+				})
+			}
+
+			if err := cfg.Save(defaultCfg); err != nil {
+				return err
+			}
+
+			fmt.Printf("✅ Combo '%s' saved successfully!\n", name)
+			fmt.Printf("   Strategy: %s\n", strategy)
+			for _, t := range targets {
+				fmt.Printf("   -> %s / %s\n", t.ProviderID, t.Model)
+			}
+			return nil
+		},
+	}
+
+	addCmd.Flags().StringVar(&strategy, "strategy", "failover", "Routing strategy (failover, round_robin)")
+	addCmd.Flags().StringVar(&targetsStr, "targets", "", "Comma-separated list of provider/model pairs")
+	_ = addCmd.MarkFlagRequired("targets")
+
+	comboCmd.AddCommand(addCmd)
+	return comboCmd
+}
+
+func NewModelsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "models",
+		Short: "List all active models and combos available in GoRoute",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := http.Get("http://127.0.0.1:20128/v1/models")
+			if err != nil {
+				defaultCfg, _ := defaultPaths()
+				cfg, err := config.Load(defaultCfg)
+				if err != nil {
+					return fmt.Errorf("gateway not running and no config found")
+				}
+				fmt.Println("Available Combos (Configured):")
+				for _, c := range cfg.Combos {
+					fmt.Printf("• %s (Combo / %s)\n", c.Name, c.Strategy)
+				}
+				return nil
+			}
+			defer resp.Body.Close()
+
+			var data struct {
+				Data []providers.ModelInfo `json:"data"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+				return err
+			}
+
+			fmt.Println("Active Models & Combos:")
+			for _, m := range data.Data {
+				fmt.Printf("• %-30s [%s]\n", m.ID, m.OwnedBy)
 			}
 			return nil
 		},
