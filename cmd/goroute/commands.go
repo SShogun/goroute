@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/catalog"
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
@@ -362,6 +363,16 @@ func NewProviderCmd() *cobra.Command {
 				cfg = config.DefaultConfig()
 			}
 
+			if baseURL == "" {
+				if entry := catalog.FindEntry(id); entry != nil {
+					baseURL = entry.BaseURL
+					pType = entry.Type
+					fmt.Printf("ℹ Using catalog preset for '%s' (%s)\n", entry.Name, entry.BaseURL)
+				} else {
+					return fmt.Errorf("provider '%s' is not a known preset. Please specify --url", id)
+				}
+			}
+
 			found := false
 			for i, p := range cfg.Providers {
 				if p.ID == id {
@@ -393,12 +404,39 @@ func NewProviderCmd() *cobra.Command {
 	}
 
 	addCmd.Flags().StringVar(&pType, "type", "openai", "Provider type (openai, antigravity)")
-	addCmd.Flags().StringVar(&baseURL, "url", "", "Custom Base URL endpoint (e.g. https://api.deepseek.com/v1)")
+	addCmd.Flags().StringVar(&baseURL, "url", "", "Custom Base URL endpoint (optional if using a catalog preset)")
 	addCmd.Flags().StringVar(&apiKey, "key", "", "API Key for authentication")
-	_ = addCmd.MarkFlagRequired("url")
 
 	providerCmd.AddCommand(addCmd)
 	return providerCmd
+}
+
+func NewCatalogCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "catalog [search]",
+		Short: "Browse built-in provider presets (NVIDIA, Groq, DeepSeek, Ollama, etc.)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			query := ""
+			if len(args) > 0 {
+				query = args[0]
+			}
+			entries := catalog.Search(query)
+			if len(entries) == 0 {
+				fmt.Printf("No providers found matching '%s'\n", query)
+				return nil
+			}
+
+			fmt.Println("Available Provider Presets in GoRoute:")
+			fmt.Printf("%-14s %-25s %-8s %s\n", "ID", "NAME", "AUTH", "DEFAULT ENDPOINT")
+			fmt.Println(strings.Repeat("-", 80))
+			for _, e := range entries {
+				fmt.Printf("%-14s %-25s %-8s %s\n", e.ID, e.Name, e.AuthType, e.BaseURL)
+			}
+			fmt.Println("\nTo add any preset in one step:")
+			fmt.Println("  goroute provider add <id> --key <your-api-key>")
+			return nil
+		},
+	}
 }
 
 func NewComboCmd() *cobra.Command {
