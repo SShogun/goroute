@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/ziuus/goroute/pkg/config"
 )
 
 type AgentConfigurator func(home string) error
@@ -188,7 +189,63 @@ requires_openai_auth = false
 	return nil
 }
 
+func getAllGoRouteModels(home string) map[string]string {
+	models := map[string]string{
+		"claude-3-7-sonnet":        "Claude 3.7 Sonnet (Hybrid/Thinking)",
+		"claude-3-5-sonnet":        "Claude 3.5 Sonnet",
+		"claude-sonnet-4-6":        "Claude Sonnet 4.6 (Live Native)",
+		"claude-opus-4-6-thinking": "Claude Opus 4.6 (Thinking)",
+		"gemini-2.5-pro":           "Gemini 2.5 Pro (Deep Reasoning)",
+		"gemini-2.5-flash":         "Gemini 2.5 Flash (Sub-Second)",
+		"gemini-3.8-flash-high":    "Gemini 3.8 Flash High",
+		"gemini-3-flash":           "Gemini 3 Flash",
+		"gemini-3.1-flash-lite":    "Gemini 3.1 Flash Lite",
+		"gpt-oss-120b-medium":      "GPT-OSS 120B (Open Weights)",
+	}
+
+	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
+	if cfg, err := config.Load(cfgPath); err == nil {
+		for _, combo := range cfg.Combos {
+			if _, exists := models[combo.Name]; !exists {
+				models[combo.Name] = fmt.Sprintf("%s (GoRoute Combo)", combo.Name)
+			}
+		}
+		for _, p := range cfg.Providers {
+			if p.Type == "openai" {
+				models[p.ID+"/default"] = fmt.Sprintf("%s (Upstream Provider)", p.ID)
+			}
+		}
+	}
+	return models
+}
+
 func setupOpenCode(home string) error {
+	// 1. Register goroute credentials in ~/.local/share/opencode/auth.json
+	authDir := filepath.Join(home, ".local", "share", "opencode")
+	_ = os.MkdirAll(authDir, 0700)
+	authPath := filepath.Join(authDir, "auth.json")
+	authExisting := make(map[string]interface{})
+	if raw, err := os.ReadFile(authPath); err == nil {
+		_ = json.Unmarshal(raw, &authExisting)
+	}
+	authExisting["goroute"] = map[string]interface{}{
+		"type": "api",
+		"key":  "goroute",
+	}
+	if aBytes, err := json.MarshalIndent(authExisting, "", "  "); err == nil {
+		_ = os.WriteFile(authPath, aBytes, 0600)
+	}
+
+	// 2. Discover all models from GoRoute
+	allModels := getAllGoRouteModels(home)
+	modelsMap := make(map[string]interface{})
+	for modelID, modelName := range allModels {
+		modelsMap[modelID] = map[string]interface{}{
+			"name": modelName,
+		}
+	}
+
+	// 3. Configure ~/.config/opencode/opencode.json
 	opencodeDir := filepath.Join(home, ".config", "opencode")
 	_ = os.MkdirAll(opencodeDir, 0700)
 	configPath := filepath.Join(opencodeDir, "opencode.json")
@@ -212,32 +269,52 @@ func setupOpenCode(home string) error {
 			"baseURL": "http://127.0.0.1:8128/v1",
 			"apiKey":  "goroute",
 		},
-		"models": map[string]interface{}{
-			"claude-3-7-sonnet": map[string]interface{}{
-				"name": "Claude 3.7 Sonnet (GoRoute)",
-			},
-			"gemini-2.5-pro": map[string]interface{}{
-				"name": "Gemini 2.5 Pro (GoRoute)",
-			},
-			"gemini-2.5-flash": map[string]interface{}{
-				"name": "Gemini 2.5 Flash (GoRoute)",
-			},
-			"claude-3-5-sonnet": map[string]interface{}{
-				"name": "Claude 3.5 Sonnet (GoRoute)",
-			},
-		},
+		"models": modelsMap,
 	}
 
 	existing["provider"] = providers
 	existing["model"] = "goroute/claude-3-7-sonnet"
+	existing["small_model"] = "goroute/gemini-2.5-flash"
+	existing["agent"] = map[string]interface{}{
+		"build": map[string]interface{}{
+			"model": "goroute/claude-3-7-sonnet",
+		},
+		"plan": map[string]interface{}{
+			"model": "goroute/claude-3-7-sonnet",
+		},
+	}
 
 	bytes, _ := json.MarshalIndent(existing, "", "  ")
 	if err := os.WriteFile(configPath, bytes, 0600); err != nil {
 		return err
 	}
 
+	// 4. Also sync to opencode.jsonc if present
+	jsoncPath := filepath.Join(opencodeDir, "opencode.jsonc")
+	if raw, err := os.ReadFile(jsoncPath); err == nil {
+		var existingJsonc map[string]interface{}
+		if err := json.Unmarshal(raw, &existingJsonc); err == nil {
+			p, ok := existingJsonc["provider"].(map[string]interface{})
+			if !ok || p == nil {
+				p = make(map[string]interface{})
+			}
+			p["goroute"] = providers["goroute"]
+			existingJsonc["provider"] = p
+			existingJsonc["model"] = "goroute/claude-3-7-sonnet"
+			existingJsonc["small_model"] = "goroute/gemini-2.5-flash"
+			if jBytes, err := json.MarshalIndent(existingJsonc, "", "  "); err == nil {
+				_ = os.WriteFile(jsoncPath, jBytes, 0600)
+			}
+		}
+	}
+
 	fmt.Println("✅ Configured OpenCode!")
+	fmt.Printf("   Configured %d GoRoute models across providers:\n", len(modelsMap))
+	for m := range allModels {
+		fmt.Printf("   • goroute/%s\n", m)
+	}
 	fmt.Printf("   Wrote configuration to: %s\n", configPath)
+	fmt.Printf("   Authenticated provider key in: %s\n", authPath)
 	fmt.Println("   Active model set to: goroute/claude-3-7-sonnet")
 	fmt.Println("   Launch with: opencode (or goroute run opencode)")
 	return nil
