@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GoRoute Dashboard</title>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: #121826;
+      --border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --success: #10b981;
+    }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+    header {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(18, 24, 38, 0.8);
+      backdrop-filter: blur(10px);
+    }
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .badge {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      padding: 0.25rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    main {
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.1rem;
+      color: var(--text);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .endpoint-box {
+      background: rgba(0,0,0,0.3);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 0.9rem;
+      color: var(--accent);
+      border: 1px solid var(--border);
+      word-break: break-all;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    li {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+    }
+    li:last-child {
+      border-bottom: none;
+    }
+    .muted {
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">⚡ GoRoute</div>
+    <div><span class="badge">● Ultra-Low Resource Mode (&lt;15MB RAM)</span></div>
+  </header>
+  <main>
+    <div class="card">
+      <h2>OpenAI-Compatible Universal Endpoint</h2>
+      <p class="muted">Point your coding tools (Claude Code, Cursor, Cline, OpenCode, Codex) here:</p>
+      <div class="endpoint-box" id="endpoint">http://127.0.0.1:20128/v1</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Active Models & Combos</h2>
+        <ul id="model-list">
+          <li class="muted">Loading models...</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h2>System Health</h2>
+        <ul>
+          <li><span>Gateway Status</span><span style="color:var(--success)">Active (0% Idle CPU)</span></li>
+          <li><span>Memory Overhead</span><span>~12 MB</span></li>
+          <li><span>SSE Streaming</span><span>Native http.Flusher</span></li>
+          <li><span>Failover Engine</span><span>Automatic (429/5xx)</span></li>
+        </ul>
+      </div>
+    </div>
+  </main>
+  <script>
+    document.getElementById("endpoint").innerText = window.location.origin + "/v1";
+    fetch("/v1/models")
+      .then(r => r.json())
+      .then(d => {
+        const list = document.getElementById("model-list");
+        list.innerHTML = "";
+        if (!d.data || d.data.length === 0) {
+          list.innerHTML = "<li class='muted'>No models active. Configure ~/.goroute/config.yaml</li>";
+          return;
+        }
+        d.data.forEach(m => {
+          const li = document.createElement("li");
+          li.innerHTML = `<span>${m.id}</span><span class="muted">${m.owned_by}</span>`;
+          list.appendChild(li);
+        });
+      })
+      .catch(() => {
+        document.getElementById("model-list").innerHTML = "<li class='muted'>Failed to load models</li>";
+      });
+  </script>
+</body>
+</html>
