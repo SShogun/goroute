@@ -1,5 +1,6 @@
 # Binaries and build artifacts
-bin/
+bin/*
+!bin/goroute.js
 dist/
 /goroute
 *.exe
