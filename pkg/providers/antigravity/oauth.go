@@ -40,7 +40,8 @@ const (
 	AuthorizeURL        = "https://accounts.google.com/o/oauth2/v2/auth"
 	DefaultTokenURL     = "https://oauth2.googleapis.com/token"
 	UserInfoURL         = "https://www.googleapis.com/oauth2/v1/userinfo"
-	CloudCodeAPIBaseURL = "https://cloudcode-pa.googleapis.com"
+	CloudCodeAPIBaseURL = "https://daily-cloudcode-pa.googleapis.com"
+	FallbackCloudCodeURL = "https://cloudcode-pa.googleapis.com"
 )
 
 var Scopes = []string{

@@ -179,22 +179,61 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			continue
 		}
 
-		payload := antigravityPayload{
-			Project: acc.ProjectID,
-			Model:   req.Model,
+		projectID := acc.ProjectID
+		if projectID == "" {
+			projectID = "aicode-consumers"
 		}
 
+		// Normalize requested model to live upstream model
+		upstreamModel := req.Model
+		switch strings.ToLower(upstreamModel) {
+		case "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-sonnet", "claude":
+			upstreamModel = "claude-sonnet-4-6"
+		case "claude-3-opus", "claude-opus":
+			upstreamModel = "claude-opus-4-6-thinking"
+		case "gemini-2.5-pro", "gemini-pro":
+			upstreamModel = "gemini-pro-agent"
+		case "gemini-2.5-flash", "gemini-flash":
+			upstreamModel = "gemini-3.8-flash-high"
+		case "gemini-2.5-flash-lite", "gemini-flash-lite":
+			upstreamModel = "gemini-3.1-flash-lite"
+		}
+
+		payload := antigravityPayload{
+			Project: projectID,
+			Model:   upstreamModel,
+		}
+
+		var contents []geminiContent
 		for _, msg := range req.Messages {
 			role := msg.Role
 			if role == "assistant" {
 				role = "model"
+			} else if role == "system" {
+				role = "user"
 			}
 
-			payload.Request.Contents = append(payload.Request.Contents, geminiContent{
-				Role:  role,
-				Parts: parseGeminiParts(msg.Content),
-			})
+			parts := parseGeminiParts(msg.Content)
+			if len(parts) == 0 {
+				continue
+			}
+
+			if len(contents) > 0 && contents[len(contents)-1].Role == role {
+				contents[len(contents)-1].Parts = append(contents[len(contents)-1].Parts, parts...)
+			} else {
+				contents = append(contents, geminiContent{
+					Role:  role,
+					Parts: parts,
+				})
+			}
 		}
+
+		// Google Cloud Code rejects requests ending with an assistant/model turn ("assistant message prefill not supported")
+		for len(contents) > 1 && contents[len(contents)-1].Role == "model" {
+			contents = contents[:len(contents)-1]
+		}
+
+		payload.Request.Contents = contents
 
 		reqBytes, err := json.Marshal(payload)
 		if err != nil {
@@ -210,7 +249,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		httpReq.Header.Set("Authorization", "Bearer "+token)
 		httpReq.Header.Set("Content-Type", "application/json")
 		httpReq.Header.Set("Accept", "text/event-stream")
-		httpReq.Header.Set("User-Agent", "antigravity/ide/2.1.1 darwin/arm64")
+		httpReq.Header.Set("User-Agent", "antigravity/ide/2.5.5 darwin/arm64")
 
 		resp, err := p.client.Do(httpReq)
 		if err != nil {
@@ -225,7 +264,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 
 		// If 429 (quota), 403 (unlicensed/permission), or 401, try next account
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
 			if lastBody != nil {
 				lastBody.Close()
 			}
@@ -248,8 +287,13 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 	// Standard models available on Antigravity
 	return []providers.ModelInfo{
 		{ID: "claude-3-7-sonnet", Object: "model", OwnedBy: "antigravity"},
+		{ID: "claude-3-5-sonnet", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-2.5-pro", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-2.5-flash", Object: "model", OwnedBy: "antigravity"},
+		{ID: "claude-sonnet-4-6", Object: "model", OwnedBy: "antigravity"},
+		{ID: "claude-opus-4-6-thinking", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gemini-3.8-flash-high", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gemini-pro-agent", Object: "model", OwnedBy: "antigravity"},
 	}, nil
 }
 

@@ -198,11 +198,38 @@ func setupOpenCode(home string) error {
 		_ = json.Unmarshal(raw, &existing)
 	}
 
-	existing["goroute"] = map[string]interface{}{
-		"type":    "openai-compatible",
-		"baseURL": "http://127.0.0.1:8128/v1",
-		"apiKey":  "goroute",
+	delete(existing, "goroute")
+
+	providers, ok := existing["provider"].(map[string]interface{})
+	if !ok || providers == nil {
+		providers = make(map[string]interface{})
 	}
+
+	providers["goroute"] = map[string]interface{}{
+		"name": "GoRoute",
+		"npm":  "@ai-sdk/openai-compatible",
+		"options": map[string]interface{}{
+			"baseURL": "http://127.0.0.1:8128/v1",
+			"apiKey":  "goroute",
+		},
+		"models": map[string]interface{}{
+			"claude-3-7-sonnet": map[string]interface{}{
+				"name": "Claude 3.7 Sonnet (GoRoute)",
+			},
+			"gemini-2.5-pro": map[string]interface{}{
+				"name": "Gemini 2.5 Pro (GoRoute)",
+			},
+			"gemini-2.5-flash": map[string]interface{}{
+				"name": "Gemini 2.5 Flash (GoRoute)",
+			},
+			"claude-3-5-sonnet": map[string]interface{}{
+				"name": "Claude 3.5 Sonnet (GoRoute)",
+			},
+		},
+	}
+
+	existing["provider"] = providers
+	existing["model"] = "goroute/claude-3-7-sonnet"
 
 	bytes, _ := json.MarshalIndent(existing, "", "  ")
 	if err := os.WriteFile(configPath, bytes, 0600); err != nil {
@@ -211,7 +238,8 @@ func setupOpenCode(home string) error {
 
 	fmt.Println("✅ Configured OpenCode!")
 	fmt.Printf("   Wrote configuration to: %s\n", configPath)
-	fmt.Println("   Launch with: goroute run opencode -m goroute/claude-3-7-sonnet")
+	fmt.Println("   Active model set to: goroute/claude-3-7-sonnet")
+	fmt.Println("   Launch with: opencode (or goroute run opencode)")
 	return nil
 }
 
