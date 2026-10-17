@@ -120,9 +120,26 @@ combos:
 
 ## CLI Reference
 
-- `goroute serve`: Starts the proxy server.
+- `goroute serve`: Starts the ultra-low-footprint proxy server (`--no-dashboard` for purely headless).
+- `goroute setup <agent|all>`: Configures coding agents automatically:
+  - `claude` (Claude Code CLI)
+  - `codex` (OpenAI Codex CLI)
+  - `opencode` (OpenCode)
+  - `aider` (Aider)
+  - `cline` / `roo` (Cline & Roo Code)
+  - `cursor` (Cursor IDE)
+  - `kilo` (Kilo Code)
+  - `goose` (Goose CLI)
+  - `crush` (Charm Crush)
+  - `continue` (Continue.dev & cn CLI)
+  - `qwen` (Qwen Code)
+  - `gemini` (Gemini CLI)
+  - `5dive` (5dive Agent Fleet)
+  - `all` (Configures all 14 agents in one click)
+- `goroute run <command> [args...]`: Executes any agent or binary with universal proxy environments injected (`OPENAI_BASE_URL`, `ANTHROPIC_BASE_URL`, etc.).
 - `goroute auth login <provider>`: Authenticates OAuth provider (PKCE browser flow).
 - `goroute auth list`: Lists all configured providers and accounts.
+- `goroute import omniroute`: 1-click migration importing connections & credentials from OmniRoute.
 - `goroute status`: Displays live gateway status and available models.
 
 ---

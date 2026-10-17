@@ -29,6 +29,7 @@ providing multi-account rotation, OAuth PKCE flows, and automatic fallback casca
 		NewCatalogCmd(),
 		NewSetupCmd(),
 		NewLaunchCmd(),
+		NewRunCmd(),
 	)
 	return rootCmd
 }

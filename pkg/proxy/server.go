@@ -54,6 +54,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/health", s.handleHealth)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
+	s.mux.Post("/v1/messages", s.handleMessages)
 	if s.enableDashboard {
 		s.mux.Handle("/*", web.Handler())
 	}
