@@ -49,5 +49,10 @@ jobs:
         with:
           node-version: 22
 
+      - name: Upgrade npm CLI for OIDC Trusted Publishing support
+        run: |
+          npm install -g npm@latest
+          rm -f ~/.npmrc
+
       - name: Publish to NPM with Provenance
         run: npm publish --provenance --access public

@@ -1,6 +1,6 @@
 {
   "name": "goroute",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Ultra-lightweight LLM gateway & multi-provider router (< 15MB RAM)",
   "main": "bin/goroute.js",
   "bin": {
