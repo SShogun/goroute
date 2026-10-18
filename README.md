@@ -94,7 +94,12 @@ npx goroute setup opencode
 curl -fsSL https://raw.githubusercontent.com/ziuus/goroute/main/install.sh | bash
 ```
 
-#### 🛠️ Option C: Go Toolchain
+#### 🍺 Option C: Homebrew (macOS & Linux)
+```bash
+brew install ziuus/goroute/goroute
+```
+
+#### 🛠️ Option D: Go Toolchain
 ```bash
 go install github.com/ziuus/goroute/cmd/goroute@latest
 ```
