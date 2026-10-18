@@ -280,6 +280,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		resp.Body.Close()
 		log.Printf("[Antigravity] Account %s returned HTTP %d: %s", acc.ID, resp.StatusCode, string(respBytes))
 
+		if resp.StatusCode == http.StatusUnauthorized {
+			acc.InvalidateToken()
+		}
+
 		// If 429 (quota), 403 (unlicensed/permission), or 401, try next account
 		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
 			if lastBody != nil {

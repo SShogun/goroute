@@ -116,6 +116,13 @@ func (a *Account) GetValidAccessToken(ctx context.Context) (string, error) {
 	return a.AccessToken, nil
 }
 
+func (a *Account) InvalidateToken() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.AccessToken = ""
+	a.ExpiresAt = time.Time{}
+}
+
 // GeneratePKCE returns a random code verifier and its S256 code challenge
 func GeneratePKCE() (verifier, challenge string, err error) {
 	b := make([]byte, 32)
