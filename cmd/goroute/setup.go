@@ -131,19 +131,34 @@ func setupClaude(home string) error {
 	_ = os.MkdirAll(claudeDir, 0700)
 	settingsPath := filepath.Join(claudeDir, "settings.json")
 
-	data := map[string]interface{}{
-		"customBaseUrl": "http://127.0.0.1:8128",
+	data := make(map[string]interface{})
+	if content, err := os.ReadFile(settingsPath); err == nil {
+		_ = json.Unmarshal(content, &data)
 	}
-	bytes, _ := json.MarshalIndent(data, "", "  ")
+
+	data["customBaseUrl"] = "http://127.0.0.1:8128"
+
+	env, ok := data["env"].(map[string]interface{})
+	if !ok {
+		env = make(map[string]interface{})
+	}
+	env["ANTHROPIC_BASE_URL"] = "http://127.0.0.1:8128"
+	env["ANTHROPIC_API_KEY"] = "goroute"
+	data["env"] = env
+
+	bytes, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return err
+	}
 	if err := os.WriteFile(settingsPath, bytes, 0600); err != nil {
 		return err
 	}
 
 	fmt.Println("✅ Configured Claude Code!")
-	fmt.Printf("   Wrote settings to: %s\n", settingsPath)
+	fmt.Printf("   Updated settings at: %s\n", settingsPath)
+	fmt.Println("   Preserved all existing hooks, plugins, and custom configurations.")
 	fmt.Println("\nLaunch with:")
-	fmt.Println("  goroute run claude")
-	fmt.Println("  OR: ANTHROPIC_BASE_URL=\"http://127.0.0.1:8128\" ANTHROPIC_AUTH_TOKEN=\"goroute\" claude")
+	fmt.Println("  claude")
 	return nil
 }
 

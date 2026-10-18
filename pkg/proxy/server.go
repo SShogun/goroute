@@ -5,11 +5,17 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ziuus/goroute/pkg/cache"
+	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/router"
@@ -57,6 +63,8 @@ func (s *Server) setupRoutes() {
 	})
 
 	s.mux.Get("/health", s.handleHealth)
+	s.mux.Get("/api/status", s.handleAPIStatus)
+	s.mux.Post("/api/import-omniroute", s.handleAPIImportOmniRoute)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
@@ -184,4 +192,104 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	home, _ := os.UserHomeDir()
+	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = &config.Config{}
+	}
+
+	models, _ := s.router.ListModels(r.Context())
+
+	// Check agent setup statuses
+	claudePath := filepath.Join(home, ".claude", "settings.json")
+	claudeConfigured := false
+	if _, err := os.Stat(claudePath); err == nil {
+		claudeConfigured = true
+	}
+
+	opencodePath := filepath.Join(home, ".config", "opencode", "opencode.json")
+	opencodeConfigured := false
+	if _, err := os.Stat(opencodePath); err == nil {
+		opencodeConfigured = true
+	}
+
+	codexPath := filepath.Join(home, ".codex", "config.toml")
+	codexConfigured := false
+	if _, err := os.Stat(codexPath); err == nil {
+		codexConfigured = true
+	}
+
+	// Calculate sanitized provider accounts
+	type AccountSummary struct {
+		ID        string `json:"id"`
+		Email     string `json:"email"`
+		Status    string `json:"status"`
+		ProjectID string `json:"project_id,omitempty"`
+	}
+	type ProviderSummary struct {
+		ID       string           `json:"id"`
+		Type     string           `json:"type"`
+		BaseURL  string           `json:"base_url,omitempty"`
+		Accounts []AccountSummary `json:"accounts,omitempty"`
+	}
+
+	var provSummaries []ProviderSummary
+	for _, p := range cfg.Providers {
+		ps := ProviderSummary{
+			ID:      p.ID,
+			Type:    p.Type,
+			BaseURL: p.BaseURL,
+		}
+		for _, a := range p.Accounts {
+			ps.Accounts = append(ps.Accounts, AccountSummary{
+				ID:        a.ID,
+				Email:     a.Email,
+				Status:    "active",
+				ProjectID: a.ProjectID,
+			})
+		}
+		provSummaries = append(provSummaries, ps)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "active",
+		"engine":    "goroute",
+		"port":      8128,
+		"memory_mb": float64(m.Alloc) / 1024 / 1024,
+		"providers": provSummaries,
+		"combos":    cfg.Combos,
+		"models":    models,
+		"agents": map[string]interface{}{
+			"claude":   map[string]interface{}{"configured": claudeConfigured, "path": claudePath},
+			"opencode": map[string]interface{}{"configured": opencodeConfigured, "path": opencodePath},
+			"codex":    map[string]interface{}{"configured": codexConfigured, "path": codexPath},
+		},
+	})
+}
+
+func (s *Server) handleAPIImportOmniRoute(w http.ResponseWriter, r *http.Request) {
+	out, err := exec.Command("goroute", "import", "omniroute").CombinedOutput()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  string(out),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": strings.TrimSpace(string(out)),
+	})
 }

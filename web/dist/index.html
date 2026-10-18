@@ -3,159 +3,819 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GoRoute Dashboard</title>
+  <title>GoRoute — Universal LLM Gateway Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #090d16;
-      --card: #121826;
-      --border: #1e293b;
-      --text: #f8fafc;
-      --text-muted: #94a3b8;
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f293d;
+      --card-hover: #182235;
       --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.2);
       --success: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.12);
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --code-bg: #030712;
     }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      margin: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg);
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg);
       color: var(--text);
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
     }
+
     header {
       padding: 1rem 2rem;
-      border-bottom: 1px solid var(--border);
+      background: rgba(17, 24, 39, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
       display: flex;
       justify-content: space-between;
       align-items: center;
-      background: rgba(18, 24, 38, 0.8);
-      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
     }
-    .logo {
-      font-size: 1.25rem;
-      font-weight: 700;
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand-logo {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .brand-logo span { color: var(--accent); }
+
+    .header-pills {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .pill {
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .pill-green {
+      background: var(--success-bg);
+      color: var(--success);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .pill-blue {
+      background: rgba(56, 189, 248, 0.12);
       color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 0.45rem 0.9rem;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+      background: #1f2937;
+      color: var(--text);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: #374151;
+      border-color: #4b5563;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #030712;
+      border-color: var(--accent);
+    }
+    .btn-primary:hover {
+      background: #7dd3fc;
+      border-color: #7dd3fc;
+      box-shadow: 0 0 16px var(--accent-glow);
+    }
+
+    main {
+      flex: 1;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2rem;
+      width: 100%;
+    }
+
+    .banner {
+      background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(17, 24, 39, 0.8) 100%);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.5rem 1.75rem;
+      margin-bottom: 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .banner h1 {
+      font-size: 1.35rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+    .banner p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .endpoints-box {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .endpoint-item {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.5rem 0.85rem;
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+    }
+    .endpoint-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .endpoint-url {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      color: var(--accent);
+    }
+    .copy-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 0.8rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+    .copy-btn:hover {
+      color: #fff;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .grid-layout {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 1.5rem;
+    }
+    .col-6 { grid-column: span 6; }
+    .col-12 { grid-column: span 12; }
+    @media (max-width: 900px) {
+      .col-6 { grid-column: span 12; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 700;
       display: flex;
       align-items: center;
       gap: 0.5rem;
     }
-    .badge {
-      background: rgba(16, 185, 129, 0.15);
-      color: var(--success);
-      padding: 0.25rem 0.6rem;
-      border-radius: 9999px;
-      font-size: 0.75rem;
+    .card-subtitle {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      margin-top: 0.15rem;
+    }
+
+    /* Accounts List */
+    .account-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0.9rem;
+      background: #0d131f;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      margin-bottom: 0.6rem;
+      transition: border-color 0.15s ease;
+    }
+    .account-row:hover {
+      border-color: #2e3d57;
+    }
+    .account-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .account-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #1e293b;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--accent);
+      border: 1px solid var(--card-border);
+    }
+    .account-email {
+      font-size: 0.88rem;
       font-weight: 600;
     }
-    main {
-      padding: 2rem;
-      max-width: 1200px;
-      margin: 0 auto;
-      width: 100%;
-      box-sizing: border-box;
+    .account-meta {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
     }
-    .grid {
+
+    /* Agent Connect Cards */
+    .agent-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 1.5rem;
-      margin-top: 1.5rem;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 0.85rem;
     }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.5rem;
+    .agent-box {
+      background: #0d131f;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 0.75rem;
     }
-    .card h2 {
-      margin-top: 0;
-      font-size: 1.1rem;
-      color: var(--text);
+    .agent-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
-    .endpoint-box {
-      background: rgba(0,0,0,0.3);
-      padding: 0.75rem 1rem;
-      border-radius: 8px;
-      font-family: monospace;
-      font-size: 0.9rem;
-      color: var(--accent);
-      border: 1px solid var(--border);
-      word-break: break-all;
+    .agent-name {
+      font-weight: 700;
+      font-size: 0.95rem;
     }
-    ul {
-      list-style: none;
-      padding: 0;
-      margin: 0;
-    }
-    li {
-      padding: 0.75rem 0;
-      border-bottom: 1px solid rgba(255,255,255,0.05);
+    .agent-code {
+      background: var(--code-bg);
+      border: 1px solid #1e293b;
+      padding: 0.4rem 0.6rem;
+      border-radius: 6px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #cbd5e1;
       display: flex;
       justify-content: space-between;
-      font-size: 0.9rem;
+      align-items: center;
+      cursor: pointer;
     }
-    li:last-child {
-      border-bottom: none;
+    .agent-code:hover {
+      border-color: var(--accent);
     }
-    .muted {
+
+    /* Combos Table */
+    .combo-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+    .combo-table th {
+      text-align: left;
+      padding: 0.65rem 0.75rem;
       color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      border-bottom: 1px solid var(--card-border);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .combo-table td {
+      padding: 0.75rem;
+      border-bottom: 1px solid rgba(31, 41, 61, 0.5);
+    }
+    .badge-model {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      background: #1e293b;
+      color: #93c5fd;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      border: 1px solid rgba(147, 197, 253, 0.2);
+    }
+
+    /* Playground */
+    .playground-form {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .select-input, .text-input {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 0.6rem 0.85rem;
+      border-radius: 8px;
+      outline: none;
+    }
+    .select-input:focus, .text-input:focus {
+      border-color: var(--accent);
+    }
+    .playground-output {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      min-height: 120px;
+      max-height: 240px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      color: #e2e8f0;
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+    .modal-overlay.open {
+      display: flex;
+    }
+    .modal-content {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 540px;
+      padding: 1.75rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+    .modal-title {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+    .modal-body {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .modal-body p { margin-bottom: 0.75rem; }
+    .command-box {
+      background: var(--code-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--accent);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin: 1rem 0;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #1e293b;
+      border: 1px solid var(--accent);
+      color: #fff;
+      padding: 0.75rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      display: none;
+      z-index: 200;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
     }
   </style>
 </head>
 <body>
+
   <header>
-    <div class="logo">⚡ GoRoute</div>
-    <div><span class="badge">● Ultra-Low Resource Mode (&lt;15MB RAM)</span></div>
+    <div class="brand">
+      <div class="brand-logo">⚡ GoRoute <span>Control Center</span></div>
+      <div class="header-pills">
+        <span class="pill pill-green"><span class="dot"></span> Online (Port 8128)</span>
+        <span class="pill pill-blue" id="mem-pill">RAM: ~12.8 MB</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="btn" onclick="syncOmniRoute()">🔄 Sync from OmniRoute</button>
+      <button class="btn btn-primary" onclick="openAddAccountModal()">+ Add Antigravity Account</button>
+    </div>
   </header>
+
   <main>
-    <div class="card">
-      <h2>OpenAI-Compatible Universal Endpoint</h2>
-      <p class="muted">Point your coding tools (Claude Code, Cursor, Cline, OpenCode, Codex) here:</p>
-      <div class="endpoint-box" id="endpoint">http://127.0.0.1:8128/v1</div>
+    <div class="banner">
+      <div>
+        <h1>Unified Multi-Agent Gateway</h1>
+        <p>Zero-overhead proxy with native Anthropic &amp; OpenAI streaming, smart failover, and multi-account pool.</p>
+      </div>
+      <div class="endpoints-box">
+        <div class="endpoint-item">
+          <span class="endpoint-label">OpenAI Endpoint</span>
+          <span class="endpoint-url" id="ep-openai">http://127.0.0.1:8128/v1</span>
+          <button class="copy-btn" onclick="copyText('http://127.0.0.1:8128/v1')">📋</button>
+        </div>
+        <div class="endpoint-item">
+          <span class="endpoint-label">Anthropic Endpoint</span>
+          <span class="endpoint-url" id="ep-anthropic">http://127.0.0.1:8128/v1/messages</span>
+          <button class="copy-btn" onclick="copyText('http://127.0.0.1:8128/v1/messages')">📋</button>
+        </div>
+      </div>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <h2>Active Models & Combos</h2>
-        <ul id="model-list">
-          <li class="muted">Loading models...</li>
-        </ul>
+    <div class="grid-layout">
+      <!-- Connected Accounts -->
+      <div class="card col-6">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🔐 Connected Accounts Pool</div>
+            <div class="card-subtitle">Auto-balanced Google Antigravity &amp; custom provider accounts</div>
+          </div>
+          <button class="btn" onclick="openAddAccountModal()">+ Add</button>
+        </div>
+        <div id="accounts-container">
+          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading accounts...</div>
+        </div>
       </div>
 
-      <div class="card">
-        <h2>System Health</h2>
-        <ul>
-          <li><span>Gateway Status</span><span style="color:var(--success)">Active (0% Idle CPU)</span></li>
-          <li><span>Memory Overhead</span><span>~12 MB</span></li>
-          <li><span>SSE Streaming</span><span>Native http.Flusher</span></li>
-          <li><span>Failover Engine</span><span>Automatic (429/5xx)</span></li>
-        </ul>
+      <!-- Agent Quick-Connect -->
+      <div class="card col-6">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🤖 Coding Agent Connections</div>
+            <div class="card-subtitle">One-command setup for developer CLI agents and IDEs</div>
+          </div>
+        </div>
+        <div class="agent-grid">
+          <div class="agent-box">
+            <div class="agent-header">
+              <span class="agent-name">Claude Code</span>
+              <span class="pill pill-green" id="claude-pill">Active</span>
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">Settings: ~/.claude/settings.json</div>
+            <div class="agent-code" onclick="copyText('goroute setup claude')">
+              <span>goroute setup claude</span>
+              <span>📋</span>
+            </div>
+          </div>
+
+          <div class="agent-box">
+            <div class="agent-header">
+              <span class="agent-name">OpenCode</span>
+              <span class="pill pill-green" id="opencode-pill">Active</span>
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">Config: ~/.config/opencode/</div>
+            <div class="agent-code" onclick="copyText('goroute setup opencode')">
+              <span>goroute setup opencode</span>
+              <span>📋</span>
+            </div>
+          </div>
+
+          <div class="agent-box">
+            <div class="agent-header">
+              <span class="agent-name">OpenAI Codex</span>
+              <span class="pill pill-green" id="codex-pill">Active</span>
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">Config: ~/.codex/config.toml</div>
+            <div class="agent-code" onclick="copyText('goroute setup codex')">
+              <span>goroute setup codex</span>
+              <span>📋</span>
+            </div>
+          </div>
+
+          <div class="agent-box">
+            <div class="agent-header">
+              <span class="agent-name">Cursor / Cline</span>
+              <span class="pill pill-blue">Universal</span>
+            </div>
+            <div style="font-size: 0.78rem; color: var(--text-muted);">OpenAI Base: http://127.0.0.1:8128/v1</div>
+            <div class="agent-code" onclick="copyText('goroute setup cursor')">
+              <span>goroute setup cursor</span>
+              <span>📋</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Combos & Routing -->
+      <div class="card col-6">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🔀 Active Model Combos &amp; Aliases</div>
+            <div class="card-subtitle">Failover chains and model aliases in ~/.goroute/config.yaml</div>
+          </div>
+        </div>
+        <table class="combo-table">
+          <thead>
+            <tr>
+              <th>Alias / Combo</th>
+              <th>Target Model</th>
+              <th>Strategy</th>
+            </tr>
+          </thead>
+          <tbody id="combos-tbody">
+            <tr><td colspan="3" style="color:var(--text-muted)">Loading combos...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Live Playground -->
+      <div class="card col-6">
+        <div class="card-header">
+          <div>
+            <div class="card-title">⚡ Live Playground</div>
+            <div class="card-subtitle">Test any model directly through GoRoute</div>
+          </div>
+        </div>
+        <div class="playground-form">
+          <div style="display: flex; gap: 0.5rem;">
+            <select class="select-input" id="playground-model" style="flex: 1;">
+              <option value="gemini-flash">gemini-flash (Gemini 2.5 Flash)</option>
+              <option value="claude-ag">claude-ag (Claude 3.7 Sonnet)</option>
+              <option value="claude">claude (Claude 3.7 Sonnet)</option>
+              <option value="gemini-flash-lite">gemini-flash-lite (Gemini 3.1 Flash Lite)</option>
+              <option value="gpt">gpt (GPT-OSS 120B)</option>
+            </select>
+            <button class="btn btn-primary" id="playground-btn" onclick="runPlayground()">Run Prompt</button>
+          </div>
+          <input type="text" class="text-input" id="playground-prompt" value="Explain quantum computing in 1 sentence." placeholder="Enter your prompt here...">
+          <div class="playground-output" id="playground-output">// Response will stream here...</div>
+        </div>
       </div>
     </div>
   </main>
+
+  <!-- Modal for Adding Account -->
+  <div class="modal-overlay" id="account-modal">
+    <div class="modal-content">
+      <div class="modal-title">Add Google Antigravity Account</div>
+      <div class="modal-body">
+        <p>GoRoute uses PKCE OAuth to securely link Google Antigravity accounts. Tokens are saved into your encrypted local vault.</p>
+        
+        <p><strong>Option 1: Quick Terminal Command</strong></p>
+        <div class="command-box">
+          <span>goroute auth login antigravity</span>
+          <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
+        </div>
+        <p style="font-size: 0.8rem;">This will open your default browser to select a Google account and automatically add it to your active pool.</p>
+
+        <p style="margin-top: 1rem;"><strong>Option 2: Sync from Existing OmniRoute</strong></p>
+        <p style="font-size: 0.8rem;">If you have accounts already signed in through OmniRoute, GoRoute can import all of them seamlessly.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeAddAccountModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="syncOmniRoute(); closeAddAccountModal();">Sync from OmniRoute Now</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
   <script>
-    document.getElementById("endpoint").innerText = window.location.origin + "/v1";
-    fetch("/v1/models")
-      .then(r => r.json())
-      .then(d => {
-        const list = document.getElementById("model-list");
-        list.innerHTML = "";
-        if (!d.data || d.data.length === 0) {
-          list.innerHTML = "<li class='muted'>No models active. Configure ~/.goroute/config.yaml</li>";
-          return;
-        }
-        d.data.forEach(m => {
-          const li = document.createElement("li");
-          li.innerHTML = `<span>${m.id}</span><span class="muted">${m.owned_by}</span>`;
-          list.appendChild(li);
-        });
-      })
-      .catch(() => {
-        document.getElementById("model-list").innerHTML = "<li class='muted'>Failed to load models</li>";
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+
+    function copyText(txt) {
+      navigator.clipboard.writeText(txt).then(() => {
+        showToast('Copied: ' + txt);
       });
+    }
+
+    function openAddAccountModal() {
+      document.getElementById('account-modal').classList.add('open');
+    }
+    function closeAddAccountModal() {
+      document.getElementById('account-modal').classList.remove('open');
+    }
+
+    async function syncOmniRoute() {
+      showToast('Syncing accounts from OmniRoute...');
+      try {
+        const res = await fetch('/api/import-omniroute', { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+          showToast('Success: ' + data.message);
+          loadStatus();
+        } else {
+          showToast('Error importing: ' + (data.error || 'Unknown error'));
+        }
+      } catch (e) {
+        showToast('Failed to trigger sync: ' + e.message);
+      }
+    }
+
+    async function loadStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data = await res.json();
+
+        // Update memory
+        if (data.memory_mb) {
+          document.getElementById('mem-pill').innerText = `RAM: ~${data.memory_mb.toFixed(1)} MB`;
+        }
+
+        // Render accounts
+        const accountsContainer = document.getElementById('accounts-container');
+        accountsContainer.innerHTML = '';
+        let totalAccs = 0;
+
+        if (data.providers && data.providers.length > 0) {
+          data.providers.forEach(p => {
+            if (p.accounts && p.accounts.length > 0) {
+              p.accounts.forEach(a => {
+                totalAccs++;
+                const initial = a.email ? a.email.charAt(0).toUpperCase() : 'G';
+                const div = document.createElement('div');
+                div.className = 'account-row';
+                div.innerHTML = `
+                  <div class="account-info">
+                    <div class="account-avatar">${initial}</div>
+                    <div>
+                      <div class="account-email">${a.email || a.id}</div>
+                      <div class="account-meta">${p.id} • ${a.project_id || 'default-project'}</div>
+                    </div>
+                  </div>
+                  <div>
+                    <span class="pill pill-green"><span class="dot"></span> Active Pool</span>
+                  </div>
+                `;
+                accountsContainer.appendChild(div);
+              });
+            }
+          });
+        }
+
+        if (totalAccs === 0) {
+          accountsContainer.innerHTML = `
+            <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; text-align: center;">
+              No accounts in pool. Click "+ Add Antigravity Account" or "Sync from OmniRoute".
+            </div>
+          `;
+        }
+
+        // Render combos
+        const tbody = document.getElementById('combos-tbody');
+        tbody.innerHTML = '';
+        if (data.combos && data.combos.length > 0) {
+          data.combos.forEach(c => {
+            const tr = document.createElement('tr');
+            const targetStr = (c.targets || []).map(t => `${t.provider_id}/${t.model}`).join(' ➔ ');
+            tr.innerHTML = `
+              <td><strong>${c.name}</strong></td>
+              <td><span class="badge-model">${targetStr}</span></td>
+              <td><span style="color:var(--text-muted)">${c.strategy || 'priority'}</span></td>
+            `;
+            tbody.appendChild(tr);
+          });
+        } else {
+          tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-muted)">Default provider direct routing active</td></tr>`;
+        }
+
+        // Update agent pills
+        if (data.agents) {
+          if (data.agents.claude && data.agents.claude.configured) {
+            document.getElementById('claude-pill').className = 'pill pill-green';
+            document.getElementById('claude-pill').innerText = 'Connected';
+          }
+          if (data.agents.opencode && data.agents.opencode.configured) {
+            document.getElementById('opencode-pill').className = 'pill pill-green';
+            document.getElementById('opencode-pill').innerText = 'Connected';
+          }
+          if (data.agents.codex && data.agents.codex.configured) {
+            document.getElementById('codex-pill').className = 'pill pill-green';
+            document.getElementById('codex-pill').innerText = 'Connected';
+          }
+        }
+
+      } catch (e) {
+        console.error('Failed to load status:', e);
+      }
+    }
+
+    async function runPlayground() {
+      const model = document.getElementById('playground-model').value;
+      const prompt = document.getElementById('playground-prompt').value;
+      const btn = document.getElementById('playground-btn');
+      const out = document.getElementById('playground-output');
+
+      if (!prompt.trim()) return;
+
+      btn.disabled = true;
+      btn.innerText = 'Testing...';
+      out.innerText = `Connecting to GoRoute via model: ${model}...\n`;
+
+      try {
+        const startTime = performance.now();
+        const res = await fetch('/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: model,
+            messages: [{ role: 'user', content: prompt }],
+            max_tokens: 150
+          })
+        });
+
+        const data = await res.json();
+        const duration = ((performance.now() - startTime) / 1000).toFixed(2);
+
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+          out.innerText = `[Completed in ${duration}s via ${data.model}]\n\n${data.choices[0].message.content}`;
+        } else if (data.error) {
+          out.innerText = `[Error ${res.status}]\n${JSON.stringify(data.error, null, 2)}`;
+        } else {
+          out.innerText = JSON.stringify(data, null, 2);
+        }
+      } catch (e) {
+        out.innerText = `[Network Error]: ${e.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Run Prompt';
+      }
+    }
+
+    // Initialize
+    loadStatus();
+    setInterval(loadStatus, 10000);
   </script>
 </body>
 </html>
