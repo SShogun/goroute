@@ -83,7 +83,16 @@ func NewServeCmd() *cobra.Command {
 			for _, pCfg := range cfg.Providers {
 				switch pCfg.Type {
 				case "openai":
-					prov := openai.NewProvider(pCfg.ID, pCfg.BaseURL, pCfg.APIKey, pCfg.Headers)
+					var keys []string
+					for _, a := range pCfg.Accounts {
+						if a.APIKey != "" {
+							keys = append(keys, a.APIKey)
+						}
+					}
+					if pCfg.APIKey != "" {
+						keys = append(keys, pCfg.APIKey)
+					}
+					prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
 					r.RegisterProvider(prov)
 				case "antigravity":
 					var accounts []*antigravity.Account
@@ -105,7 +114,27 @@ func NewServeCmd() *cobra.Command {
 					prov := antigravity.NewProvider(pCfg.ID, accounts)
 					r.RegisterProvider(prov)
 				case "kiro":
-					prov := kiro.NewProvider(pCfg.ID, pCfg.RefreshToken, pCfg.ProfileARN)
+					var accounts []*kiro.Account
+					for _, a := range pCfg.Accounts {
+						refToken := a.RefreshToken
+						if refToken == "" && st != nil {
+							sec, _ := st.GetSecret(a.ID)
+							refToken = sec
+						}
+						accounts = append(accounts, &kiro.Account{
+							ID:           a.ID,
+							RefreshToken: refToken,
+							ProfileARN:   a.ProfileARN,
+						})
+					}
+					if len(accounts) == 0 && pCfg.RefreshToken != "" {
+						accounts = append(accounts, &kiro.Account{
+							ID:           pCfg.ID,
+							RefreshToken: pCfg.RefreshToken,
+							ProfileARN:   pCfg.ProfileARN,
+						})
+					}
+					prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
 					r.RegisterProvider(prov)
 				}
 			}

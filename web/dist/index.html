@@ -602,10 +602,14 @@
         </div>
 
         <div id="tab-kiro-content" style="display: none;">
-          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">Add another AWS CodeWhisperer / Kiro account for Claude Sonnet 4.5 &amp; Haiku 4.5:</p>
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">Add AWS CodeWhisperer / Kiro accounts for Claude Sonnet 4.5 &amp; Haiku 4.5 failover pooling:</p>
           <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Provider ID</label>
-            <input type="text" id="add-kiro-id" class="text-input" placeholder="e.g. kiro-2, kiro-backup" value="kiro-2" style="width: 100%;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Provider ID (Use "kiro" to add to existing pool, or new ID like "kiro-2")</label>
+            <input type="text" id="add-kiro-id" class="text-input" placeholder="kiro" value="kiro" style="width: 100%;">
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Account Label / Name (Optional, e.g. kiro-personal, kiro-work)</label>
+            <input type="text" id="add-kiro-acc-id" class="text-input" placeholder="e.g. kiro-account-2" style="width: 100%;">
           </div>
           <div style="margin-bottom: 0.75rem;">
             <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Refresh Token (aor...)</label>
@@ -667,7 +671,8 @@
     }
 
     async function submitNewKiro() {
-      const id = document.getElementById('add-kiro-id').value.trim() || 'kiro-2';
+      const id = document.getElementById('add-kiro-id').value.trim() || 'kiro';
+      const accountId = document.getElementById('add-kiro-acc-id').value.trim();
       const token = document.getElementById('add-kiro-token').value.trim();
       const arn = document.getElementById('add-kiro-arn').value.trim();
       if (!token) {
@@ -678,11 +683,11 @@
         const res = await fetch('/api/providers/add', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, type: 'kiro', refresh_token: token, profile_arn: arn })
+          body: JSON.stringify({ id, account_id: accountId, type: 'kiro', refresh_token: token, profile_arn: arn })
         });
         const d = await res.json();
         if (d.status === 'ok') {
-          showToast(`Kiro account "${id}" connected!`);
+          showToast(`Kiro account connected to pool "${id}"!`);
           closeAddProviderModal();
           loadStatus();
         } else {
@@ -776,30 +781,52 @@
             totalProviders++;
             if (p.accounts && p.accounts.length > 0) {
               p.accounts.forEach(a => {
-                const initial = a.email ? a.email.charAt(0).toUpperCase() : 'G';
+                let initial = 'G';
+                let bg = 'rgba(56, 189, 248, 0.15)';
+                let col = '#38bdf8';
+                if (p.type === 'kiro') {
+                  initial = 'K';
+                  bg = 'rgba(251, 146, 60, 0.15)';
+                  col = '#fb923c';
+                } else if (p.type === 'openai') {
+                  initial = 'O';
+                  bg = 'rgba(74, 222, 128, 0.15)';
+                  col = '#4ade80';
+                } else if (p.type === 'antigravity') {
+                  initial = 'G';
+                  bg = 'rgba(96, 165, 250, 0.15)';
+                  col = '#60a5fa';
+                }
                 const div = document.createElement('div');
                 div.className = 'account-row';
                 div.innerHTML = `
                   <div class="account-info">
-                    <div class="account-avatar">${initial}</div>
+                    <div class="account-avatar" style="background:${bg}; color:${col}; font-weight:700;">${initial}</div>
                     <div>
                       <div class="account-email">${a.email || a.id}</div>
-                      <div class="account-meta">${p.id} • ${a.project_id || 'default-project'}</div>
+                      <div class="account-meta">${p.id} (${p.type}) • ${a.project_id || 'Active Account'}</div>
                     </div>
                   </div>
                   <div>
-                    <span class="pill pill-green"><span class="dot"></span> Active Pool</span>
+                    <span class="pill pill-green"><span class="dot"></span> Active</span>
                   </div>
                 `;
                 accountsContainer.appendChild(div);
               });
             } else {
-              const initial = p.id.charAt(0).toUpperCase();
+              let initial = p.id.charAt(0).toUpperCase();
+              let bg = 'rgba(148, 163, 184, 0.15)';
+              let col = '#94a3b8';
+              if (p.type === 'kiro') {
+                initial = 'K';
+                bg = 'rgba(251, 146, 60, 0.15)';
+                col = '#fb923c';
+              }
               const div = document.createElement('div');
               div.className = 'account-row';
               div.innerHTML = `
                 <div class="account-info">
-                  <div class="account-avatar" style="background:#1e3a5f; color:#38bdf8;">${initial}</div>
+                  <div class="account-avatar" style="background:${bg}; color:${col}; font-weight:700;">${initial}</div>
                   <div>
                     <div class="account-email">${p.id}</div>
                     <div class="account-meta">${p.type} • ${p.base_url || 'Direct connector'}</div>

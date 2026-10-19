@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,61 +17,33 @@ import (
 	"github.com/ziuus/goroute/pkg/providers"
 )
 
-type Provider struct {
-	id           string
-	refreshToken string
-	profileARN   string
+type Account struct {
+	ID           string
+	RefreshToken string
+	ProfileARN   string
 	accessToken  string
 	expiresAt    time.Time
 	mu           sync.RWMutex
-	client       *http.Client
 }
 
-func NewProvider(id, refreshToken, profileARN string) *Provider {
-	if profileARN == "" {
-		profileARN = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
-	}
-	return &Provider{
-		id:           id,
-		refreshToken: refreshToken,
-		profileARN:   profileARN,
-		client: &http.Client{
-			Timeout: 120 * time.Second,
-		},
-	}
-}
-
-func (p *Provider) ID() string {
-	return p.id
-}
-
-func (p *Provider) Type() string {
-	return "kiro"
-}
-
-func (p *Provider) IsHealthy() bool {
-	return p.refreshToken != ""
-}
-
-func (p *Provider) getValidAccessToken(ctx context.Context) (string, error) {
-	p.mu.RLock()
-	if p.accessToken != "" && time.Now().Before(p.expiresAt.Add(-2*time.Minute)) {
-		token := p.accessToken
-		p.mu.RUnlock()
+func (a *Account) GetValidAccessToken(ctx context.Context, client *http.Client) (string, error) {
+	a.mu.RLock()
+	if a.accessToken != "" && time.Now().Before(a.expiresAt.Add(-2*time.Minute)) {
+		token := a.accessToken
+		a.mu.RUnlock()
 		return token, nil
 	}
-	p.mu.RUnlock()
+	a.mu.RUnlock()
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
-	// Double check
-	if p.accessToken != "" && time.Now().Before(p.expiresAt.Add(-2*time.Minute)) {
-		return p.accessToken, nil
+	if a.accessToken != "" && time.Now().Before(a.expiresAt.Add(-2*time.Minute)) {
+		return a.accessToken, nil
 	}
 
 	refreshPayload := map[string]string{
-		"refreshToken": p.refreshToken,
+		"refreshToken": a.RefreshToken,
 	}
 	reqBytes, err := json.Marshal(refreshPayload)
 	if err != nil {
@@ -83,7 +56,7 @@ func (p *Provider) getValidAccessToken(ctx context.Context) (string, error) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("execute token refresh: %w", err)
 	}
@@ -107,17 +80,88 @@ func (p *Provider) getValidAccessToken(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("empty access token returned from Kiro refresh")
 	}
 
-	p.accessToken = res.AccessToken
+	a.accessToken = res.AccessToken
 	expiresIn := res.ExpiresIn
 	if expiresIn <= 0 {
 		expiresIn = 3600
 	}
-	p.expiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
+	a.expiresAt = time.Now().Add(time.Duration(expiresIn) * time.Second)
 	if res.ProfileArn != "" {
-		p.profileARN = res.ProfileArn
+		a.ProfileARN = res.ProfileArn
 	}
 
-	return p.accessToken, nil
+	return a.accessToken, nil
+}
+
+type Provider struct {
+	id       string
+	accounts []*Account
+	counter  uint64
+	mu       sync.RWMutex
+	client   *http.Client
+}
+
+func NewProvider(id, refreshToken, profileARN string) *Provider {
+	if profileARN == "" {
+		profileARN = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+	}
+	var accs []*Account
+	if refreshToken != "" {
+		accs = append(accs, &Account{
+			ID:           id,
+			RefreshToken: refreshToken,
+			ProfileARN:   profileARN,
+		})
+	}
+	return NewProviderWithAccounts(id, accs)
+}
+
+func NewProviderWithAccounts(id string, accounts []*Account) *Provider {
+	for _, a := range accounts {
+		if a.ProfileARN == "" {
+			a.ProfileARN = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+		}
+	}
+	return &Provider{
+		id:       id,
+		accounts: accounts,
+		client: &http.Client{
+			Timeout: 120 * time.Second,
+		},
+	}
+}
+
+func (p *Provider) ID() string {
+	return p.id
+}
+
+func (p *Provider) Type() string {
+	return "kiro"
+}
+
+func (p *Provider) IsHealthy() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return len(p.accounts) > 0
+}
+
+func (p *Provider) nextAccount() *Account {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.accounts) == 0 {
+		return nil
+	}
+	acc := p.accounts[p.counter%uint64(len(p.accounts))]
+	p.counter++
+	return acc
+}
+
+func (p *Provider) Accounts() []*Account {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	res := make([]*Account, len(p.accounts))
+	copy(res, p.accounts)
+	return res
 }
 
 type kiroToolSpec struct {
@@ -193,9 +237,12 @@ func randomUUID() string {
 }
 
 func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
-	token, err := p.getValidAccessToken(ctx)
-	if err != nil {
-		return nil, false, http.StatusUnauthorized, fmt.Errorf("kiro auth failed: %w", err)
+	p.mu.RLock()
+	accCount := len(p.accounts)
+	p.mu.RUnlock()
+
+	if accCount == 0 {
+		return nil, false, http.StatusServiceUnavailable, fmt.Errorf("no active accounts configured for kiro provider %s", p.id)
 	}
 
 	modelID := "claude-sonnet-4.5"
@@ -361,55 +408,83 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 	}
 
-	payload := kiroRequestPayload{
-		ConversationState: kiroConversationState{
-			CurrentMessage: kiroCurrentMsg{
-				UserInputMessage: kiroUserMsg{
-					Content:                 userContent,
-					ModelID:                 modelID,
-					Origin:                  "AI_EDITOR",
-					UserInputMessageContext: userCtx,
-				},
+	convState := kiroConversationState{
+		CurrentMessage: kiroCurrentMsg{
+			UserInputMessage: kiroUserMsg{
+				Content:                 userContent,
+				ModelID:                 modelID,
+				Origin:                  "AI_EDITOR",
+				UserInputMessageContext: userCtx,
 			},
-			ChatTriggerType: "MANUAL",
-			ConversationID:  randomUUID(),
-			History:         history,
 		},
-		ProfileArn: p.profileARN,
+		ChatTriggerType: "MANUAL",
+		ConversationID:  randomUUID(),
+		History:         history,
 	}
 
-	bodyBytes, err := json.Marshal(payload)
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("marshal kiro payload: %w", err)
-	}
+	var lastErr error
+	var lastStatusCode int
 
-	url := "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("create kiro request: %w", err)
-	}
+	for attempt := 0; attempt < accCount; attempt++ {
+		acc := p.nextAccount()
+		if acc == nil {
+			break
+		}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("Accept", "application/vnd.amazon.eventstream")
-	httpReq.Header.Set("X-Amz-Target", "AmazonCodeWhispererStreamingService.GenerateAssistantResponse")
-	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("User-Agent", "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0")
-	httpReq.Header.Set("X-Amz-User-Agent", "aws-sdk-js/3.0.0 kiro-ide/1.0.0")
+		token, err := acc.GetValidAccessToken(ctx, p.client)
+		if err != nil {
+			lastErr = fmt.Errorf("kiro account %s auth failed: %w", acc.ID, err)
+			lastStatusCode = http.StatusUnauthorized
+			log.Printf("[kiro] Account %s auth error: %v", acc.ID, err)
+			continue
+		}
 
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("kiro upstream call failed: %w", err)
-	}
+		payload := kiroRequestPayload{
+			ConversationState: convState,
+			ProfileArn:        acc.ProfileARN,
+		}
 
-	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return nil, false, resp.StatusCode, fmt.Errorf("kiro upstream error %d: %s", resp.StatusCode, string(raw))
-	}
+		bodyBytes, err := json.Marshal(payload)
+		if err != nil {
+			return nil, false, 0, fmt.Errorf("marshal kiro payload: %w", err)
+		}
 
-	pr, pw := io.Pipe()
+		url := "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
+		if err != nil {
+			return nil, false, 0, fmt.Errorf("create kiro request: %w", err)
+		}
 
-	go func() {
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Accept", "application/vnd.amazon.eventstream")
+		httpReq.Header.Set("X-Amz-Target", "AmazonCodeWhispererStreamingService.GenerateAssistantResponse")
+		httpReq.Header.Set("Authorization", "Bearer "+token)
+		httpReq.Header.Set("User-Agent", "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0")
+		httpReq.Header.Set("X-Amz-User-Agent", "aws-sdk-js/3.0.0 kiro-ide/1.0.0")
+
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			lastErr = fmt.Errorf("kiro upstream call failed on account %s: %w", acc.ID, err)
+			lastStatusCode = http.StatusBadGateway
+			log.Printf("[kiro] Account %s network call failed: %v", acc.ID, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			raw, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			lastErr = fmt.Errorf("kiro upstream error %d: %s", resp.StatusCode, string(raw))
+			lastStatusCode = resp.StatusCode
+			if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
+				log.Printf("[kiro] Account %s returned %d (%s), failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
+				continue
+			}
+			return nil, false, resp.StatusCode, lastErr
+		}
+
+		pr, pw := io.Pipe()
+
+		go func() {
 		defer resp.Body.Close()
 		defer pw.Close()
 
@@ -584,7 +659,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		fmt.Fprintf(pw, "data: [DONE]\n\n")
 	}()
 
-	return pr, true, http.StatusOK, nil
+		return pr, true, http.StatusOK, nil
+	}
+
+	return nil, false, lastStatusCode, lastErr
 }
 
 func (p *Provider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {

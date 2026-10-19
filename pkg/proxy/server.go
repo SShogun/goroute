@@ -394,12 +394,24 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 			HasKey:  p.APIKey != "" || p.RefreshToken != "" || len(p.Accounts) > 0,
 			Status:  "active",
 		}
-		for _, a := range p.Accounts {
+		if len(p.Accounts) > 0 {
+			for _, a := range p.Accounts {
+				label := a.Email
+				if label == "" {
+					label = a.ID
+				}
+				ps.Accounts = append(ps.Accounts, AccountSummary{
+					ID:        a.ID,
+					Email:     label,
+					Status:    "active",
+					ProjectID: a.ProjectID,
+				})
+			}
+		} else if p.RefreshToken != "" || p.APIKey != "" {
 			ps.Accounts = append(ps.Accounts, AccountSummary{
-				ID:        a.ID,
-				Email:     a.Email,
-				Status:    "active",
-				ProjectID: a.ProjectID,
+				ID:     p.ID,
+				Email:  "Default Account",
+				Status: "active",
 			})
 		}
 		provSummaries = append(provSummaries, ps)
@@ -451,6 +463,7 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 		APIKey       string `json:"api_key"`
 		RefreshToken string `json:"refresh_token"`
 		ProfileARN   string `json:"profile_arn"`
+		AccountID    string `json:"account_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -478,28 +491,62 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 	found := false
 	for i, p := range cfg.Providers {
 		if p.ID == req.ID {
-			cfg.Providers[i].BaseURL = req.BaseURL
-			cfg.Providers[i].APIKey = req.APIKey
-			cfg.Providers[i].Type = req.Type
-			if req.RefreshToken != "" {
-				cfg.Providers[i].RefreshToken = req.RefreshToken
-			}
-			if req.ProfileARN != "" {
-				cfg.Providers[i].ProfileARN = req.ProfileARN
-			}
 			found = true
+			if req.Type == "kiro" && req.RefreshToken != "" {
+				// Append account to existing kiro provider pool
+				if len(cfg.Providers[i].Accounts) == 0 && cfg.Providers[i].RefreshToken != "" {
+					cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+						ID:           cfg.Providers[i].ID + "-primary",
+						RefreshToken: cfg.Providers[i].RefreshToken,
+						ProfileARN:   cfg.Providers[i].ProfileARN,
+					})
+				}
+				accID := req.AccountID
+				if accID == "" {
+					accID = fmt.Sprintf("%s-%d", req.ID, len(cfg.Providers[i].Accounts)+1)
+				}
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+					ID:           accID,
+					RefreshToken: req.RefreshToken,
+					ProfileARN:   req.ProfileARN,
+				})
+			} else {
+				cfg.Providers[i].BaseURL = req.BaseURL
+				cfg.Providers[i].APIKey = req.APIKey
+				cfg.Providers[i].Type = req.Type
+				if req.RefreshToken != "" {
+					cfg.Providers[i].RefreshToken = req.RefreshToken
+				}
+				if req.ProfileARN != "" {
+					cfg.Providers[i].ProfileARN = req.ProfileARN
+				}
+			}
 			break
 		}
 	}
 	if !found {
-		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+		newProv := config.ProviderConfig{
 			ID:           req.ID,
 			Type:         req.Type,
 			BaseURL:      req.BaseURL,
 			APIKey:       req.APIKey,
 			RefreshToken: req.RefreshToken,
 			ProfileARN:   req.ProfileARN,
-		})
+		}
+		if req.Type == "kiro" && req.RefreshToken != "" {
+			accID := req.AccountID
+			if accID == "" {
+				accID = req.ID
+			}
+			newProv.Accounts = []config.AccountConfig{
+				{
+					ID:           accID,
+					RefreshToken: req.RefreshToken,
+					ProfileARN:   req.ProfileARN,
+				},
+			}
+		}
+		cfg.Providers = append(cfg.Providers, newProv)
 	}
 
 	if err := cfg.Save(cfgPath); err != nil {
@@ -557,7 +604,16 @@ func (s *Server) Reload() error {
 	for _, pCfg := range cfg.Providers {
 		switch pCfg.Type {
 		case "openai":
-			prov := openai.NewProvider(pCfg.ID, pCfg.BaseURL, pCfg.APIKey, pCfg.Headers)
+			var keys []string
+			for _, a := range pCfg.Accounts {
+				if a.APIKey != "" {
+					keys = append(keys, a.APIKey)
+				}
+			}
+			if pCfg.APIKey != "" {
+				keys = append(keys, pCfg.APIKey)
+			}
+			prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
 			s.router.RegisterProvider(prov)
 		case "antigravity":
 			var accounts []*antigravity.Account
@@ -579,7 +635,27 @@ func (s *Server) Reload() error {
 			prov := antigravity.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
 		case "kiro":
-			prov := kiro.NewProvider(pCfg.ID, pCfg.RefreshToken, pCfg.ProfileARN)
+			var accounts []*kiro.Account
+			for _, a := range pCfg.Accounts {
+				refToken := a.RefreshToken
+				if refToken == "" && st != nil {
+					sec, _ := st.GetSecret(a.ID)
+					refToken = sec
+				}
+				accounts = append(accounts, &kiro.Account{
+					ID:           a.ID,
+					RefreshToken: refToken,
+					ProfileARN:   a.ProfileARN,
+				})
+			}
+			if len(accounts) == 0 && pCfg.RefreshToken != "" {
+				accounts = append(accounts, &kiro.Account{
+					ID:           pCfg.ID,
+					RefreshToken: pCfg.RefreshToken,
+					ProfileARN:   pCfg.ProfileARN,
+				})
+			}
+			prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
 		}
 	}

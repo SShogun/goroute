@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ziuus/goroute/pkg/providers"
@@ -16,12 +18,22 @@ import (
 type Provider struct {
 	id      string
 	baseURL string
-	apiKey  string
+	apiKeys []string
+	counter uint64
 	headers map[string]string
 	client  *http.Client
+	mu      sync.RWMutex
 }
 
 func NewProvider(id, baseURL, apiKey string, headers map[string]string) *Provider {
+	var keys []string
+	if apiKey != "" {
+		keys = append(keys, apiKey)
+	}
+	return NewProviderWithKeys(id, baseURL, keys, headers)
+}
+
+func NewProviderWithKeys(id, baseURL string, apiKeys []string, headers map[string]string) *Provider {
 	baseURL = strings.TrimSuffix(baseURL, "/")
 	if headers == nil {
 		headers = make(map[string]string)
@@ -37,12 +49,23 @@ func NewProvider(id, baseURL, apiKey string, headers map[string]string) *Provide
 	return &Provider{
 		id:      id,
 		baseURL: baseURL,
-		apiKey:  apiKey,
+		apiKeys: apiKeys,
 		headers: headers,
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 		},
 	}
+}
+
+func (p *Provider) nextKey() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.apiKeys) == 0 {
+		return ""
+	}
+	k := p.apiKeys[p.counter%uint64(len(p.apiKeys))]
+	p.counter++
+	return k
 }
 
 func (p *Provider) ID() string {
@@ -64,26 +87,54 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	}
 
 	url := p.baseURL + "/chat/completions"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("create request: %w", err)
+
+	p.mu.RLock()
+	keyCount := len(p.apiKeys)
+	p.mu.RUnlock()
+
+	attempts := keyCount
+	if attempts <= 0 {
+		attempts = 1
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-	}
-	for k, v := range p.headers {
-		httpReq.Header.Set(k, v)
+	var lastErr error
+	var lastStatusCode int
+
+	for i := 0; i < attempts; i++ {
+		key := p.nextKey()
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+		if err != nil {
+			return nil, false, 0, fmt.Errorf("create request: %w", err)
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		if key != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+key)
+		}
+		for k, v := range p.headers {
+			httpReq.Header.Set(k, v)
+		}
+
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			lastErr = fmt.Errorf("upstream call failed: %w", err)
+			lastStatusCode = http.StatusBadGateway
+			continue
+		}
+
+		if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode >= 500 {
+			if attempts > 1 && i+1 < attempts {
+				log.Printf("[openai] Provider %s key hit %d, failing over to next key (%d/%d)", p.id, resp.StatusCode, i+1, attempts)
+				resp.Body.Close()
+				continue
+			}
+		}
+
+		isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+		return resp.Body, isStream, resp.StatusCode, nil
 	}
 
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("upstream call failed: %w", err)
-	}
-
-	isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
-	return resp.Body, isStream, resp.StatusCode, nil
+	return nil, false, lastStatusCode, lastErr
 }
 
 func (p *Provider) SupportsAnthropic() bool {
@@ -92,34 +143,62 @@ func (p *Provider) SupportsAnthropic() bool {
 
 func (p *Provider) AnthropicMessages(ctx context.Context, body []byte, incomingHeaders http.Header) (io.ReadCloser, bool, int, error) {
 	url := p.baseURL + "/messages"
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("create request: %w", err)
+
+	p.mu.RLock()
+	keyCount := len(p.apiKeys)
+	p.mu.RUnlock()
+
+	attempts := keyCount
+	if attempts <= 0 {
+		attempts = 1
 	}
 
-	httpReq.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
-	}
-	for k, v := range p.headers {
-		httpReq.Header.Set(k, v)
-	}
-	if v := incomingHeaders.Get("anthropic-version"); v != "" {
-		httpReq.Header.Set("anthropic-version", v)
-	} else {
-		httpReq.Header.Set("anthropic-version", "2023-06-01")
-	}
-	if v := incomingHeaders.Get("anthropic-beta"); v != "" {
-		httpReq.Header.Set("anthropic-beta", v)
+	var lastErr error
+	var lastStatusCode int
+
+	for i := 0; i < attempts; i++ {
+		key := p.nextKey()
+		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+		if err != nil {
+			return nil, false, 0, fmt.Errorf("create request: %w", err)
+		}
+
+		httpReq.Header.Set("Content-Type", "application/json")
+		if key != "" {
+			httpReq.Header.Set("Authorization", "Bearer "+key)
+		}
+		for k, v := range p.headers {
+			httpReq.Header.Set(k, v)
+		}
+		if v := incomingHeaders.Get("anthropic-version"); v != "" {
+			httpReq.Header.Set("anthropic-version", v)
+		} else {
+			httpReq.Header.Set("anthropic-version", "2023-06-01")
+		}
+		if v := incomingHeaders.Get("anthropic-beta"); v != "" {
+			httpReq.Header.Set("anthropic-beta", v)
+		}
+
+		resp, err := p.client.Do(httpReq)
+		if err != nil {
+			lastErr = fmt.Errorf("upstream call failed: %w", err)
+			lastStatusCode = http.StatusBadGateway
+			continue
+		}
+
+		if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode >= 500 {
+			if attempts > 1 && i+1 < attempts {
+				log.Printf("[openai] Provider %s key hit %d on AnthropicMessages, failing over to next key (%d/%d)", p.id, resp.StatusCode, i+1, attempts)
+				resp.Body.Close()
+				continue
+			}
+		}
+
+		isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+		return resp.Body, isStream, resp.StatusCode, nil
 	}
 
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return nil, false, 0, fmt.Errorf("upstream call failed: %w", err)
-	}
-
-	isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
-	return resp.Body, isStream, resp.StatusCode, nil
+	return nil, false, lastStatusCode, lastErr
 }
 
 func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
@@ -129,8 +208,8 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 		return nil, err
 	}
 
-	if p.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if key := p.nextKey(); key != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+key)
 	}
 	for k, v := range p.headers {
 		httpReq.Header.Set(k, v)
@@ -169,8 +248,8 @@ func (p *Provider) Embeddings(ctx context.Context, req *providers.EmbeddingReque
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	if p.apiKey != "" {
-		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if key := p.nextKey(); key != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+key)
 	}
 
 	resp, err := p.client.Do(httpReq)

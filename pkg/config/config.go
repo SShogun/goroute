@@ -16,12 +16,14 @@ type ServerConfig struct {
 }
 
 type AccountConfig struct {
-	ID           string    `yaml:"id"`
-	Email        string    `yaml:"email,omitempty"`
-	RefreshToken string    `yaml:"refresh_token,omitempty"`
-	AccessToken  string    `yaml:"access_token,omitempty"`
-	ExpiresAt    time.Time `yaml:"expires_at,omitempty"`
-	ProjectID    string    `yaml:"project_id,omitempty"`
+	ID           string    `yaml:"id" json:"id"`
+	Email        string    `yaml:"email,omitempty" json:"email,omitempty"`
+	RefreshToken string    `yaml:"refresh_token,omitempty" json:"refresh_token,omitempty"`
+	AccessToken  string    `yaml:"access_token,omitempty" json:"access_token,omitempty"`
+	ExpiresAt    time.Time `yaml:"expires_at,omitempty" json:"expires_at,omitempty"`
+	ProjectID    string    `yaml:"project_id,omitempty" json:"project_id,omitempty"`
+	ProfileARN   string    `yaml:"profile_arn,omitempty" json:"profile_arn,omitempty"`
+	APIKey       string    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
 }
 
 type ProviderConfig struct {
