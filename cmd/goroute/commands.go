@@ -362,7 +362,94 @@ func NewAuthCmd() *cobra.Command {
 		},
 	}
 
-	authCmd.AddCommand(loginCmd, listCmd)
+	importCmd := &cobra.Command{
+		Use:   "import [provider]",
+		Short: "Auto-import credentials from local tools (e.g. kiro)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			target := "kiro"
+			if len(args) > 0 {
+				target = args[0]
+			}
+			if target != "kiro" {
+				return fmt.Errorf("currently only 'kiro' auto-import is supported")
+			}
+			home, _ := os.UserHomeDir()
+			dbPath := filepath.Join(home, ".local", "share", "kiro-cli", "data.sqlite3")
+			if _, err := os.Stat(dbPath); err != nil {
+				return fmt.Errorf("kiro-cli database not found at %s. Ensure kiro-cli is installed and logged in", dbPath)
+			}
+			out, err := exec.Command("sqlite3", dbPath, "SELECT value FROM auth_kv WHERE key='kirocli:social:token';").Output()
+			if err != nil || len(out) == 0 {
+				return fmt.Errorf("failed to extract token from %s: %v", dbPath, err)
+			}
+			var tokData struct {
+				RefreshToken string `json:"refresh_token"`
+				ProfileArn   string `json:"profile_arn"`
+			}
+			if err := json.Unmarshal(out, &tokData); err != nil {
+				return fmt.Errorf("invalid json in auth_kv: %w", err)
+			}
+			if tokData.RefreshToken == "" {
+				return fmt.Errorf("no refresh token found in kiro-cli database")
+			}
+			defaultCfg, _ := defaultPaths()
+			cfg, err := config.Load(defaultCfg)
+			if err != nil {
+				cfg = config.DefaultConfig()
+			}
+			found := false
+			for i, p := range cfg.Providers {
+				if p.ID == "kiro" {
+					found = true
+					if len(cfg.Providers[i].Accounts) == 0 && cfg.Providers[i].RefreshToken != "" {
+						cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+							ID:           "kiro-primary",
+							RefreshToken: cfg.Providers[i].RefreshToken,
+							ProfileARN:   cfg.Providers[i].ProfileARN,
+						})
+					}
+					exists := false
+					for _, a := range cfg.Providers[i].Accounts {
+						if a.RefreshToken == tokData.RefreshToken {
+							exists = true
+							break
+						}
+					}
+					if !exists {
+						cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+							ID:           fmt.Sprintf("kiro-cli-%d", len(cfg.Providers[i].Accounts)+1),
+							RefreshToken: tokData.RefreshToken,
+							ProfileARN:   tokData.ProfileArn,
+						})
+					}
+					break
+				}
+			}
+			if !found {
+				cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+					ID:           "kiro",
+					Type:         "kiro",
+					RefreshToken: tokData.RefreshToken,
+					ProfileARN:   tokData.ProfileArn,
+					Accounts: []config.AccountConfig{
+						{
+							ID:           "kiro-cli",
+							RefreshToken: tokData.RefreshToken,
+							ProfileARN:   tokData.ProfileArn,
+						},
+					},
+				})
+			}
+			if err := cfg.Save(defaultCfg); err != nil {
+				return err
+			}
+			_, _ = http.Post("http://127.0.0.1:8128/api/reload", "application/json", nil)
+			fmt.Println("✅ Successfully imported Kiro credentials from local kiro-cli database!")
+			return nil
+		},
+	}
+
+	authCmd.AddCommand(loginCmd, listCmd, importCmd)
 	return authCmd
 }
 
