@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ziuus/goroute/pkg/catalog"
@@ -132,6 +134,19 @@ func NewServeCmd() *cobra.Command {
 			fmt.Printf("   Memory footprint:          < 15 MB RAM\n")
 
 			srv := proxy.NewServer(r, limiter, !noDashboard)
+			srv.SetConfigPaths(cfgPath, defaultStore)
+
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, syscall.SIGHUP)
+			go func() {
+				for range sigChan {
+					fmt.Println("⚡ Received SIGHUP, reloading GoRoute configuration...")
+					if err := srv.Reload(); err != nil {
+						fmt.Printf("❌ Reload error: %v\n", err)
+					}
+				}
+			}()
+
 			return http.ListenAndServe(addr, srv.Handler())
 		},
 	}

@@ -18,6 +18,7 @@ type geminiStreamChunk struct {
 					Text             string              `json:"text"`
 					ReasoningContent string              `json:"thought"`
 					FunctionCall     *geminiFunctionCall `json:"functionCall,omitempty"`
+					ThoughtSignature string              `json:"thoughtSignature,omitempty"`
 				} `json:"parts"`
 			} `json:"content"`
 			FinishReason string `json:"finishReason"`
@@ -77,8 +78,24 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 			}
 
 			candidate := gChunk.Response.Candidates[0]
+			var latestSig string
 			for _, part := range candidate.Content.Parts {
+				if part.ThoughtSignature != "" {
+					latestSig = part.ThoughtSignature
+				}
 				if part.FunctionCall != nil {
+					callID := part.FunctionCall.ID
+					if callID == "" {
+						callID = fmt.Sprintf("toolu_%d", time.Now().UnixNano())
+					}
+					sig := part.ThoughtSignature
+					if sig == "" {
+						sig = latestSig
+					}
+					if sig != "" {
+						StoreThoughtSignature(callID, sig)
+					}
+
 					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
 					toolCallChunk := map[string]interface{}{
 						"id":      "chatcmpl-goroute",
@@ -92,7 +109,7 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 									"tool_calls": []map[string]interface{}{
 										{
 											"index": 0,
-											"id":    fmt.Sprintf("toolu_%d", time.Now().UnixNano()),
+											"id":    callID,
 											"type":  "function",
 											"function": map[string]string{
 												"name":      part.FunctionCall.Name,
@@ -174,6 +191,8 @@ func ConvertGeminiSSEToNonStreaming(rawStream io.ReadCloser, modelName string) (
 	scanner.Buffer(buf, 1024*1024)
 
 	var contentBuilder strings.Builder
+	var toolCalls []map[string]interface{}
+	finishReason := "stop"
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -198,15 +217,52 @@ func ConvertGeminiSSEToNonStreaming(rawStream io.ReadCloser, modelName string) (
 		}
 
 		candidate := gChunk.Response.Candidates[0]
+		var latestSig string
 		for _, part := range candidate.Content.Parts {
-			contentBuilder.WriteString(part.Text)
+			if part.ThoughtSignature != "" {
+				latestSig = part.ThoughtSignature
+			}
+			if part.Text != "" {
+				contentBuilder.WriteString(part.Text)
+			}
+			if part.FunctionCall != nil {
+				finishReason = "tool_calls"
+				callID := part.FunctionCall.ID
+				if callID == "" {
+					callID = fmt.Sprintf("toolu_%d", time.Now().UnixNano())
+				}
+				sig := part.ThoughtSignature
+				if sig == "" {
+					sig = latestSig
+				}
+				if sig != "" {
+					StoreThoughtSignature(callID, sig)
+				}
+				argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+				toolCalls = append(toolCalls, map[string]interface{}{
+					"id":   callID,
+					"type": "function",
+					"function": map[string]string{
+						"name":      part.FunctionCall.Name,
+						"arguments": string(argsBytes),
+					},
+				})
+			}
 		}
 	}
 
 	fullText := contentBuilder.String()
 	tokens := len(fullText) / 4
-	if tokens == 0 && len(fullText) > 0 {
+	if tokens == 0 && (len(fullText) > 0 || len(toolCalls) > 0) {
 		tokens = 1
+	}
+
+	msgObj := map[string]interface{}{
+		"role":    "assistant",
+		"content": fullText,
+	}
+	if len(toolCalls) > 0 {
+		msgObj["tool_calls"] = toolCalls
 	}
 
 	resp := map[string]interface{}{
@@ -216,12 +272,9 @@ func ConvertGeminiSSEToNonStreaming(rawStream io.ReadCloser, modelName string) (
 		"model":   modelName,
 		"choices": []map[string]interface{}{
 			{
-				"index": 0,
-				"message": map[string]interface{}{
-					"role":    "assistant",
-					"content": fullText,
-				},
-				"finish_reason": "stop",
+				"index":         0,
+				"message":       msgObj,
+				"finish_reason": finishReason,
 			},
 		},
 		"usage": map[string]interface{}{

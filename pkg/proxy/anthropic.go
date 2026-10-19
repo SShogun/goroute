@@ -38,6 +38,7 @@ type AnthropicContentBlock struct {
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
@@ -77,12 +78,30 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 									break
 								}
 							}
+							RecordRequest(RequestLog{
+								ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+								Timestamp:  start,
+								Endpoint:   "/v1/messages",
+								Model:      modelStr,
+								Provider:   target.ProviderID,
+								StatusCode: statusCode,
+								DurationMs: time.Since(start).Milliseconds(),
+							})
 							return
 						}
 
 						w.Header().Set("Content-Type", "application/json")
 						w.WriteHeader(statusCode)
 						io.Copy(w, respBody)
+						RecordRequest(RequestLog{
+							ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+							Timestamp:  start,
+							Endpoint:   "/v1/messages",
+							Model:      modelStr,
+							Provider:   target.ProviderID,
+							StatusCode: statusCode,
+							DurationMs: time.Since(start).Milliseconds(),
+						})
 						return
 					}
 					if respBody != nil {
@@ -146,6 +165,9 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
+	// Guardrail messages to prevent context overflow 400 errors
+	chatReq.Messages = SanitizeAndGuardrailMessages(chatReq.Messages, 0)
+
 	// Rate limiting / quota
 	if !s.limiter.Allow(chatReq.Model) {
 		http.Error(w, "Rate limit exceeded (cooling down)", http.StatusTooManyRequests)
@@ -154,12 +176,30 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 	respBody, isStream, statusCode, err := s.router.Execute(r.Context(), &chatReq)
 	if err != nil {
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/messages",
+			Model:      req.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      err.Error(),
+		})
 		http.Error(w, err.Error(), statusCode)
 		return
 	}
 	defer respBody.Close()
 
 	if statusCode >= 400 {
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/messages",
+			Model:      req.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      fmt.Sprintf("upstream returned %d", statusCode),
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		io.Copy(w, respBody)
@@ -174,6 +214,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 
 		flusher, _ := w.(http.Flusher)
 		translateOpenAIToAnthropicSSE(respBody, w, flusher, req.Model)
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/messages",
+			Model:      req.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+		})
 		return
 	}
 
@@ -250,6 +298,14 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(anthropicResp)
+	RecordRequest(RequestLog{
+		ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		Timestamp:  start,
+		Endpoint:   "/v1/messages",
+		Model:      req.Model,
+		StatusCode: statusCode,
+		DurationMs: time.Since(start).Milliseconds(),
+	})
 }
 
 func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http.Flusher, model string) {

@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -17,8 +18,12 @@ import (
 	"github.com/ziuus/goroute/pkg/cache"
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/providers/antigravity"
+	"github.com/ziuus/goroute/pkg/providers/kiro"
+	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/router"
+	"github.com/ziuus/goroute/pkg/store"
 	"github.com/ziuus/goroute/web"
 )
 
@@ -28,6 +33,13 @@ type Server struct {
 	cache           *cache.Cache
 	enableDashboard bool
 	mux             *chi.Mux
+	cfgPath         string
+	storePath       string
+}
+
+func (s *Server) SetConfigPaths(cfgPath, storePath string) {
+	s.cfgPath = cfgPath
+	s.storePath = storePath
 }
 
 func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *Server {
@@ -64,6 +76,9 @@ func (s *Server) setupRoutes() {
 
 	s.mux.Get("/health", s.handleHealth)
 	s.mux.Get("/api/status", s.handleAPIStatus)
+	s.mux.Get("/api/logs", s.handleLogs)
+	s.mux.Get("/api/logs/stream", s.handleLogsStream)
+	s.mux.Post("/api/reload", s.handleReload)
 	s.mux.Post("/api/import-omniroute", s.handleAPIImportOmniRoute)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
@@ -99,12 +114,16 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	var chatReq providers.ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&chatReq); err != nil {
 		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	log.Printf("[GoRoute] Incoming /v1/chat/completions model=%s stream=%v messages=%d", chatReq.Model, chatReq.Stream, len(chatReq.Messages))
+
+	// Guardrail messages to prevent context overflow 400 errors
+	chatReq.Messages = SanitizeAndGuardrailMessages(chatReq.Messages, 0)
 
 	// Check rate limit/quota if configured
 	if !s.limiter.Allow(chatReq.Model) {
@@ -120,6 +139,14 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Cache", "HIT")
 			w.WriteHeader(http.StatusOK)
 			w.Write(cached)
+			RecordRequest(RequestLog{
+				ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+				Timestamp:  start,
+				Endpoint:   "/v1/chat/completions",
+				Model:      chatReq.Model,
+				StatusCode: http.StatusOK,
+				DurationMs: time.Since(start).Milliseconds(),
+			})
 			return
 		}
 	}
@@ -130,11 +157,36 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		if statusCode < 100 || statusCode > 599 {
 			statusCode = http.StatusInternalServerError
 		}
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/chat/completions",
+			Model:      chatReq.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      err.Error(),
+		})
 		http.Error(w, err.Error(), statusCode)
 		return
 	}
 	defer body.Close()
 	log.Printf("[GoRoute] Upstream returned status %d isStream=%v", statusCode, isStream)
+
+	if statusCode >= 400 {
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/chat/completions",
+			Model:      chatReq.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      fmt.Sprintf("upstream returned %d", statusCode),
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		io.Copy(w, body)
+		return
+	}
 
 	if isStream {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -156,6 +208,14 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/chat/completions",
+			Model:      chatReq.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+		})
 		return
 	}
 
@@ -169,6 +229,15 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if statusCode == http.StatusOK && cacheKey != "" {
 		s.cache.Set(cacheKey, respBytes)
 	}
+
+	RecordRequest(RequestLog{
+		ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+		Timestamp:  start,
+		Endpoint:   "/v1/chat/completions",
+		Model:      chatReq.Model,
+		StatusCode: statusCode,
+		DurationMs: time.Since(start).Milliseconds(),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Cache", "MISS")
@@ -292,4 +361,89 @@ func (s *Server) handleAPIImportOmniRoute(w http.ResponseWriter, r *http.Request
 		"status":  "ok",
 		"message": strings.TrimSpace(string(out)),
 	})
+	_ = s.Reload()
+}
+
+func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
+	if err := s.Reload(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "configuration reloaded successfully",
+	})
+}
+
+// Reload reads the configuration from disk and re-registers all providers and combos dynamically
+func (s *Server) Reload() error {
+	if s.cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		s.cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	if s.storePath == "" {
+		home, _ := os.UserHomeDir()
+		s.storePath = filepath.Join(home, ".goroute", "vault.json")
+	}
+
+	cfg, err := config.Load(s.cfgPath)
+	if err != nil {
+		return fmt.Errorf("failed to reload config from %s: %w", s.cfgPath, err)
+	}
+
+	st, _ := store.NewStore(s.storePath, "goroute-default-key")
+
+	s.router.Clear()
+
+	for _, pCfg := range cfg.Providers {
+		switch pCfg.Type {
+		case "openai":
+			prov := openai.NewProvider(pCfg.ID, pCfg.BaseURL, pCfg.APIKey, pCfg.Headers)
+			s.router.RegisterProvider(prov)
+		case "antigravity":
+			var accounts []*antigravity.Account
+			for _, a := range pCfg.Accounts {
+				refToken := a.RefreshToken
+				if refToken == "" && st != nil {
+					sec, _ := st.GetSecret(a.ID)
+					refToken = sec
+				}
+				accounts = append(accounts, &antigravity.Account{
+					ID:           a.ID,
+					Email:        a.Email,
+					RefreshToken: refToken,
+					AccessToken:  a.AccessToken,
+					ExpiresAt:    a.ExpiresAt,
+					ProjectID:    a.ProjectID,
+				})
+			}
+			prov := antigravity.NewProvider(pCfg.ID, accounts)
+			s.router.RegisterProvider(prov)
+		case "kiro":
+			prov := kiro.NewProvider(pCfg.ID, pCfg.RefreshToken, pCfg.ProfileARN)
+			s.router.RegisterProvider(prov)
+		}
+	}
+
+	for _, combo := range cfg.Combos {
+		var targets []router.Target
+		for _, t := range combo.Targets {
+			targets = append(targets, router.Target{
+				ProviderID: t.ProviderID,
+				Model:      t.Model,
+			})
+		}
+		s.router.RegisterCombo(combo.Name, combo.Strategy, targets)
+	}
+
+	log.Printf("[GoRoute] Configuration reloaded successfully (%d providers, %d combos)", len(cfg.Providers), len(cfg.Combos))
+	return nil
 }

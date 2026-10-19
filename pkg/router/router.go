@@ -54,6 +54,13 @@ func (r *Router) RegisterCombo(name, strategy string, targets []Target) {
 	}
 }
 
+func (r *Router) Clear() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.providers = make(map[string]providers.Provider)
+	r.combos = make(map[string]*Combo)
+}
+
 func (r *Router) GetProvider(id string) (providers.Provider, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

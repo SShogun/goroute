@@ -76,6 +76,7 @@ type geminiPart struct {
 	InlineData       *geminiInlineData       `json:"inlineData,omitempty"`
 	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
 	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
+	ThoughtSignature string                  `json:"thoughtSignature,omitempty"`
 }
 
 type geminiFunctionDecl struct {
@@ -112,6 +113,11 @@ func parseGeminiParts(content interface{}, toolUseNames map[string]string) []gem
 	case []interface{}:
 		for _, item := range v {
 			if m, ok := item.(map[string]interface{}); ok {
+				// 0. Skip thinking blocks from Anthropic history
+				if m["type"] == "thinking" {
+					continue
+				}
+
 				// 1. Text block
 				if txt, ok := m["text"].(string); ok && txt != "" {
 					parts = append(parts, geminiPart{Text: txt})
@@ -132,7 +138,17 @@ func parseGeminiParts(content interface{}, toolUseNames map[string]string) []gem
 					if input == nil {
 						input = make(map[string]interface{})
 					}
+					sig := GetThoughtSignature(id)
+					if clientSig, ok := m["thoughtSignature"].(string); ok && clientSig != "" {
+						sig = clientSig
+					} else if clientSig, ok := m["thought_signature"].(string); ok && clientSig != "" {
+						sig = clientSig
+					}
+					if sig == "" {
+						sig = "skip_thought_signature_validator"
+					}
 					parts = append(parts, geminiPart{
+						ThoughtSignature: sig,
 						FunctionCall: &geminiFunctionCall{
 							ID:   id,
 							Name: name,
