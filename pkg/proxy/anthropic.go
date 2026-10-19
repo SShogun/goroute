@@ -55,38 +55,39 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 						bodyBytes = newBody
 					}
 					respBody, isStream, statusCode, err := oProv.AnthropicMessages(r.Context(), bodyBytes, r.Header)
-					if err != nil {
-						http.Error(w, err.Error(), statusCode)
-						return
-					}
-					defer respBody.Close()
+					if err == nil && statusCode >= 200 && statusCode < 400 {
+						defer respBody.Close()
 
-					if isStream {
-						w.Header().Set("Content-Type", "text/event-stream")
-						w.Header().Set("Cache-Control", "no-cache")
-						w.Header().Set("Connection", "keep-alive")
-						w.WriteHeader(statusCode)
-						flusher, _ := w.(http.Flusher)
-						buf := make([]byte, 4096)
-						for {
-							n, err := respBody.Read(buf)
-							if n > 0 {
-								w.Write(buf[:n])
-								if flusher != nil {
-									flusher.Flush()
+						if isStream {
+							w.Header().Set("Content-Type", "text/event-stream")
+							w.Header().Set("Cache-Control", "no-cache")
+							w.Header().Set("Connection", "keep-alive")
+							w.WriteHeader(statusCode)
+							flusher, _ := w.(http.Flusher)
+							buf := make([]byte, 4096)
+							for {
+								n, err := respBody.Read(buf)
+								if n > 0 {
+									w.Write(buf[:n])
+									if flusher != nil {
+										flusher.Flush()
+									}
+								}
+								if err != nil {
+									break
 								}
 							}
-							if err != nil {
-								break
-							}
+							return
 						}
+
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(statusCode)
+						io.Copy(w, respBody)
 						return
 					}
-
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(statusCode)
-					io.Copy(w, respBody)
-					return
+					if respBody != nil {
+						respBody.Close()
+					}
 				}
 			}
 		}
