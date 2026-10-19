@@ -298,6 +298,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		payload.Request.Contents = contents
 
 		var fnDecls []geminiFunctionDecl
+		seenTools := make(map[string]bool)
 		for _, t := range req.Tools {
 			m, ok := t.(map[string]interface{})
 			if !ok {
@@ -313,13 +314,19 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 					schema = fn["parameters"]
 				}
 			}
+			sanitizedName := SanitizeGeminiToolName(name)
+			if seenTools[sanitizedName] {
+				continue
+			}
+			seenTools[sanitizedName] = true
+
 			cleanedSchema := CleanJSONSchemaForGemini(schema)
 			schemaMap, ok := cleanedSchema.(map[string]interface{})
 			if !ok {
 				schemaMap = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
 			}
 			fnDecls = append(fnDecls, geminiFunctionDecl{
-				Name:        name,
+				Name:        sanitizedName,
 				Description: desc,
 				Parameters:  schemaMap,
 			})

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -183,17 +184,13 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			return body, isStream, statusCode, nil
 		}
 
-		// If 402 (Payment/Quota exhausted), 429 (Rate limited), 401/403 (Auth/License), 404 (Model deprecated), or 5xx (Upstream error), close body and cascade to next target!
-		if statusCode == http.StatusPaymentRequired || statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusNotFound || (statusCode >= 500 && statusCode <= 599) {
-			if body != nil {
-				body.Close()
-			}
-			lastStatus = statusCode
-			continue
+		// Upstream target failed (4xx or 5xx): close body, log, and cascade to next target in combo!
+		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d, trying next target...", target.ProviderID, target.Model, statusCode)
+		if body != nil {
+			body.Close()
 		}
-
-		// Any other 4xx client error (e.g. 400 Bad Request) shouldn't cascade, return it directly
-		return body, isStream, statusCode, nil
+		lastStatus = statusCode
+		lastErr = fmt.Errorf("target %s/%s returned HTTP %d", target.ProviderID, target.Model, statusCode)
 	}
 
 	if lastErr != nil {

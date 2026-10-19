@@ -1,6 +1,8 @@
 package antigravity
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 )
 
@@ -405,3 +407,30 @@ func mustMarshal(v interface{}) []byte {
 		return []byte("")
 	}
 }
+
+// SanitizeGeminiToolName ensures tool names conform to Gemini's ^[a-zA-Z0-9_]{1,64}$ requirement.
+func SanitizeGeminiToolName(name string) string {
+	var sb strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('_')
+		}
+	}
+	res := sb.String()
+	for strings.Contains(res, "__") {
+		res = strings.ReplaceAll(res, "__", "_")
+	}
+	res = strings.Trim(res, "_")
+	if len(res) > 64 {
+		h := sha256.Sum256([]byte(name))
+		hashSuffix := hex.EncodeToString(h[:4]) // 8 chars
+		res = res[:55] + "_" + hashSuffix
+	}
+	if res == "" {
+		res = "tool"
+	}
+	return res
+}
+
