@@ -4,49 +4,74 @@ import (
 	"strings"
 )
 
-// unsupportedGeminiKeys contains JSON Schema keys not supported by Google Gemini/Cloud Code API
+// unsupportedGeminiKeys contains all JSON Schema keys unsupported by Google Gemini/Cloud Code Protobuf Schema API
 var unsupportedGeminiKeys = map[string]bool{
-	"$schema":               true,
-	"$id":                   true,
-	"$defs":                 true,
-	"definitions":           true,
-	"const":                 true,
-	"$ref":                  true,
-	"propertyNames":         true,
-	"patternProperties":     true,
-	"unevaluatedProperties": true,
-	"unevaluatedItems":      true,
-	"uniqueItems":           true,
-	"contains":              true,
-	"minContains":           true,
-	"maxContains":           true,
-	"anyOf":                 true,
-	"oneOf":                 true,
-	"allOf":                 true,
-	"not":                   true,
-	"dependencies":          true,
-	"dependentSchemas":      true,
-	"dependentRequired":     true,
-	"minLength":             true,
-	"maxLength":             true,
-	"exclusiveMinimum":      true,
-	"exclusiveMaximum":      true,
-	"multipleOf":            true,
-	"minItems":              true,
-	"maxItems":              true,
-	"format":                true,
-	"default":               true,
-	"examples":              true,
-	"title":                 true,
-	"strict":                true,
-	"encrypted":             true,
-	"deprecated":            true,
-	"optional":              true,
-	"additionalProperties":  true,
+	"minLength":                true,
+	"maxLength":                true,
+	"exclusiveMinimum":         true,
+	"exclusiveMaximum":         true,
+	"multipleOf":               true,
+	"strict":                   true,
+	"encrypted":                true,
+	"minItems":                 true,
+	"maxItems":                 true,
+	"format":                   true,
+	"default":                  true,
+	"examples":                 true,
+	"$schema":                  true,
+	"$id":                      true,
+	"$anchor":                  true,
+	"$dynamicRef":              true,
+	"$dynamicAnchor":           true,
+	"$vocabulary":              true,
+	"$comment":                 true,
+	"$defs":                    true,
+	"definitions":              true,
+	"const":                    true,
+	"$ref":                     true,
+	"ref":                      true,
+	"propertyNames":            true,
+	"patternProperties":        true,
+	"unevaluatedProperties":    true,
+	"unevaluatedItems":         true,
+	"contains":                 true,
+	"minContains":              true,
+	"maxContains":              true,
+	"uniqueItems":              true,
+	"anyOf":                    true,
+	"oneOf":                    true,
+	"allOf":                    true,
+	"not":                      true,
+	"dependencies":             true,
+	"dependentSchemas":         true,
+	"dependentRequired":        true,
+	"title":                    true,
+	"if":                       true,
+	"then":                     true,
+	"else":                     true,
+	"contentMediaType":         true,
+	"contentEncoding":          true,
+	"contentSchema":            true,
+	"readOnly":                 true,
+	"writeOnly":                true,
+	"deprecated":               true,
+	"optional":                 true,
+	"enumDescriptions":         true,
+	"markdownDescription":      true,
+	"markdownEnumDescriptions": true,
+	"enumItemLabels":           true,
+	"tags":                     true,
+	"cornerRadius":             true,
+	"fillColor":                true,
+	"fontFamily":               true,
+	"fontSize":                 true,
+	"fontWeight":               true,
+	"gap":                      true,
+	"additionalProperties":     true,
 }
 
-// CleanJSONSchemaForGemini recursively cleans a JSON Schema to comply with Gemini OpenAPI 3.0 subset
-// Implements the 8-phase transformation battle-tested in OmniRoute / CLIProxyAPI.
+// CleanJSONSchemaForGemini recursively cleans a JSON Schema to comply with Gemini OpenAPI 3.0 subset.
+// Strictly guards "properties" maps so arbitrary property names are never treated as schema keywords.
 func CleanJSONSchemaForGemini(schema interface{}) interface{} {
 	if schema == nil {
 		return map[string]interface{}{
@@ -66,22 +91,29 @@ func CleanJSONSchemaForGemini(schema interface{}) interface{} {
 		return schema
 	}
 
-	// Deep clone first
 	cloned := deepClone(root).(map[string]interface{})
 
-	// Phase 1: Convert const to enum & enum values to strings
+	// Top level must be type: "object"
+	if cloned["type"] == nil {
+		cloned["type"] = "object"
+	}
+	if cloned["properties"] == nil {
+		cloned["properties"] = make(map[string]interface{})
+	}
+
+	// Phase 1: Convert const to enum & ensure enum is []string
 	phase1ConvertConstAndEnums(cloned)
 
-	// Phase 2: Merge allOf & flatten anyOf/oneOf & flatten type arrays
+	// Phase 2: Merge allOf, flatten anyOf/oneOf, flatten type arrays
 	phase2FlattenStructures(cloned)
 
-	// Phase 3: Remove unsupported keywords recursively
+	// Phase 3: Remove unsupported keywords
 	phase3RemoveUnsupportedKeywords(cloned)
 
 	// Phase 4: Clean required fields recursively
 	phase4CleanRequired(cloned)
 
-	// Phase 5: Ensure object schemas have properties & placeholders
+	// Phase 5: Ensure type: "object" has placeholder if properties are empty
 	phase5AddPlaceholders(cloned)
 
 	// Phase 6: Ensure array items schema
@@ -109,7 +141,22 @@ func deepClone(v interface{}) interface{} {
 	}
 }
 
-// Phase 1: Convert const to enum and ensure enum is []string
+// Helper to iterate through Schema children, safely skipping "properties" map keys
+func forEachSchemaChild(v map[string]interface{}, fn func(interface{})) {
+	for k, child := range v {
+		if k == "properties" {
+			if props, ok := child.(map[string]interface{}); ok {
+				for _, propSchema := range props {
+					fn(propSchema)
+				}
+				continue
+			}
+		}
+		fn(child)
+	}
+}
+
+// Phase 1: Convert const to enum & stringify enums
 func phase1ConvertConstAndEnums(obj interface{}) {
 	if obj == nil {
 		return
@@ -138,9 +185,7 @@ func phase1ConvertConstAndEnums(obj interface{}) {
 				}
 			}
 		}
-		for _, child := range v {
-			phase1ConvertConstAndEnums(child)
-		}
+		forEachSchemaChild(v, phase1ConvertConstAndEnums)
 	case []interface{}:
 		for _, item := range v {
 			phase1ConvertConstAndEnums(item)
@@ -188,7 +233,7 @@ func phase2FlattenStructures(obj interface{}) {
 			}
 		}
 
-		// Flatten anyOf / oneOf: select the best non-null schema
+		// Flatten anyOf / oneOf
 		flattenBranch := func(key string) {
 			if branches, ok := v[key].([]interface{}); ok && len(branches) > 0 {
 				var nonNull []map[string]interface{}
@@ -211,7 +256,7 @@ func phase2FlattenStructures(obj interface{}) {
 		flattenBranch("anyOf")
 		flattenBranch("oneOf")
 
-		// Flatten type arrays: ["string", "null"] -> "string"
+		// Flatten type arrays
 		if types, ok := v["type"].([]interface{}); ok && len(types) > 0 {
 			chosen := "string"
 			for _, t := range types {
@@ -223,9 +268,7 @@ func phase2FlattenStructures(obj interface{}) {
 			v["type"] = chosen
 		}
 
-		for _, child := range v {
-			phase2FlattenStructures(child)
-		}
+		forEachSchemaChild(v, phase2FlattenStructures)
 	case []interface{}:
 		for _, item := range v {
 			phase2FlattenStructures(item)
@@ -254,8 +297,7 @@ func selectBestSchema(schemas []map[string]interface{}) map[string]interface{} {
 	return schemas[bestIdx]
 }
 
-// Phase 3: Remove unsupported keywords recursively.
-// Descend into each property's subschema, but never delete property names themselves!
+// Phase 3: Remove unsupported keywords
 func phase3RemoveUnsupportedKeywords(obj interface{}) {
 	if obj == nil {
 		return
@@ -267,17 +309,7 @@ func phase3RemoveUnsupportedKeywords(obj interface{}) {
 				delete(v, k)
 			}
 		}
-		for k, child := range v {
-			if k == "properties" {
-				if props, ok := child.(map[string]interface{}); ok {
-					for _, propSchema := range props {
-						phase3RemoveUnsupportedKeywords(propSchema)
-					}
-					continue
-				}
-			}
-			phase3RemoveUnsupportedKeywords(child)
-		}
+		forEachSchemaChild(v, phase3RemoveUnsupportedKeywords)
 	case []interface{}:
 		for _, item := range v {
 			phase3RemoveUnsupportedKeywords(item)
@@ -308,9 +340,7 @@ func phase4CleanRequired(obj interface{}) {
 				delete(v, "required")
 			}
 		}
-		for _, child := range v {
-			phase4CleanRequired(child)
-		}
+		forEachSchemaChild(v, phase4CleanRequired)
 	case []interface{}:
 		for _, item := range v {
 			phase4CleanRequired(item)
@@ -318,7 +348,7 @@ func phase4CleanRequired(obj interface{}) {
 	}
 }
 
-// Phase 5: Ensure type: "object" has placeholder if properties are empty
+// Phase 5: Ensure object schemas have explicit type and placeholder properties if empty
 func phase5AddPlaceholders(obj interface{}) {
 	if obj == nil {
 		return
@@ -341,9 +371,7 @@ func phase5AddPlaceholders(obj interface{}) {
 				v["required"] = []interface{}{"reason"}
 			}
 		}
-		for _, child := range v {
-			phase5AddPlaceholders(child)
-		}
+		forEachSchemaChild(v, phase5AddPlaceholders)
 	case []interface{}:
 		for _, item := range v {
 			phase5AddPlaceholders(item)
@@ -361,9 +389,7 @@ func phase6EnsureArrayItems(obj interface{}) {
 		if v["type"] == "array" && v["items"] == nil {
 			v["items"] = map[string]interface{}{"type": "string"}
 		}
-		for _, child := range v {
-			phase6EnsureArrayItems(child)
-		}
+		forEachSchemaChild(v, phase6EnsureArrayItems)
 	case []interface{}:
 		for _, item := range v {
 			phase6EnsureArrayItems(item)

@@ -117,3 +117,64 @@ func TestCleanJSONSchemaForGemini(t *testing.T) {
 		t.Errorf("expected strList to have items")
 	}
 }
+
+func TestPropertiesMapNotCorrupted(t *testing.T) {
+	// Replicates tools with property names identical to schema keywords like 'properties', 'required', 'type'
+	raw := `{
+		"type": "object",
+		"properties": {
+			"type": {
+				"type": "string",
+				"description": "type of thing"
+			},
+			"required": {
+				"type": "boolean",
+				"description": "is it required"
+			},
+			"properties": {
+				"type": "object"
+			},
+			"items": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": {
+						"nested_type": {"type": "string"}
+					}
+				}
+			}
+		},
+		"if": {"properties": {"type": {"const": "special"}}},
+		"then": {"required": ["required"]},
+		"else": {"required": ["properties"]}
+	}`
+
+	var schema map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &schema); err != nil {
+		t.Fatalf("failed to unmarshal test JSON: %v", err)
+	}
+
+	cleaned := CleanJSONSchemaForGemini(schema).(map[string]interface{})
+
+	// 'if', 'then', 'else' must be deleted
+	if cleaned["if"] != nil || cleaned["then"] != nil || cleaned["else"] != nil {
+		t.Errorf("if/then/else should be deleted from root schema")
+	}
+
+	// properties map must ONLY contain Schema objects, NEVER a string "object"!
+	props, ok := cleaned["properties"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("properties is not a map")
+	}
+
+	for k, v := range props {
+		propSchema, ok := v.(map[string]interface{})
+		if !ok {
+			t.Fatalf("property %q value is NOT a map (Schema object)! got: %#v", k, v)
+		}
+		// Each property schema must have a valid type
+		if propSchema["type"] == nil {
+			t.Errorf("property %q has nil type", k)
+		}
+	}
+}
