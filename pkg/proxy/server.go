@@ -17,11 +17,15 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ziuus/goroute/pkg/cache"
 	"github.com/ziuus/goroute/pkg/catalog"
+	"github.com/ziuus/goroute/pkg/compression"
 	"github.com/ziuus/goroute/pkg/config"
+	"github.com/ziuus/goroute/pkg/keys"
+	"github.com/ziuus/goroute/pkg/mcp"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
 	"github.com/ziuus/goroute/pkg/providers/codex"
 	"github.com/ziuus/goroute/pkg/providers/copilot"
+	"github.com/ziuus/goroute/pkg/providers/cursor"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/quota"
@@ -37,6 +41,8 @@ type Server struct {
 	limiter         *quota.Limiter
 	cache           *cache.Cache
 	tunnelMgr       *tunnel.Manager
+	keyMgr          *keys.Manager
+	mcpServer       *mcp.Server
 	enableDashboard bool
 	mux             *chi.Mux
 	cfgPath         string
@@ -46,15 +52,26 @@ type Server struct {
 func (s *Server) SetConfigPaths(cfgPath, storePath string) {
 	s.cfgPath = cfgPath
 	s.storePath = storePath
+	if s.keyMgr != nil {
+		_ = s.keyMgr.Reload()
+	} else {
+		s.keyMgr = keys.NewManager(cfgPath)
+	}
 }
 
 func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *Server {
+	home, _ := os.UserHomeDir()
+	cfgPath := filepath.Join(home, ".goroute", "config.yaml")
+
 	s := &Server{
 		router:          r,
 		limiter:         limiter,
 		cache:           cache.NewCache(15*time.Minute, 2000),
 		tunnelMgr:       tunnel.NewManager(8128),
+		keyMgr:          keys.NewManager(cfgPath),
+		mcpServer:       mcp.NewServer(resilience.GlobalCooldown),
 		enableDashboard: enableDashboard,
+		cfgPath:         cfgPath,
 		mux:             chi.NewRouter(),
 	}
 
@@ -92,6 +109,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
+	s.mux.Post("/api/providers/import-cursor", s.handleImportCursor)
 	s.mux.Post("/api/providers/{id}/test", s.handleTestProvider)
 	s.mux.Post("/api/providers/{id}/accounts/{accId}/test", s.handleTestAccount)
 	s.mux.Delete("/api/providers/{id}", s.handleDeleteProvider)
@@ -100,6 +118,17 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/resilience/reset", s.handleResilienceReset)
 	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
 	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
+	s.mux.Get("/api/keys", s.handleListKeys)
+	s.mux.Post("/api/keys", s.handleCreateKey)
+	s.mux.Delete("/api/keys/{id}", s.handleRevokeKey)
+	s.mux.Post("/api/compression/compress", s.handleCompressPrompt)
+
+	// Built-in MCP Server
+	s.mux.Get("/sse", s.mcpServer.HandleSSE)
+	s.mux.Post("/message", s.mcpServer.HandleMessage)
+	s.mux.Get("/mcp/tools", s.mcpServer.HandleToolsList)
+	s.mux.Post("/mcp/tools", s.mcpServer.HandleToolCall)
+
 	s.tunnelMgr.RegisterRoutes(s.mux)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
@@ -142,6 +171,32 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("[GoRoute] Incoming /v1/chat/completions model=%s stream=%v messages=%d", chatReq.Model, chatReq.Stream, len(chatReq.Messages))
+
+	// Validate virtual key if keys are registered
+	if s.keyMgr != nil && s.keyMgr.HasKeys() {
+		ok, _, errMsg := s.keyMgr.Validate(r.Header.Get("Authorization"), chatReq.Model)
+		if !ok {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"error": map[string]interface{}{
+					"message": errMsg,
+					"type":    "invalid_request_error",
+				},
+			})
+			return
+		}
+	}
+
+	// Apply prompt token compression if requested
+	if r.Header.Get("X-Compress-Prompt") == "true" {
+		for i := range chatReq.Messages {
+			if str, ok := chatReq.Messages[i].Content.(string); ok {
+				compressed, _ := compression.CompressText(str)
+				chatReq.Messages[i].Content = compressed
+			}
+		}
+	}
 
 	// Guardrail messages to prevent context overflow 400 errors
 	chatReq.Messages = SanitizeAndGuardrailMessages(chatReq.Messages, 0)
@@ -862,6 +917,11 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 		err = prov.TestConnection(ctx)
 	case *copilot.Provider:
 		err = prov.TestConnection(ctx)
+	case *cursor.Provider:
+		valid, msg, _, terr := prov.TestAccount(ctx, "")
+		if !valid || terr != nil {
+			err = fmt.Errorf("%s", msg)
+		}
 	case *openai.Provider:
 		err = prov.TestConnection(ctx)
 	default:
@@ -921,6 +981,11 @@ func (s *Server) handleTestAccount(w http.ResponseWriter, r *http.Request) {
 		err = prov.TestAccount(ctx, accId)
 	case *copilot.Provider:
 		err = prov.TestAccount(ctx, accId)
+	case *cursor.Provider:
+		valid, msg, _, terr := prov.TestAccount(ctx, accId)
+		if !valid || terr != nil {
+			err = fmt.Errorf("%s", msg)
+		}
 	default:
 		err = fmt.Errorf("account-level testing not supported for %s", p.Type())
 	}
@@ -1107,6 +1172,26 @@ func (s *Server) Reload() error {
 				})
 			}
 			prov := copilot.NewProvider(pCfg.ID, accounts)
+			s.router.RegisterProvider(prov)
+		case "cursor":
+			var accounts []*cursor.Account
+			for _, a := range pCfg.Accounts {
+				accounts = append(accounts, &cursor.Account{
+					ID:           a.ID,
+					Email:        a.Email,
+					AccessToken:  a.AccessToken,
+					RefreshToken: a.RefreshToken,
+					ExpiresAt:    a.ExpiresAt,
+				})
+			}
+			if len(accounts) == 0 && (pCfg.APIKey != "" || pCfg.RefreshToken != "") {
+				accounts = append(accounts, &cursor.Account{
+					ID:           pCfg.ID,
+					AccessToken:  pCfg.APIKey,
+					RefreshToken: pCfg.RefreshToken,
+				})
+			}
+			prov := cursor.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
 		}
 	}
@@ -1295,4 +1380,158 @@ func (s *Server) handleUsageAnalytics(w http.ResponseWriter, r *http.Request) {
 		"generatedAt":    time.Now().UTC().Format(time.RFC3339),
 	})
 }
+
+func (s *Server) handleImportCursor(w http.ResponseWriter, r *http.Request) {
+	acc, err := cursor.AutoImportCursor()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == "cursor" {
+			found = true
+			accFound := false
+			for j, a := range p.Accounts {
+				if a.ID == acc.ID || a.Email == acc.Email {
+					cfg.Providers[i].Accounts[j].AccessToken = acc.AccessToken
+					cfg.Providers[i].Accounts[j].RefreshToken = acc.RefreshToken
+					cfg.Providers[i].Accounts[j].ExpiresAt = acc.ExpiresAt
+					accFound = true
+					break
+				}
+			}
+			if !accFound {
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+					ID:           acc.ID,
+					Email:        acc.Email,
+					AccessToken:  acc.AccessToken,
+					RefreshToken: acc.RefreshToken,
+					ExpiresAt:    acc.ExpiresAt,
+				})
+			}
+			break
+		}
+	}
+
+	if !found {
+		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+			ID:   "cursor",
+			Type: "cursor",
+			Accounts: []config.AccountConfig{
+				{
+					ID:           acc.ID,
+					Email:        acc.Email,
+					AccessToken:  acc.AccessToken,
+					RefreshToken: acc.RefreshToken,
+					ExpiresAt:    acc.ExpiresAt,
+				},
+			},
+		})
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Successfully imported Cursor credentials from ~/.config/cursor/auth.json",
+	})
+}
+
+func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
+	if s.keyMgr == nil {
+		http.Error(w, "Key manager uninitialized", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"keys":   s.keyMgr.ListKeys(),
+	})
+}
+
+func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
+	if s.keyMgr == nil {
+		http.Error(w, "Key manager uninitialized", http.StatusInternalServerError)
+		return
+	}
+	var req struct {
+		Name          string   `json:"name"`
+		AllowedModels []string `json:"allowed_models"`
+		MaxRPM        int      `json:"max_rpm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Name == "" {
+		req.Name = "Default Key"
+	}
+	key, err := s.keyMgr.CreateKey(req.Name, req.AllowedModels, req.MaxRPM)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"key":    key,
+	})
+}
+
+func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
+	if s.keyMgr == nil {
+		http.Error(w, "Key manager uninitialized", http.StatusInternalServerError)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := s.keyMgr.RevokeKey(id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Key revoked successfully",
+	})
+}
+
+func (s *Server) handleCompressPrompt(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	compressed, stats := compression.CompressText(req.Text)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"compressed": compressed,
+		"stats":      stats,
+	})
+}
+
 

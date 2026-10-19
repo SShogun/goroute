@@ -21,6 +21,7 @@ import (
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
 	"github.com/ziuus/goroute/pkg/providers/codex"
 	"github.com/ziuus/goroute/pkg/providers/copilot"
+	"github.com/ziuus/goroute/pkg/providers/cursor"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/proxy"
@@ -581,6 +582,57 @@ func NewAuthCmd() *cobra.Command {
 					imported++
 				} else if target == "copilot" {
 					return fmt.Errorf("failed to import copilot credentials: %v", err)
+				}
+			}
+
+			if target == "all" || target == "cursor" {
+				acc, err := cursor.AutoImportCursor()
+				if err == nil && acc != nil {
+					found := false
+					for i, p := range cfg.Providers {
+						if p.ID == "cursor" {
+							found = true
+							accFound := false
+							for j, a := range p.Accounts {
+								if a.ID == acc.ID || a.Email == acc.Email {
+									cfg.Providers[i].Accounts[j].AccessToken = acc.AccessToken
+									cfg.Providers[i].Accounts[j].RefreshToken = acc.RefreshToken
+									cfg.Providers[i].Accounts[j].ExpiresAt = acc.ExpiresAt
+									accFound = true
+									break
+								}
+							}
+							if !accFound {
+								cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+									ID:           acc.ID,
+									Email:        acc.Email,
+									AccessToken:  acc.AccessToken,
+									RefreshToken: acc.RefreshToken,
+									ExpiresAt:    acc.ExpiresAt,
+								})
+							}
+							break
+						}
+					}
+					if !found {
+						cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+							ID:   "cursor",
+							Type: "cursor",
+							Accounts: []config.AccountConfig{
+								{
+									ID:           acc.ID,
+									Email:        acc.Email,
+									AccessToken:  acc.AccessToken,
+									RefreshToken: acc.RefreshToken,
+									ExpiresAt:    acc.ExpiresAt,
+								},
+							},
+						})
+					}
+					fmt.Println("✅ Successfully imported Cursor credentials from ~/.config/cursor/auth.json")
+					imported++
+				} else if target == "cursor" {
+					return fmt.Errorf("failed to import cursor credentials: %v", err)
 				}
 			}
 

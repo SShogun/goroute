@@ -140,6 +140,16 @@ var Registry = []CatalogEntry{
 		Description: "GitHub Copilot subscription OAuth integration with 1-click import from ~/.config/github-copilot",
 		Models:      []string{"gpt-4o", "claude-3.5-sonnet", "o1-preview", "o1-mini"},
 	},
+	{
+		ID:          "cursor",
+		Name:        "Cursor Pro / IDE",
+		Type:        "cursor",
+		Category:    "oauth",
+		BaseURL:     "https://api2.cursor.sh",
+		AuthType:    "oauth",
+		Description: "Cursor Pro subscription OAuth credentials with 1-click import from ~/.config/cursor/auth.json",
+		Models:      []string{"auto", "composer-2", "claude-4.6-sonnet-medium", "claude-4.6-opus-high-thinking-fast", "gpt-5.4-low-fast", "gpt-5.3-codex", "gemini-3.1-pro", "grok-4.6-medium"},
+	},
 
 	// ─── Ultra-Fast LPUs & High-Speed Inference ──────────────────────────────
 	{

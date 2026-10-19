@@ -50,10 +50,22 @@ type ComboConfig struct {
 	Targets  []ComboTarget `yaml:"targets" json:"targets"`
 }
 
+type VirtualKey struct {
+	ID              string    `yaml:"id" json:"id"`
+	Name            string    `yaml:"name" json:"name"`
+	Key             string    `yaml:"key" json:"key"` // e.g. "sk-goroute-..."
+	IsActive        bool      `yaml:"is_active" json:"is_active"`
+	AllowedModels   []string  `yaml:"allowed_models,omitempty" json:"allowed_models,omitempty"`
+	MaxRPM          int       `yaml:"max_rpm,omitempty" json:"max_rpm,omitempty"`
+	TotalTokensUsed int       `yaml:"total_tokens_used,omitempty" json:"total_tokens_used,omitempty"`
+	CreatedAt       time.Time `yaml:"created_at" json:"created_at"`
+}
+
 type Config struct {
 	Server    ServerConfig     `yaml:"server"`
 	Providers []ProviderConfig `yaml:"providers"`
 	Combos    []ComboConfig    `yaml:"combos"`
+	Keys      []VirtualKey     `yaml:"keys,omitempty" json:"keys,omitempty"`
 }
 
 func DefaultConfig() *Config {
