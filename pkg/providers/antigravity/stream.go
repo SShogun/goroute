@@ -15,8 +15,9 @@ type geminiStreamChunk struct {
 		Candidates []struct {
 			Content struct {
 				Parts []struct {
-					Text             string `json:"text"`
-					ReasoningContent string `json:"thought"`
+					Text             string              `json:"text"`
+					ReasoningContent string              `json:"thought"`
+					FunctionCall     *geminiFunctionCall `json:"functionCall,omitempty"`
 				} `json:"parts"`
 			} `json:"content"`
 			FinishReason string `json:"finishReason"`
@@ -77,6 +78,38 @@ func TranslateGeminiSSEToOpenAI(rawStream io.ReadCloser, modelName string) io.Re
 
 			candidate := gChunk.Response.Candidates[0]
 			for _, part := range candidate.Content.Parts {
+				if part.FunctionCall != nil {
+					argsBytes, _ := json.Marshal(part.FunctionCall.Args)
+					toolCallChunk := map[string]interface{}{
+						"id":      "chatcmpl-goroute",
+						"object":  "chat.completion.chunk",
+						"created": now,
+						"model":   modelName,
+						"choices": []map[string]interface{}{
+							{
+								"index": 0,
+								"delta": map[string]interface{}{
+									"tool_calls": []map[string]interface{}{
+										{
+											"index": 0,
+											"id":    fmt.Sprintf("toolu_%d", time.Now().UnixNano()),
+											"type":  "function",
+											"function": map[string]string{
+												"name":      part.FunctionCall.Name,
+												"arguments": string(argsBytes),
+											},
+										},
+									},
+								},
+								"finish_reason": "tool_calls",
+							},
+						},
+					}
+					data, _ := json.Marshal(toolCallChunk)
+					fmt.Fprintf(pw, "data: %s\n\n", data)
+					continue
+				}
+
 				if part.Text == "" && part.ReasoningContent == "" {
 					continue
 				}

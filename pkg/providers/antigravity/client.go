@@ -59,9 +59,31 @@ type geminiInlineData struct {
 	Data     string `json:"data"`
 }
 
+type geminiFunctionCall struct {
+	Name string                 `json:"name"`
+	Args map[string]interface{} `json:"args,omitempty"`
+}
+
+type geminiFunctionResponse struct {
+	Name     string                 `json:"name"`
+	Response map[string]interface{} `json:"response"`
+}
+
 type geminiPart struct {
-	Text       string            `json:"text,omitempty"`
-	InlineData *geminiInlineData `json:"inlineData,omitempty"`
+	Text             string                  `json:"text,omitempty"`
+	InlineData       *geminiInlineData       `json:"inlineData,omitempty"`
+	FunctionCall     *geminiFunctionCall     `json:"functionCall,omitempty"`
+	FunctionResponse *geminiFunctionResponse `json:"functionResponse,omitempty"`
+}
+
+type geminiFunctionDecl struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters,omitempty"`
+}
+
+type geminiToolItem struct {
+	FunctionDeclarations []geminiFunctionDecl `json:"functionDeclarations,omitempty"`
 }
 
 func extractInlineDataFromURL(rawURL string) *geminiInlineData {
@@ -94,7 +116,41 @@ func parseGeminiParts(content interface{}) []geminiPart {
 					continue
 				}
 
-				// 2. OpenAI image_url block
+				// 2. Anthropic tool_use block
+				if m["type"] == "tool_use" {
+					name, _ := m["name"].(string)
+					input, _ := m["input"].(map[string]interface{})
+					if input == nil {
+						input = make(map[string]interface{})
+					}
+					parts = append(parts, geminiPart{
+						FunctionCall: &geminiFunctionCall{
+							Name: name,
+							Args: input,
+						},
+					})
+					continue
+				}
+
+				// 3. Anthropic tool_result block
+				if m["type"] == "tool_result" {
+					name, _ := m["name"].(string)
+					if name == "" {
+						name = "tool"
+					}
+					content := m["content"]
+					parts = append(parts, geminiPart{
+						FunctionResponse: &geminiFunctionResponse{
+							Name: name,
+							Response: map[string]interface{}{
+								"result": content,
+							},
+						},
+					})
+					continue
+				}
+
+				// 4. OpenAI image_url block
 				if m["type"] == "image_url" {
 					if imgMap, ok := m["image_url"].(map[string]interface{}); ok {
 						if rawURL, ok := imgMap["url"].(string); ok {
@@ -106,7 +162,7 @@ func parseGeminiParts(content interface{}) []geminiPart {
 					}
 				}
 
-				// 3. Anthropic image block
+				// 5. Anthropic image block
 				if m["type"] == "image" {
 					if src, ok := m["source"].(map[string]interface{}); ok {
 						if data, ok := src["data"].(string); ok {
@@ -125,7 +181,7 @@ func parseGeminiParts(content interface{}) []geminiPart {
 					}
 				}
 
-				// 4. Direct inlineData
+				// 6. Direct inlineData
 				if inlineMap, ok := m["inlineData"].(map[string]interface{}); ok {
 					mime, _ := inlineMap["mimeType"].(string)
 					data, _ := inlineMap["data"].(string)
@@ -156,7 +212,8 @@ type antigravityPayload struct {
 	Project string `json:"project,omitempty"`
 	Model   string `json:"model"`
 	Request struct {
-		Contents []geminiContent `json:"contents"`
+		Contents []geminiContent  `json:"contents"`
+		Tools    []geminiToolItem `json:"tools,omitempty"`
 	} `json:"request"`
 }
 
@@ -239,6 +296,38 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 
 		payload.Request.Contents = contents
+
+		var fnDecls []geminiFunctionDecl
+		for _, t := range req.Tools {
+			m, ok := t.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			name, _ := m["name"].(string)
+			desc, _ := m["description"].(string)
+			schema := m["input_schema"]
+			if schema == nil {
+				if fn, ok := m["function"].(map[string]interface{}); ok {
+					name, _ = fn["name"].(string)
+					desc, _ = fn["description"].(string)
+					schema = fn["parameters"]
+				}
+			}
+			schemaMap, ok := schema.(map[string]interface{})
+			if !ok {
+				schemaMap = map[string]interface{}{"type": "object"}
+			}
+			fnDecls = append(fnDecls, geminiFunctionDecl{
+				Name:        name,
+				Description: desc,
+				Parameters:  schemaMap,
+			})
+		}
+		if len(fnDecls) > 0 {
+			payload.Request.Tools = []geminiToolItem{
+				{FunctionDeclarations: fnDecls},
+			}
+		}
 
 		reqBytes, err := json.Marshal(payload)
 		if err != nil {
