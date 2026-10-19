@@ -433,11 +433,93 @@
       align-items: center;
       margin: 1rem 0;
     }
-    .modal-actions {
+    .catalog-filters {
       display: flex;
-      justify-content: flex-end;
-      gap: 0.75rem;
-      margin-top: 1.5rem;
+      gap: 0.35rem;
+      overflow-x: auto;
+      padding-bottom: 0.35rem;
+    }
+    .catalog-filter-btn {
+      font-size: 0.72rem;
+      padding: 0.25rem 0.55rem;
+      border-radius: 6px;
+      border: 1px solid var(--card-border);
+      background: #111827;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s ease;
+    }
+    .catalog-filter-btn.active, .catalog-filter-btn:hover {
+      background: #1e293b;
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .catalog-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 0.45rem;
+      max-height: 190px;
+      overflow-y: auto;
+      padding: 0.45rem;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      background: #030712;
+    }
+    .catalog-card {
+      border: 1px solid #1f293d;
+      border-radius: 6px;
+      padding: 0.45rem;
+      background: #0d131f;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      transition: all 0.15s ease;
+    }
+    .catalog-card:hover, .catalog-card.selected {
+      border-color: var(--accent);
+      background: #1e293b;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+    }
+    .catalog-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .catalog-badge {
+      width: 18px;
+      height: 18px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .catalog-card-title {
+      font-size: 0.74rem;
+      font-weight: 700;
+      color: #fff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .catalog-card-cat {
+      font-size: 0.62rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .model-tag {
+      font-size: 0.68rem;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 0.15rem 0.45rem;
+      background: #111827;
+      border: 1px solid #1f293d;
+      border-radius: 4px;
+      color: #93c5fd;
     }
 
     /* Toast */
@@ -575,65 +657,104 @@
 
   <!-- Modal for Adding Provider / Account -->
   <div class="modal-overlay" id="provider-modal">
-    <div class="modal-content" style="max-width: 520px;">
-      <div class="modal-title">Add Provider Connection / Account</div>
-      <div class="modal-body">
-        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem;">
-          <button class="btn btn-primary" id="tab-api-btn" onclick="switchProviderTab('api')">Custom API Key</button>
-          <button class="btn" id="tab-kiro-btn" onclick="switchProviderTab('kiro')">AWS Kiro Account</button>
-          <button class="btn" id="tab-oauth-btn" onclick="switchProviderTab('oauth')">Google Antigravity OAuth</button>
+    <div class="modal-content" style="max-width: 760px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+        <div>
+          <div class="modal-title" style="margin-bottom: 0.2rem;">Connect Provider or Account</div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">Choose from 50+ verified presets or configure custom OpenAI/Anthropic endpoints</div>
         </div>
-
-        <div id="tab-api-content">
-          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">Connect OpenAI, Anthropic, DeepSeek, OpenRouter, Groq, Ollama, or any custom endpoint:</p>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Provider ID</label>
-            <input type="text" id="add-prov-id" class="text-input" placeholder="e.g. deepseek, openrouter, groq, my-proxy" style="width: 100%;">
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Base URL</label>
-            <input type="text" id="add-prov-url" class="text-input" placeholder="e.g. https://api.deepseek.com/v1" style="width: 100%;">
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">API Key / Bearer Token</label>
-            <input type="password" id="add-prov-key" class="text-input" placeholder="sk-..." style="width: 100%;">
-          </div>
-          <button class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;" onclick="submitNewProvider()">Save &amp; Connect Provider</button>
-        </div>
-
-        <div id="tab-kiro-content" style="display: none;">
-          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">Add AWS CodeWhisperer / Kiro accounts for Claude Sonnet 4.5 &amp; Haiku 4.5 failover pooling:</p>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Provider ID (Use "kiro" to add to existing pool, or new ID like "kiro-2")</label>
-            <input type="text" id="add-kiro-id" class="text-input" placeholder="kiro" value="kiro" style="width: 100%;">
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Account Label / Name (Optional, e.g. kiro-personal, kiro-work)</label>
-            <input type="text" id="add-kiro-acc-id" class="text-input" placeholder="e.g. kiro-account-2" style="width: 100%;">
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Refresh Token (aor...)</label>
-            <textarea id="add-kiro-token" class="text-input" placeholder="aorAAAAAG..." style="width: 100%; height: 60px; font-family: monospace; font-size: 0.75rem;"></textarea>
-          </div>
-          <div style="margin-bottom: 0.75rem;">
-            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Profile ARN (Optional)</label>
-            <input type="text" id="add-kiro-arn" class="text-input" placeholder="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK" value="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK" style="width: 100%;">
-          </div>
-          <button class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;" onclick="submitNewKiro()">Connect Kiro Account</button>
-        </div>
-
-        <div id="tab-oauth-content" style="display: none;">
-          <p style="font-size: 0.85rem;">GoRoute uses PKCE OAuth to securely link Google Antigravity accounts into your encrypted local vault.</p>
-          <p style="margin-top: 1rem;"><strong>Quick Terminal Command:</strong></p>
-          <div class="command-box">
-            <span>goroute auth login antigravity</span>
-            <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
-          </div>
-          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">This will open your default browser to authorize Google Antigravity and automatically add it to your active pool.</p>
-        </div>
+        <button class="btn" onclick="closeAddProviderModal()" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;">✕</button>
       </div>
-      <div class="modal-actions" style="margin-top: 1rem;">
-        <button class="btn" onclick="closeAddProviderModal()">Close</button>
+
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding-right: 0.25rem;">
+        <!-- Search and Category Filters -->
+        <div style="margin-bottom: 0.75rem;">
+          <input type="text" id="catalog-search" class="text-input" placeholder="🔍 Search 50+ providers (OpenAI, Anthropic, Gemini, Groq, DeepSeek, Ollama, Kiro, Antigravity...)" style="width: 100%; margin-bottom: 0.5rem;" oninput="filterCatalog()">
+          <div class="catalog-filters" id="catalog-filters">
+            <button class="catalog-filter-btn active" onclick="setCatalogFilter('all', this)">All (50+)</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('frontier', this)">Frontier Labs</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('inference', this)">Ultra-Fast LPUs</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('gateway', this)">Gateways</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('asia', this)">Asia / Open Weights</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('local', this)">Local Engines</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('oauth', this)">OAuth / Free Pools</button>
+            <button class="catalog-filter-btn" onclick="setCatalogFilter('custom', this)">+ Custom Endpoint</button>
+          </div>
+        </div>
+
+        <!-- Catalog Grid -->
+        <div class="catalog-grid" id="catalog-grid">
+          <!-- Dynamically populated from /api/catalog -->
+        </div>
+
+        <!-- Selected Provider Setup Box -->
+        <div id="selected-provider-box" style="background: #090d16; border: 1px solid var(--card-border); border-radius: 10px; padding: 1rem; margin-top: 0.75rem;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+            <div style="display: flex; gap: 0.75rem; align-items: center;">
+              <div id="sel-prov-avatar" class="account-avatar" style="width: 36px; height: 36px; font-size: 1rem; font-weight: 700;">O</div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <span id="sel-prov-name" style="font-weight: 700; font-size: 1rem; color: #fff;">OpenAI</span>
+                  <span id="sel-prov-cat" class="pill pill-blue" style="font-size: 0.65rem; padding: 0.15rem 0.5rem;">Frontier</span>
+                </div>
+                <div id="sel-prov-desc" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Official OpenAI GPT-4o, o1, o3-mini models</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Models hint tags -->
+          <div id="sel-prov-models" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.85rem;"></div>
+
+          <!-- Dynamic Form Inputs -->
+          <div id="form-inputs-container">
+            <!-- Common Fields -->
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 0.5rem; margin-bottom: 0.75rem;">
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Provider ID</label>
+                <input type="text" id="add-prov-id" class="text-input" style="width: 100%; font-family: monospace; font-size: 0.8rem;" value="openai">
+              </div>
+              <div>
+                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Base URL Endpoint</label>
+                <input type="text" id="add-prov-url" class="text-input" style="width: 100%; font-family: monospace; font-size: 0.8rem;" value="https://api.openai.com/v1">
+              </div>
+            </div>
+
+            <!-- API Key Input -->
+            <div id="input-group-apikey" style="margin-bottom: 0.75rem;">
+              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">API Key / Bearer Token</label>
+              <input type="password" id="add-prov-key" class="text-input" placeholder="sk-..." style="width: 100%;">
+            </div>
+
+            <!-- Local Engine Notice -->
+            <div id="input-group-local" style="display: none; margin-bottom: 0.75rem; padding: 0.6rem 0.85rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
+              <span style="color: var(--success); font-weight: 600; font-size: 0.82rem;">✨ Zero-Config Local Engine:</span>
+              <span style="color: var(--text-muted); font-size: 0.8rem;"> No API key required. GoRoute connects directly to your local runner.</span>
+            </div>
+
+            <!-- Kiro OAuth Inputs -->
+            <div id="input-group-kiro" style="display: none; margin-bottom: 0.75rem;">
+              <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
+                <button type="button" class="btn btn-primary" onclick="autoImportKiro()" style="flex: 1;">⚡ 1-Click Auto-Import from local Kiro</button>
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Or paste AWS Builder ID Refresh Token:</div>
+              <textarea id="add-kiro-token" class="text-input" placeholder="aorAAAAAG..." style="width: 100%; height: 50px; font-family: monospace; font-size: 0.75rem; margin-bottom: 0.5rem;"></textarea>
+              <input type="text" id="add-kiro-arn" class="text-input" placeholder="Profile ARN (Optional)" value="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK" style="width: 100%; font-size: 0.75rem;">
+            </div>
+
+            <!-- Antigravity OAuth Notice -->
+            <div id="input-group-oauth" style="display: none; margin-bottom: 0.75rem;">
+              <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem;">Google Antigravity accounts are securely authenticated into your local encrypted vault via PKCE OAuth:</p>
+              <div class="command-box" style="margin: 0.5rem 0;">
+                <span>goroute auth login antigravity</span>
+                <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="save-prov-btn" style="width: 100%; padding: 0.6rem; font-size: 0.9rem;" onclick="submitActiveProvider()">
+              Connect Provider
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -654,51 +775,218 @@
       });
     }
 
+    let catalogData = [];
+    let activeCatalogFilter = 'all';
+    let selectedPreset = null;
+
+    async function loadCatalog() {
+      try {
+        const res = await fetch('/api/catalog');
+        const d = await res.json();
+        if (d.data && d.data.length > 0) {
+          catalogData = d.data;
+          renderCatalog();
+          if (!selectedPreset) {
+            selectPreset(catalogData[0]);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load catalog:", e);
+      }
+    }
+
     function openAddProviderModal() {
       document.getElementById('provider-modal').classList.add('open');
+      if (catalogData.length === 0) {
+        loadCatalog();
+      }
     }
     function closeAddProviderModal() {
       document.getElementById('provider-modal').classList.remove('open');
     }
 
-    function switchProviderTab(tab) {
-      ['api', 'kiro', 'oauth'].forEach(t => {
-        const btn = document.getElementById(`tab-${t}-btn`);
-        const content = document.getElementById(`tab-${t}-content`);
-        if (btn) btn.className = (t === tab ? 'btn btn-primary' : 'btn');
-        if (content) content.style.display = (t === tab ? 'block' : 'none');
+    function setCatalogFilter(cat, btn) {
+      activeCatalogFilter = cat;
+      document.querySelectorAll('.catalog-filter-btn').forEach(b => b.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      filterCatalog();
+    }
+
+    function filterCatalog() {
+      const q = document.getElementById('catalog-search').value.toLowerCase().trim();
+      if (activeCatalogFilter === 'custom') {
+        renderCustomOption();
+        return;
+      }
+      const filtered = catalogData.filter(item => {
+        const matchesCat = activeCatalogFilter === 'all' || item.category === activeCatalogFilter;
+        const matchesQuery = !q || item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q) || item.description.toLowerCase().includes(q);
+        return matchesCat && matchesQuery;
+      });
+      renderCatalog(filtered);
+    }
+
+    function renderCatalog(items = null) {
+      const list = items !== null ? items : catalogData;
+      const grid = document.getElementById('catalog-grid');
+      grid.innerHTML = '';
+
+      if (list.length === 0) {
+        grid.innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem; padding:1rem; text-align:center; grid-column:1/-1;">No matching presets found. Try another search or click "+ Custom Endpoint".</div>';
+        return;
+      }
+
+      list.forEach(p => {
+        let badgeBg = 'rgba(56, 189, 248, 0.15)';
+        let badgeColor = '#38bdf8';
+        if (p.category === 'frontier') { badgeBg = 'rgba(56, 189, 248, 0.15)'; badgeColor = '#38bdf8'; }
+        else if (p.category === 'inference') { badgeBg = 'rgba(245, 158, 11, 0.15)'; badgeColor = '#f59e0b'; }
+        else if (p.category === 'gateway') { badgeBg = 'rgba(168, 85, 247, 0.15)'; badgeColor = '#c084fc'; }
+        else if (p.category === 'asia') { badgeBg = 'rgba(236, 72, 153, 0.15)'; badgeColor = '#f472b6'; }
+        else if (p.category === 'local') { badgeBg = 'rgba(16, 185, 129, 0.15)'; badgeColor = '#34d399'; }
+        else if (p.category === 'oauth') { badgeBg = 'rgba(251, 146, 60, 0.15)'; badgeColor = '#fb923c'; }
+
+        const initial = p.name.charAt(0).toUpperCase();
+        const card = document.createElement('div');
+        const isSel = selectedPreset && selectedPreset.id === p.id;
+        card.className = `catalog-card ${isSel ? 'selected' : ''}`;
+        card.onclick = () => selectPreset(p);
+        card.innerHTML = `
+          <div class="catalog-card-header">
+            <div class="catalog-badge" style="background:${badgeBg}; color:${badgeColor};">${initial}</div>
+            <div class="catalog-card-title">${p.name}</div>
+          </div>
+          <div class="catalog-card-cat">${p.category}</div>
+        `;
+        grid.appendChild(card);
       });
     }
 
-    async function submitNewKiro() {
-      const id = document.getElementById('add-kiro-id').value.trim() || 'kiro';
-      const accountId = document.getElementById('add-kiro-acc-id').value.trim();
-      const token = document.getElementById('add-kiro-token').value.trim();
-      const arn = document.getElementById('add-kiro-arn').value.trim();
-      if (!token) {
-        showToast('Refresh token required');
-        return;
-      }
-      try {
-        const res = await fetch('/api/providers/add', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, account_id: accountId, type: 'kiro', refresh_token: token, profile_arn: arn })
+    function renderCustomOption() {
+      selectPreset({
+        id: "custom-provider",
+        name: "Custom OpenAI/Anthropic Endpoint",
+        type: "openai",
+        category: "custom",
+        base_url: "https://your-custom-endpoint.com/v1",
+        auth_type: "apikey",
+        description: "Connect any self-hosted proxy, gateway, or private inference server.",
+        models: ["custom-model-1", "custom-model-2"]
+      });
+      document.getElementById('catalog-grid').innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem; padding:1rem; text-align:center; grid-column:1/-1;">Custom provider selected. Configure the fields below.</div>';
+    }
+
+    function selectPreset(p) {
+      selectedPreset = p;
+      document.querySelectorAll('.catalog-card').forEach(c => c.classList.remove('selected'));
+      const cards = document.querySelectorAll('.catalog-card');
+      cards.forEach(c => {
+        if (c.innerText.includes(p.name)) c.classList.add('selected');
+      });
+
+      document.getElementById('sel-prov-name').innerText = p.name;
+      document.getElementById('sel-prov-desc').innerText = p.description;
+      document.getElementById('sel-prov-cat').innerText = p.category ? p.category.toUpperCase() : 'CUSTOM';
+      document.getElementById('sel-prov-avatar').innerText = p.name.charAt(0).toUpperCase();
+
+      const mBox = document.getElementById('sel-prov-models');
+      mBox.innerHTML = '';
+      if (p.models && p.models.length > 0) {
+        p.models.forEach(m => {
+          const span = document.createElement('span');
+          span.className = 'model-tag';
+          span.innerText = m;
+          mBox.appendChild(span);
         });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast(`Kiro account connected to pool "${id}"!`);
-          closeAddProviderModal();
-          loadStatus();
-        } else {
-          showToast(`Error: ${d.error || 'Failed'}`);
-        }
-      } catch (e) {
-        showToast(`Failed: ${e.message}`);
+      }
+
+      document.getElementById('add-prov-id').value = p.id;
+      document.getElementById('add-prov-url').value = p.base_url;
+
+      const grpApiKey = document.getElementById('input-group-apikey');
+      const grpLocal = document.getElementById('input-group-local');
+      const grpKiro = document.getElementById('input-group-kiro');
+      const grpOAuth = document.getElementById('input-group-oauth');
+
+      grpApiKey.style.display = 'none';
+      grpLocal.style.display = 'none';
+      grpKiro.style.display = 'none';
+      grpOAuth.style.display = 'none';
+
+      if (p.auth_type === 'refresh_token' || p.id === 'kiro') {
+        grpKiro.style.display = 'block';
+        document.getElementById('save-prov-btn').innerText = `Connect ${p.name}`;
+      } else if (p.auth_type === 'oauth' || p.id === 'antigravity') {
+        grpOAuth.style.display = 'block';
+        document.getElementById('save-prov-btn').innerText = `Close (Authenticate in Terminal)`;
+      } else if (p.auth_type === 'none' || p.category === 'local') {
+        grpLocal.style.display = 'block';
+        document.getElementById('save-prov-btn').innerText = `Connect ${p.name} (No Key Required)`;
+      } else {
+        grpApiKey.style.display = 'block';
+        let keyPlaceholder = 'sk-...';
+        if (p.id.includes('anthropic')) keyPlaceholder = 'sk-ant-api03-...';
+        else if (p.id.includes('gemini')) keyPlaceholder = 'AIzaSy...';
+        else if (p.id.includes('groq')) keyPlaceholder = 'gsk_...';
+        else if (p.id.includes('deepseek')) keyPlaceholder = 'sk-...';
+        else if (p.id.includes('openrouter')) keyPlaceholder = 'sk-or-v1-...';
+        document.getElementById('add-prov-key').placeholder = keyPlaceholder;
+        document.getElementById('save-prov-btn').innerText = `Connect ${p.name}`;
       }
     }
 
-    async function submitNewProvider() {
+    async function autoImportKiro() {
+      showToast('Importing Kiro credentials from local database...');
+      try {
+        const res = await fetch('/api/providers/import-kiro', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast('Kiro credentials imported & active!');
+          closeAddProviderModal();
+          loadStatus();
+        } else {
+          showToast('Import error: ' + (d.error || 'Failed'));
+        }
+      } catch (e) {
+        showToast('Auto-import failed: ' + e.message);
+      }
+    }
+
+    async function submitActiveProvider() {
+      if (!selectedPreset) return;
+      if (selectedPreset.auth_type === 'oauth' && selectedPreset.id === 'antigravity') {
+        closeAddProviderModal();
+        return;
+      }
+      if (selectedPreset.auth_type === 'refresh_token' || selectedPreset.id === 'kiro') {
+        const token = document.getElementById('add-kiro-token').value.trim();
+        const arn = document.getElementById('add-kiro-arn').value.trim();
+        const provId = document.getElementById('add-prov-id').value.trim() || 'kiro';
+        if (!token) {
+          showToast('Please enter Refresh Token or click Auto-Import');
+          return;
+        }
+        try {
+          const res = await fetch('/api/providers/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: provId, type: 'kiro', refresh_token: token, profile_arn: arn })
+          });
+          const d = await res.json();
+          if (d.status === 'ok') {
+            showToast(`Kiro account connected!`);
+            closeAddProviderModal();
+            loadStatus();
+          } else {
+            showToast('Error: ' + (d.error || 'Failed'));
+          }
+        } catch (e) {
+          showToast('Failed: ' + e.message);
+        }
+        return;
+      }
+
+      // OpenAI or Local compatible
       const id = document.getElementById('add-prov-id').value.trim();
       const url = document.getElementById('add-prov-url').value.trim();
       const key = document.getElementById('add-prov-key').value.trim();
@@ -718,10 +1006,10 @@
           closeAddProviderModal();
           loadStatus();
         } else {
-          showToast(`Error: ${d.error || 'Failed'}`);
+          showToast('Error: ' + (d.error || 'Failed'));
         }
       } catch (e) {
-        showToast(`Failed: ${e.message}`);
+        showToast('Failed: ' + e.message);
       }
     }
 

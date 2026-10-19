@@ -10,11 +10,13 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ziuus/goroute/pkg/cache"
+	"github.com/ziuus/goroute/pkg/catalog"
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
@@ -75,11 +77,13 @@ func (s *Server) setupRoutes() {
 
 	s.mux.Get("/health", s.handleHealth)
 	s.mux.Get("/api/status", s.handleAPIStatus)
+	s.mux.Get("/api/catalog", s.handleCatalog)
 	s.mux.Get("/api/logs", s.handleLogs)
 	s.mux.Get("/api/logs/stream", s.handleLogsStream)
 	s.mux.Post("/api/reload", s.handleReload)
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)
+	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
@@ -430,6 +434,15 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleCatalog(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"count":  len(catalog.Registry),
+		"data":   catalog.Registry,
+	})
+}
+
 func (s *Server) handleAgentSetup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Agent string `json:"agent"`
@@ -559,6 +572,26 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
 		"id":     req.ID,
+	})
+}
+
+func (s *Server) handleImportKiro(w http.ResponseWriter, r *http.Request) {
+	out, err := exec.Command("goroute", "auth", "import", "kiro").CombinedOutput()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  string(out),
+		})
+		return
+	}
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"output":  strings.TrimSpace(string(out)),
+		"message": "Successfully imported Kiro account into active pool",
 	})
 }
 
