@@ -183,8 +183,8 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			return body, isStream, statusCode, nil
 		}
 
-		// If 429 (Rate limited), 401/403 (Auth/License), 404 (Model deprecated), or 5xx (Upstream error), close body and cascade to next target!
-		if statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusNotFound || (statusCode >= 500 && statusCode <= 599) {
+		// If 402 (Payment/Quota exhausted), 429 (Rate limited), 401/403 (Auth/License), 404 (Model deprecated), or 5xx (Upstream error), close body and cascade to next target!
+		if statusCode == http.StatusPaymentRequired || statusCode == http.StatusTooManyRequests || statusCode == http.StatusForbidden || statusCode == http.StatusUnauthorized || statusCode == http.StatusNotFound || (statusCode >= 500 && statusCode <= 599) {
 			if body != nil {
 				body.Close()
 			}

@@ -130,9 +130,25 @@ type kiroToolItem struct {
 	ToolSpecification kiroToolSpec `json:"toolSpecification"`
 }
 
+type kiroToolUse struct {
+	ToolUseId string      `json:"toolUseId"`
+	Name      string      `json:"name"`
+	Input     interface{} `json:"input"`
+}
+
+type kiroToolResultText struct {
+	Text string `json:"text"`
+}
+
+type kiroToolResult struct {
+	ToolUseId string               `json:"toolUseId"`
+	Status    string               `json:"status"` // "success" or "error"
+	Content   []kiroToolResultText `json:"content"`
+}
+
 type kiroUserInputContext struct {
-	Tools       []kiroToolItem           `json:"tools,omitempty"`
-	ToolResults []map[string]interface{} `json:"toolResults,omitempty"`
+	Tools       []kiroToolItem   `json:"tools,omitempty"`
+	ToolResults []kiroToolResult `json:"toolResults,omitempty"`
 }
 
 type kiroUserMsg struct {
@@ -143,7 +159,8 @@ type kiroUserMsg struct {
 }
 
 type kiroAssistMsg struct {
-	Content string `json:"content"`
+	Content  string        `json:"content"`
+	ToolUses []kiroToolUse `json:"toolUses,omitempty"`
 }
 
 type kiroHistoryTurn struct {
@@ -197,38 +214,111 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 	// Prepare messages
 	var userContent string
+	var currentToolResults []kiroToolResult
 	var history []kiroHistoryTurn
 
 	for i, m := range req.Messages {
-		text := ""
-		switch v := m.Content.(type) {
-		case string:
-			text = v
-		default:
-			b, _ := json.Marshal(v)
-			text = string(b)
-		}
+		isLast := i == len(req.Messages)-1
 
-		if i == len(req.Messages)-1 && (m.Role == "user" || m.Role == "system") {
-			userContent = text
+		if m.Role == "assistant" {
+			text := ""
+			var toolUses []kiroToolUse
+
+			switch v := m.Content.(type) {
+			case string:
+				text = v
+			case []interface{}:
+				for _, item := range v {
+					if bm, ok := item.(map[string]interface{}); ok {
+						if bm["type"] == "text" {
+							if tStr, ok := bm["text"].(string); ok {
+								text += tStr + "\n"
+							}
+						} else if bm["type"] == "tool_use" {
+							id, _ := bm["id"].(string)
+							name, _ := bm["name"].(string)
+							input := bm["input"]
+							toolUses = append(toolUses, kiroToolUse{
+								ToolUseId: id,
+								Name:      name,
+								Input:     input,
+							})
+						}
+					}
+				}
+			}
+
+			history = append(history, kiroHistoryTurn{
+				AssistantResponseMessage: &kiroAssistMsg{
+					Content:  strings.TrimSpace(text),
+					ToolUses: toolUses,
+				},
+			})
 		} else {
-			if m.Role == "assistant" {
-				history = append(history, kiroHistoryTurn{
-					AssistantResponseMessage: &kiroAssistMsg{Content: text},
-				})
+			// user or system or tool
+			text := ""
+			var toolResults []kiroToolResult
+
+			switch v := m.Content.(type) {
+			case string:
+				text = v
+			case []interface{}:
+				for _, item := range v {
+					if bm, ok := item.(map[string]interface{}); ok {
+						if bm["type"] == "text" {
+							if tStr, ok := bm["text"].(string); ok {
+								text += tStr + "\n"
+							}
+						} else if bm["type"] == "tool_result" {
+							toolUseId, _ := bm["tool_use_id"].(string)
+							isErr, _ := bm["is_error"].(bool)
+							status := "success"
+							if isErr {
+								status = "error"
+							}
+							resContent := ""
+							switch c := bm["content"].(type) {
+							case string:
+								resContent = c
+							default:
+								b, _ := json.Marshal(c)
+								resContent = string(b)
+							}
+							if resContent == "" {
+								resContent = "(no output)"
+							}
+							toolResults = append(toolResults, kiroToolResult{
+								ToolUseId: toolUseId,
+								Status:    status,
+								Content:   []kiroToolResultText{{Text: resContent}},
+							})
+						}
+					}
+				}
+			}
+
+			text = strings.TrimSpace(text)
+			if isLast {
+				userContent = text
+				currentToolResults = toolResults
 			} else {
+				var uCtx *kiroUserInputContext
+				if len(toolResults) > 0 {
+					uCtx = &kiroUserInputContext{ToolResults: toolResults}
+				}
 				history = append(history, kiroHistoryTurn{
 					UserInputMessage: &kiroUserMsg{
-						Content: text,
-						ModelID: modelID,
-						Origin:  "AI_EDITOR",
+						Content:                 text,
+						ModelID:                 modelID,
+						Origin:                  "AI_EDITOR",
+						UserInputMessageContext: uCtx,
 					},
 				})
 			}
 		}
 	}
 
-	if userContent == "" {
+	if userContent == "" && len(currentToolResults) == 0 {
 		userContent = "(empty prompt)"
 	}
 
@@ -248,9 +338,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				schema = fn["parameters"]
 			}
 		}
-		schemaMap, ok := schema.(map[string]interface{})
+		schemaMap, ok := NormalizeKiroToolSchema(schema).(map[string]interface{})
 		if !ok {
-			schemaMap = map[string]interface{}{"type": "object"}
+			schemaMap = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
 		}
 		kiroTools = append(kiroTools, kiroToolItem{
 			ToolSpecification: kiroToolSpec{
@@ -264,9 +354,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	}
 
 	var userCtx *kiroUserInputContext
-	if len(kiroTools) > 0 {
+	if len(kiroTools) > 0 || len(currentToolResults) > 0 {
 		userCtx = &kiroUserInputContext{
-			Tools: kiroTools,
+			Tools:       kiroTools,
+			ToolResults: currentToolResults,
 		}
 	}
 

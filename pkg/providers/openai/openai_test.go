@@ -27,7 +27,7 @@ func TestOpenAIProviderChatCompletion(t *testing.T) {
 	}))
 	defer server.Close()
 
-	prov := NewProvider("test-provider", server.URL, "test-secret")
+	prov := NewProvider("test-provider", server.URL, "test-secret", nil)
 
 	req := &providers.ChatRequest{
 		Model: "gpt-4o",

@@ -313,9 +313,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 					schema = fn["parameters"]
 				}
 			}
-			schemaMap, ok := schema.(map[string]interface{})
+			cleanedSchema := CleanJSONSchemaForGemini(schema)
+			schemaMap, ok := cleanedSchema.(map[string]interface{})
 			if !ok {
-				schemaMap = map[string]interface{}{"type": "object"}
+				schemaMap = map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}
 			}
 			fnDecls = append(fnDecls, geminiFunctionDecl{
 				Name:        name,
@@ -373,8 +374,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			acc.InvalidateToken()
 		}
 
-		// If 429 (quota), 403 (unlicensed/permission), or 401, try next account
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
+		// If 402/429 (quota), 403 (unlicensed/permission), or 401, try next account
+		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
 			if lastBody != nil {
 				lastBody.Close()
 			}
