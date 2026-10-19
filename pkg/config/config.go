@@ -25,11 +25,14 @@ type AccountConfig struct {
 }
 
 type ProviderConfig struct {
-	ID       string          `yaml:"id"`
-	Type     string          `yaml:"type"` // "openai", "antigravity"
-	BaseURL  string          `yaml:"base_url,omitempty"`
-	APIKey   string          `yaml:"api_key,omitempty"`
-	Accounts []AccountConfig `yaml:"accounts,omitempty"`
+	ID           string            `yaml:"id"`
+	Type         string            `yaml:"type"` // "openai", "antigravity", "kiro"
+	BaseURL      string            `yaml:"base_url,omitempty"`
+	APIKey       string            `yaml:"api_key,omitempty"`
+	RefreshToken string            `yaml:"refresh_token,omitempty"`
+	ProfileARN   string            `yaml:"profile_arn,omitempty"`
+	Headers      map[string]string `yaml:"headers,omitempty"`
+	Accounts     []AccountConfig   `yaml:"accounts,omitempty"`
 }
 
 type ComboTarget struct {

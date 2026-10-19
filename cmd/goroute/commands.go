@@ -17,6 +17,7 @@ import (
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
+	"github.com/ziuus/goroute/pkg/providers/kiro"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/proxy"
 	"github.com/ziuus/goroute/pkg/quota"
@@ -80,7 +81,7 @@ func NewServeCmd() *cobra.Command {
 			for _, pCfg := range cfg.Providers {
 				switch pCfg.Type {
 				case "openai":
-					prov := openai.NewProvider(pCfg.ID, pCfg.BaseURL, pCfg.APIKey)
+					prov := openai.NewProvider(pCfg.ID, pCfg.BaseURL, pCfg.APIKey, pCfg.Headers)
 					r.RegisterProvider(prov)
 				case "antigravity":
 					var accounts []*antigravity.Account
@@ -100,6 +101,9 @@ func NewServeCmd() *cobra.Command {
 						})
 					}
 					prov := antigravity.NewProvider(pCfg.ID, accounts)
+					r.RegisterProvider(prov)
+				case "kiro":
+					prov := kiro.NewProvider(pCfg.ID, pCfg.RefreshToken, pCfg.ProfileARN)
 					r.RegisterProvider(prov)
 				}
 			}

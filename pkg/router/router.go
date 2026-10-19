@@ -53,6 +53,38 @@ func (r *Router) RegisterCombo(name, strategy string, targets []Target) {
 	}
 }
 
+func (r *Router) GetProvider(id string) (providers.Provider, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	p, ok := r.providers[id]
+	return p, ok
+}
+
+func (r *Router) ResolveTarget(model string) (Target, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	if strings.HasPrefix(model, "gr/") {
+		model = strings.TrimPrefix(model, "gr/")
+	} else if strings.HasPrefix(model, "goroute/") {
+		model = strings.TrimPrefix(model, "goroute/")
+	}
+	if strings.HasPrefix(model, "agy/") {
+		model = "antigravity/" + strings.TrimPrefix(model, "agy/")
+	}
+
+	if combo, ok := r.combos[model]; ok && len(combo.Targets) > 0 {
+		return combo.Targets[0], true
+	}
+
+	parts := strings.SplitN(model, "/", 2)
+	if len(parts) == 2 {
+		return Target{ProviderID: parts[0], Model: parts[1]}, true
+	}
+
+	return Target{}, false
+}
+
 func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

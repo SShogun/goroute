@@ -17,15 +17,28 @@ type Provider struct {
 	id      string
 	baseURL string
 	apiKey  string
+	headers map[string]string
 	client  *http.Client
 }
 
-func NewProvider(id, baseURL, apiKey string) *Provider {
+func NewProvider(id, baseURL, apiKey string, headers map[string]string) *Provider {
 	baseURL = strings.TrimSuffix(baseURL, "/")
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+	if id == "agentrouter" {
+		if _, ok := headers["User-Agent"]; !ok {
+			headers["User-Agent"] = "codex_cli_rs/0.156.1"
+		}
+		if _, ok := headers["originator"]; !ok {
+			headers["originator"] = "codex_cli_rs"
+		}
+	}
 	return &Provider{
 		id:      id,
 		baseURL: baseURL,
 		apiKey:  apiKey,
+		headers: headers,
 		client: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -60,6 +73,45 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
+	for k, v := range p.headers {
+		httpReq.Header.Set(k, v)
+	}
+
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("upstream call failed: %w", err)
+	}
+
+	isStream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
+	return resp.Body, isStream, resp.StatusCode, nil
+}
+
+func (p *Provider) SupportsAnthropic() bool {
+	return p.id == "agentrouter" || strings.Contains(p.baseURL, "agentrouter.org")
+}
+
+func (p *Provider) AnthropicMessages(ctx context.Context, body []byte, incomingHeaders http.Header) (io.ReadCloser, bool, int, error) {
+	url := p.baseURL + "/messages"
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
+	if err != nil {
+		return nil, false, 0, fmt.Errorf("create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	if p.apiKey != "" {
+		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	for k, v := range p.headers {
+		httpReq.Header.Set(k, v)
+	}
+	if v := incomingHeaders.Get("anthropic-version"); v != "" {
+		httpReq.Header.Set("anthropic-version", v)
+	} else {
+		httpReq.Header.Set("anthropic-version", "2023-06-01")
+	}
+	if v := incomingHeaders.Get("anthropic-beta"); v != "" {
+		httpReq.Header.Set("anthropic-beta", v)
+	}
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -79,6 +131,9 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 
 	if p.apiKey != "" {
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	}
+	for k, v := range p.headers {
+		httpReq.Header.Set(k, v)
 	}
 
 	resp, err := p.client.Do(httpReq)

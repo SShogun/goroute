@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/providers/openai"
 )
 
 // AnthropicMessageRequest represents an incoming /v1/messages POST request
@@ -35,13 +36,61 @@ type AnthropicContentBlock struct {
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
-	var req AnthropicMessageRequest
 	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "failed to read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
+	var reqMap map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &reqMap); err == nil {
+		modelStr, _ := reqMap["model"].(string)
+		if target, ok := s.router.ResolveTarget(modelStr); ok {
+			if prov, ok := s.router.GetProvider(target.ProviderID); ok {
+				if oProv, ok := prov.(*openai.Provider); ok && oProv.SupportsAnthropic() {
+					reqMap["model"] = target.Model
+					if newBody, err := json.Marshal(reqMap); err == nil {
+						bodyBytes = newBody
+					}
+					respBody, isStream, statusCode, err := oProv.AnthropicMessages(r.Context(), bodyBytes, r.Header)
+					if err != nil {
+						http.Error(w, err.Error(), statusCode)
+						return
+					}
+					defer respBody.Close()
+
+					if isStream {
+						w.Header().Set("Content-Type", "text/event-stream")
+						w.Header().Set("Cache-Control", "no-cache")
+						w.Header().Set("Connection", "keep-alive")
+						w.WriteHeader(statusCode)
+						flusher, _ := w.(http.Flusher)
+						buf := make([]byte, 4096)
+						for {
+							n, err := respBody.Read(buf)
+							if n > 0 {
+								w.Write(buf[:n])
+								if flusher != nil {
+									flusher.Flush()
+								}
+							}
+							if err != nil {
+								break
+							}
+						}
+						return
+					}
+
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(statusCode)
+					io.Copy(w, respBody)
+					return
+				}
+			}
+		}
+	}
+
+	var req AnthropicMessageRequest
 	if err := json.Unmarshal(bodyBytes, &req); err != nil {
 		http.Error(w, "invalid Anthropic messages JSON: "+err.Error(), http.StatusBadRequest)
 		return
