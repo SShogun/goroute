@@ -24,6 +24,8 @@ type AccountConfig struct {
 	ProjectID    string    `yaml:"project_id,omitempty" json:"project_id,omitempty"`
 	ProfileARN   string    `yaml:"profile_arn,omitempty" json:"profile_arn,omitempty"`
 	APIKey       string    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
+	AccountID    string    `yaml:"account_id,omitempty" json:"account_id,omitempty"`
+	Status       string    `yaml:"status,omitempty" json:"status,omitempty"`
 }
 
 type ProviderConfig struct {

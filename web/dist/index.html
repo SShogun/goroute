@@ -988,6 +988,38 @@
       }
     }
 
+    async function autoImportCodex() {
+      showToast('Importing OpenAI Codex credentials from ~/.codex/auth.json...');
+      try {
+        const res = await fetch('/api/providers/import-codex', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast('Codex credentials imported & active!');
+          loadStatus();
+        } else {
+          showToast('Import error: ' + (d.error || 'Failed'));
+        }
+      } catch (e) {
+        showToast('Auto-import failed: ' + e.message);
+      }
+    }
+
+    async function autoImportCopilot() {
+      showToast('Importing GitHub Copilot credentials from ~/.config/github-copilot...');
+      try {
+        const res = await fetch('/api/providers/import-copilot', { method: 'POST' });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast('GitHub Copilot credentials imported & active!');
+          loadStatus();
+        } else {
+          showToast('Import error: ' + (d.error || 'Failed'));
+        }
+      } catch (e) {
+        showToast('Auto-import failed: ' + e.message);
+      }
+    }
+
     async function submitActiveProvider() {
       if (!selectedPreset) return;
       if (selectedPreset.auth_type === 'oauth' && selectedPreset.id === 'antigravity') {
@@ -1114,6 +1146,14 @@
               initial = 'G';
               bg = 'rgba(96, 165, 250, 0.15)';
               col = '#60a5fa';
+            } else if (p.type === 'codex') {
+              initial = 'C';
+              bg = 'rgba(168, 85, 247, 0.15)';
+              col = '#c084fc';
+            } else if (p.type === 'copilot') {
+              initial = '🐙';
+              bg = 'rgba(129, 140, 248, 0.15)';
+              col = '#818cf8';
             } else if (p.type === 'openai') {
               initial = 'O';
               bg = 'rgba(74, 222, 128, 0.15)';
@@ -1124,7 +1164,7 @@
             card.className = 'provider-card';
 
             const hasAccounts = p.accounts && p.accounts.length > 0;
-            const subtitle = p.base_url || (p.type === 'kiro' ? 'AWS CodeWhisperer OIDC pool' : p.type === 'antigravity' ? 'Google Cloud Code Assist pool' : 'Direct upstream');
+            const subtitle = p.base_url || (p.type === 'kiro' ? 'AWS CodeWhisperer OIDC pool' : p.type === 'antigravity' ? 'Google Cloud Code Assist pool' : p.type === 'codex' ? 'OpenAI Codex / ChatGPT OAuth pool' : p.type === 'copilot' ? 'GitHub Copilot OAuth pool' : 'Direct upstream');
 
             card.innerHTML = `
               <div class="provider-card-header">
@@ -1144,7 +1184,7 @@
                   </div>
                 </div>
                 <div style="display: flex; align-items: center; gap: 0.4rem;">
-                  ${p.type === 'kiro' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportKiro()" title="Auto-import from CLI">📥 Import</button>` : ''}
+                  ${p.type === 'kiro' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportKiro()" title="Auto-import from CLI">📥 Import</button>` : p.type === 'codex' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportCodex()" title="Auto-import from CLI">📥 Import</button>` : p.type === 'copilot' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportCopilot()" title="Auto-import from CLI">📥 Import</button>` : ''}
                   <button class="btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="testProvider('${p.id}', this)" title="Test connection">⚡ Test</button>
                   <button class="btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteProvider('${p.id}')" title="Delete Provider">🗑</button>
                 </div>

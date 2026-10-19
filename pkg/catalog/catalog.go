@@ -120,6 +120,27 @@ var Registry = []CatalogEntry{
 		Models:      []string{"gemini-pro-agent", "gemini-2.5-flash", "gemini-3.8-flash-high", "gpt-oss-120b-medium"},
 	},
 
+	{
+		ID:          "codex",
+		Name:        "OpenAI Codex CLI",
+		Type:        "codex",
+		Category:    "oauth",
+		BaseURL:     "https://chatgpt.com/backend-anon/sentinel/chat-requirements",
+		AuthType:    "oauth",
+		Description: "OpenAI Codex CLI OAuth authentication with 1-click import from ~/.codex/auth.json",
+		Models:      []string{"gpt-5.6-sol", "gpt-5.6-sol-ultra", "gpt-5.6-sol-high", "gpt-5.6-sol-medium", "gpt-5.5-sol", "o3-mini", "o1", "gpt-4o"},
+	},
+	{
+		ID:          "copilot",
+		Name:        "GitHub Copilot",
+		Type:        "copilot",
+		Category:    "oauth",
+		BaseURL:     "https://api.githubcopilot.com",
+		AuthType:    "oauth",
+		Description: "GitHub Copilot subscription OAuth integration with 1-click import from ~/.config/github-copilot",
+		Models:      []string{"gpt-4o", "claude-3.5-sonnet", "o1-preview", "o1-mini"},
+	},
+
 	// ─── Ultra-Fast LPUs & High-Speed Inference ──────────────────────────────
 	{
 		ID:          "groq",

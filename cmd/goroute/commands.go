@@ -19,6 +19,8 @@ import (
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
+	"github.com/ziuus/goroute/pkg/providers/codex"
+	"github.com/ziuus/goroute/pkg/providers/copilot"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/proxy"
@@ -135,6 +137,51 @@ func NewServeCmd() *cobra.Command {
 						})
 					}
 					prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
+					r.RegisterProvider(prov)
+				case "codex":
+					var accounts []*codex.Account
+					for _, a := range pCfg.Accounts {
+						refToken := a.RefreshToken
+						if refToken == "" && st != nil {
+							sec, _ := st.GetSecret(a.ID)
+							refToken = sec
+						}
+						accounts = append(accounts, &codex.Account{
+							ID:           a.ID,
+							RefreshToken: refToken,
+							AccessToken:  a.AccessToken,
+							AccountID:    a.AccountID,
+							ExpiresAt:    a.ExpiresAt,
+						})
+					}
+					if len(accounts) == 0 && pCfg.RefreshToken != "" {
+						accounts = append(accounts, &codex.Account{
+							ID:           pCfg.ID,
+							RefreshToken: pCfg.RefreshToken,
+						})
+					}
+					prov := codex.NewProvider(pCfg.ID, accounts)
+					r.RegisterProvider(prov)
+				case "copilot":
+					var accounts []*copilot.Account
+					for _, a := range pCfg.Accounts {
+						token := a.APIKey
+						if token == "" {
+							token = a.AccessToken
+						}
+						accounts = append(accounts, &copilot.Account{
+							ID:          a.ID,
+							GitHubToken: token,
+							User:        a.Email,
+						})
+					}
+					if len(accounts) == 0 && pCfg.APIKey != "" {
+						accounts = append(accounts, &copilot.Account{
+							ID:          pCfg.ID,
+							GitHubToken: pCfg.APIKey,
+						})
+					}
+					prov := copilot.NewProvider(pCfg.ID, accounts)
 					r.RegisterProvider(prov)
 				}
 			}
@@ -366,87 +413,185 @@ func NewAuthCmd() *cobra.Command {
 		Use:   "import [provider]",
 		Short: "Auto-import credentials from local tools (e.g. kiro)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target := "kiro"
+			target := "all"
 			if len(args) > 0 {
 				target = args[0]
 			}
-			if target != "kiro" {
-				return fmt.Errorf("currently only 'kiro' auto-import is supported")
-			}
-			home, _ := os.UserHomeDir()
-			dbPath := filepath.Join(home, ".local", "share", "kiro-cli", "data.sqlite3")
-			if _, err := os.Stat(dbPath); err != nil {
-				return fmt.Errorf("kiro-cli database not found at %s. Ensure kiro-cli is installed and logged in", dbPath)
-			}
-			out, err := exec.Command("sqlite3", dbPath, "SELECT value FROM auth_kv WHERE key='kirocli:social:token';").Output()
-			if err != nil || len(out) == 0 {
-				return fmt.Errorf("failed to extract token from %s: %v", dbPath, err)
-			}
-			var tokData struct {
-				RefreshToken string `json:"refresh_token"`
-				ProfileArn   string `json:"profile_arn"`
-			}
-			if err := json.Unmarshal(out, &tokData); err != nil {
-				return fmt.Errorf("invalid json in auth_kv: %w", err)
-			}
-			if tokData.RefreshToken == "" {
-				return fmt.Errorf("no refresh token found in kiro-cli database")
-			}
+
 			defaultCfg, _ := defaultPaths()
 			cfg, err := config.Load(defaultCfg)
 			if err != nil {
 				cfg = config.DefaultConfig()
 			}
-			found := false
-			for i, p := range cfg.Providers {
-				if p.ID == "kiro" {
-					found = true
-					if len(cfg.Providers[i].Accounts) == 0 && cfg.Providers[i].RefreshToken != "" {
-						cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
-							ID:           "kiro-primary",
-							RefreshToken: cfg.Providers[i].RefreshToken,
-							ProfileARN:   cfg.Providers[i].ProfileARN,
-						})
+
+			imported := 0
+
+			// 1. Import Kiro
+			if target == "kiro" || target == "all" {
+				home, _ := os.UserHomeDir()
+				dbPath := filepath.Join(home, ".local", "share", "kiro-cli", "data.sqlite3")
+				if _, err := os.Stat(dbPath); err == nil {
+					out, err := exec.Command("sqlite3", dbPath, "SELECT value FROM auth_kv WHERE key='kirocli:social:token';").Output()
+					if err == nil && len(out) > 0 {
+						var tokData struct {
+							RefreshToken string `json:"refresh_token"`
+							ProfileArn   string `json:"profile_arn"`
+						}
+						if json.Unmarshal(out, &tokData) == nil && tokData.RefreshToken != "" {
+							found := false
+							for i, p := range cfg.Providers {
+								if p.ID == "kiro" {
+									found = true
+									updated := false
+									for j, a := range cfg.Providers[i].Accounts {
+										if strings.HasPrefix(a.ID, "kiro-cli") {
+											cfg.Providers[i].Accounts[j].RefreshToken = tokData.RefreshToken
+											cfg.Providers[i].Accounts[j].ProfileARN = tokData.ProfileArn
+											updated = true
+											break
+										}
+									}
+									if !updated {
+										cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+											ID:           "kiro-cli",
+											RefreshToken: tokData.RefreshToken,
+											ProfileARN:   tokData.ProfileArn,
+										})
+									}
+									break
+								}
+							}
+							if !found {
+								cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+									ID:           "kiro",
+									Type:         "kiro",
+									RefreshToken: tokData.RefreshToken,
+									ProfileARN:   tokData.ProfileArn,
+									Accounts: []config.AccountConfig{
+										{
+											ID:           "kiro-cli",
+											RefreshToken: tokData.RefreshToken,
+											ProfileARN:   tokData.ProfileArn,
+										},
+									},
+								})
+							}
+							fmt.Println("✅ Successfully imported Kiro credentials from ~/.local/share/kiro-cli/data.sqlite3")
+							imported++
+						}
 					}
-					updated := false
-					for j, a := range cfg.Providers[i].Accounts {
-						if strings.HasPrefix(a.ID, "kiro-cli") {
-							cfg.Providers[i].Accounts[j].RefreshToken = tokData.RefreshToken
-							cfg.Providers[i].Accounts[j].ProfileARN = tokData.ProfileArn
-							updated = true
+				} else if target == "kiro" {
+					return fmt.Errorf("kiro-cli database not found at %s", dbPath)
+				}
+			}
+
+			// 2. Import Codex
+			if target == "codex" || target == "all" {
+				acc, err := codex.ReadCodexCLIAuth()
+				if err == nil && acc != nil {
+					found := false
+					for i, p := range cfg.Providers {
+						if p.ID == "codex" {
+							found = true
+							updated := false
+							for j, a := range cfg.Providers[i].Accounts {
+								if a.ID == "codex-cli" {
+									cfg.Providers[i].Accounts[j].RefreshToken = acc.RefreshToken
+									cfg.Providers[i].Accounts[j].AccessToken = acc.AccessToken
+									cfg.Providers[i].Accounts[j].AccountID = acc.AccountID
+									updated = true
+									break
+								}
+							}
+							if !updated {
+								cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+									ID:           "codex-cli",
+									RefreshToken: acc.RefreshToken,
+									AccessToken:  acc.AccessToken,
+									AccountID:    acc.AccountID,
+								})
+							}
 							break
 						}
 					}
-					if !updated {
-						cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
-							ID:           "kiro-cli",
-							RefreshToken: tokData.RefreshToken,
-							ProfileARN:   tokData.ProfileArn,
+					if !found {
+						cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+							ID:           "codex",
+							Type:         "codex",
+							RefreshToken: acc.RefreshToken,
+							Accounts: []config.AccountConfig{
+								{
+									ID:           "codex-cli",
+									RefreshToken: acc.RefreshToken,
+									AccessToken:  acc.AccessToken,
+									AccountID:    acc.AccountID,
+								},
+							},
 						})
 					}
-					break
+					fmt.Println("✅ Successfully imported Codex credentials from ~/.codex/auth.json")
+					imported++
+				} else if target == "codex" {
+					return fmt.Errorf("failed to import codex credentials: %v", err)
 				}
 			}
-			if !found {
-				cfg.Providers = append(cfg.Providers, config.ProviderConfig{
-					ID:           "kiro",
-					Type:         "kiro",
-					RefreshToken: tokData.RefreshToken,
-					ProfileARN:   tokData.ProfileArn,
-					Accounts: []config.AccountConfig{
-						{
-							ID:           "kiro-cli",
-							RefreshToken: tokData.RefreshToken,
-							ProfileARN:   tokData.ProfileArn,
-						},
-					},
-				})
+
+			// 3. Import Copilot
+			if target == "copilot" || target == "all" {
+				acc, err := copilot.ReadCopilotCLIAuth()
+				if err == nil && acc != nil {
+					found := false
+					for i, p := range cfg.Providers {
+						if p.ID == "copilot" {
+							found = true
+							updated := false
+							for j, a := range cfg.Providers[i].Accounts {
+								if a.ID == acc.ID {
+									cfg.Providers[i].Accounts[j].APIKey = acc.GitHubToken
+									cfg.Providers[i].Accounts[j].Email = acc.User
+									updated = true
+									break
+								}
+							}
+							if !updated {
+								cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+									ID:     acc.ID,
+									APIKey: acc.GitHubToken,
+									Email:  acc.User,
+								})
+							}
+							break
+						}
+					}
+					if !found {
+						cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+							ID:     "copilot",
+							Type:   "copilot",
+							APIKey: acc.GitHubToken,
+							Accounts: []config.AccountConfig{
+								{
+									ID:     acc.ID,
+									APIKey: acc.GitHubToken,
+									Email:  acc.User,
+								},
+							},
+						})
+					}
+					fmt.Println("✅ Successfully imported GitHub Copilot credentials from ~/.config/github-copilot")
+					imported++
+				} else if target == "copilot" {
+					return fmt.Errorf("failed to import copilot credentials: %v", err)
+				}
 			}
+
+			if imported == 0 {
+				return fmt.Errorf("no credentials found to import for %s", target)
+			}
+
 			if err := cfg.Save(defaultCfg); err != nil {
 				return err
 			}
 			_, _ = http.Post("http://127.0.0.1:8128/api/reload", "application/json", nil)
-			fmt.Println("✅ Successfully imported Kiro credentials from local kiro-cli database!")
 			return nil
 		},
 	}

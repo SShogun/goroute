@@ -20,11 +20,15 @@ import (
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
+	"github.com/ziuus/goroute/pkg/providers/codex"
+	"github.com/ziuus/goroute/pkg/providers/copilot"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/quota"
+	"github.com/ziuus/goroute/pkg/resilience"
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/store"
+	"github.com/ziuus/goroute/pkg/tunnel"
 	"github.com/ziuus/goroute/web"
 )
 
@@ -32,6 +36,7 @@ type Server struct {
 	router          *router.Router
 	limiter         *quota.Limiter
 	cache           *cache.Cache
+	tunnelMgr       *tunnel.Manager
 	enableDashboard bool
 	mux             *chi.Mux
 	cfgPath         string
@@ -48,6 +53,7 @@ func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *
 		router:          r,
 		limiter:         limiter,
 		cache:           cache.NewCache(15*time.Minute, 2000),
+		tunnelMgr:       tunnel.NewManager(8128),
 		enableDashboard: enableDashboard,
 		mux:             chi.NewRouter(),
 	}
@@ -84,10 +90,17 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
+	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
+	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
 	s.mux.Post("/api/providers/{id}/test", s.handleTestProvider)
 	s.mux.Post("/api/providers/{id}/accounts/{accId}/test", s.handleTestAccount)
 	s.mux.Delete("/api/providers/{id}", s.handleDeleteProvider)
 	s.mux.Delete("/api/providers/{id}/accounts/{accId}", s.handleDeleteAccount)
+	s.mux.Get("/api/resilience/model-cooldowns", s.handleModelCooldowns)
+	s.mux.Post("/api/resilience/reset", s.handleResilienceReset)
+	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
+	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
+	s.tunnelMgr.RegisterRoutes(s.mux)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
@@ -599,6 +612,155 @@ func (s *Server) handleImportKiro(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleImportCodex(w http.ResponseWriter, r *http.Request) {
+	acc, err := codex.ReadCodexCLIAuth()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == "codex" {
+			found = true
+			updated := false
+			for j, a := range cfg.Providers[i].Accounts {
+				if a.ID == "codex-cli" {
+					cfg.Providers[i].Accounts[j].RefreshToken = acc.RefreshToken
+					cfg.Providers[i].Accounts[j].AccessToken = acc.AccessToken
+					cfg.Providers[i].Accounts[j].AccountID = acc.AccountID
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+					ID:           "codex-cli",
+					RefreshToken: acc.RefreshToken,
+					AccessToken:  acc.AccessToken,
+					AccountID:    acc.AccountID,
+				})
+			}
+			break
+		}
+	}
+	if !found {
+		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+			ID:           "codex",
+			Type:         "codex",
+			RefreshToken: acc.RefreshToken,
+			Accounts: []config.AccountConfig{
+				{
+					ID:           "codex-cli",
+					RefreshToken: acc.RefreshToken,
+					AccessToken:  acc.AccessToken,
+					AccountID:    acc.AccountID,
+				},
+			},
+		})
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Successfully imported OpenAI Codex credentials from ~/.codex/auth.json",
+	})
+}
+
+func (s *Server) handleImportCopilot(w http.ResponseWriter, r *http.Request) {
+	acc, err := copilot.ReadCopilotCLIAuth()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == "copilot" {
+			found = true
+			updated := false
+			for j, a := range cfg.Providers[i].Accounts {
+				if a.ID == acc.ID {
+					cfg.Providers[i].Accounts[j].APIKey = acc.GitHubToken
+					cfg.Providers[i].Accounts[j].Email = acc.User
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+					ID:     acc.ID,
+					APIKey: acc.GitHubToken,
+					Email:  acc.User,
+				})
+			}
+			break
+		}
+	}
+	if !found {
+		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+			ID:     "copilot",
+			Type:   "copilot",
+			APIKey: acc.GitHubToken,
+			Accounts: []config.AccountConfig{
+				{
+					ID:     acc.ID,
+					APIKey: acc.GitHubToken,
+					Email:  acc.User,
+				},
+			},
+		})
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "Successfully imported GitHub Copilot credentials from ~/.config/github-copilot",
+	})
+}
+
 func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -696,6 +858,10 @@ func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 		err = prov.TestConnection(ctx)
 	case *antigravity.Provider:
 		err = prov.TestConnection(ctx)
+	case *codex.Provider:
+		err = prov.TestConnection(ctx)
+	case *copilot.Provider:
+		err = prov.TestConnection(ctx)
 	case *openai.Provider:
 		err = prov.TestConnection(ctx)
 	default:
@@ -751,6 +917,10 @@ func (s *Server) handleTestAccount(w http.ResponseWriter, r *http.Request) {
 		err = prov.TestAccount(ctx, accId)
 	case *antigravity.Provider:
 		err = prov.TestAccount(ctx, accId)
+	case *codex.Provider:
+		err = prov.TestAccount(ctx, accId)
+	case *copilot.Provider:
+		err = prov.TestAccount(ctx, accId)
 	default:
 		err = fmt.Errorf("account-level testing not supported for %s", p.Type())
 	}
@@ -791,6 +961,29 @@ func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
 		"message": "configuration reloaded successfully",
+	})
+}
+
+func (s *Server) handleModelCooldowns(w http.ResponseWriter, r *http.Request) {
+	cooldowns := resilience.GlobalCooldown.List()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":    "ok",
+		"count":     len(cooldowns),
+		"cooldowns": cooldowns,
+	})
+}
+
+func (s *Server) handleResilienceReset(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Key string `json:"key"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	resilience.GlobalCooldown.Reset(req.Key)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "cooldowns reset successfully",
 	})
 }
 
@@ -870,6 +1063,51 @@ func (s *Server) Reload() error {
 			}
 			prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
+		case "codex":
+			var accounts []*codex.Account
+			for _, a := range pCfg.Accounts {
+				refToken := a.RefreshToken
+				if refToken == "" && st != nil {
+					sec, _ := st.GetSecret(a.ID)
+					refToken = sec
+				}
+				accounts = append(accounts, &codex.Account{
+					ID:           a.ID,
+					RefreshToken: refToken,
+					AccessToken:  a.AccessToken,
+					AccountID:    a.AccountID,
+					ExpiresAt:    a.ExpiresAt,
+				})
+			}
+			if len(accounts) == 0 && pCfg.RefreshToken != "" {
+				accounts = append(accounts, &codex.Account{
+					ID:           pCfg.ID,
+					RefreshToken: pCfg.RefreshToken,
+				})
+			}
+			prov := codex.NewProvider(pCfg.ID, accounts)
+			s.router.RegisterProvider(prov)
+		case "copilot":
+			var accounts []*copilot.Account
+			for _, a := range pCfg.Accounts {
+				token := a.APIKey
+				if token == "" {
+					token = a.AccessToken
+				}
+				accounts = append(accounts, &copilot.Account{
+					ID:          a.ID,
+					GitHubToken: token,
+					User:        a.Email,
+				})
+			}
+			if len(accounts) == 0 && pCfg.APIKey != "" {
+				accounts = append(accounts, &copilot.Account{
+					ID:          pCfg.ID,
+					GitHubToken: pCfg.APIKey,
+				})
+			}
+			prov := copilot.NewProvider(pCfg.ID, accounts)
+			s.router.RegisterProvider(prov)
 		}
 	}
 
@@ -887,3 +1125,174 @@ func (s *Server) Reload() error {
 	log.Printf("[GoRoute] Configuration reloaded successfully (%d providers, %d combos)", len(cfg.Providers), len(cfg.Combos))
 	return nil
 }
+
+func (s *Server) handleUsageQuota(w http.ResponseWriter, r *http.Request) {
+	providerFilter := r.URL.Query().Get("provider")
+	connectionIdFilter := r.URL.Query().Get("connectionId")
+
+	if s.cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		s.cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, _ := config.Load(s.cfgPath)
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+
+	type QuotaDetails struct {
+		Used             int     `json:"used"`
+		Total            int     `json:"total"`
+		Remaining        int     `json:"remaining"`
+		PercentRemaining float64 `json:"percentRemaining"`
+		ResetAt          *string `json:"resetAt"`
+		Unlimited        bool    `json:"unlimited"`
+	}
+
+	type QuotaProviderEntry struct {
+		Provider     string       `json:"provider"`
+		ConnectionID string       `json:"connectionId"`
+		Name         string       `json:"name"`
+		Status       string       `json:"status"`
+		TokenStatus  string       `json:"tokenStatus"`
+		Quota        QuotaDetails `json:"quota"`
+	}
+
+	var results []QuotaProviderEntry
+	for _, p := range cfg.Providers {
+		if providerFilter != "" && p.ID != providerFilter {
+			continue
+		}
+		if len(p.Accounts) > 0 {
+			for _, a := range p.Accounts {
+				if connectionIdFilter != "" && a.ID != connectionIdFilter {
+					continue
+				}
+				name := a.Email
+				if name == "" {
+					name = a.ID
+				}
+				tokenStatus := "valid"
+				if a.Status != "" && a.Status != "active" {
+					tokenStatus = a.Status
+				}
+				results = append(results, QuotaProviderEntry{
+					Provider:     p.ID,
+					ConnectionID: a.ID,
+					Name:         name,
+					Status:       "active",
+					TokenStatus:  tokenStatus,
+					Quota: QuotaDetails{
+						Used:             0,
+						Total:            100,
+						Remaining:        100,
+						PercentRemaining: 100.0,
+						Unlimited:        p.Type == "openai",
+					},
+				})
+			}
+		} else {
+			if connectionIdFilter != "" && p.ID != connectionIdFilter {
+				continue
+			}
+			results = append(results, QuotaProviderEntry{
+				Provider:     p.ID,
+				ConnectionID: p.ID,
+				Name:         p.ID,
+				Status:       "active",
+				TokenStatus:  "valid",
+				Quota: QuotaDetails{
+					Used:             0,
+					Total:            100,
+					Remaining:        100,
+					PercentRemaining: 100.0,
+					Unlimited:        true,
+				},
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"providers": results,
+		"meta": map[string]interface{}{
+			"generatedAt": time.Now().UTC().Format(time.RFC3339),
+			"filters": map[string]interface{}{
+				"provider":     providerFilter,
+				"connectionId": connectionIdFilter,
+			},
+		},
+	})
+}
+
+func (s *Server) handleUsageAnalytics(w http.ResponseWriter, r *http.Request) {
+	logs := GetRecentLogs()
+	totalReqs := len(logs)
+	totalTokens := 0
+	totalDuration := int64(0)
+	errorsCount := 0
+	byModel := make(map[string]int)
+	byProvider := make(map[string]int)
+	errorBreakdown := make(map[string]int)
+
+	for _, l := range logs {
+		tok := l.Tokens
+		if tok == 0 {
+			tok = 60
+		}
+		totalTokens += tok
+		totalDuration += l.DurationMs
+		if l.StatusCode >= 400 || l.Error != "" {
+			errorsCount++
+			errKey := fmt.Sprintf("%d", l.StatusCode)
+			if l.Error != "" {
+				errKey = l.Error
+			}
+			errorBreakdown[errKey]++
+		}
+		if l.Model != "" {
+			byModel[l.Model]++
+		}
+		if l.Provider != "" {
+			byProvider[l.Provider]++
+		}
+	}
+
+	avgLatency := float64(0)
+	if totalReqs > 0 {
+		avgLatency = float64(totalDuration) / float64(totalReqs)
+	}
+
+	summary := map[string]interface{}{
+		"totalRequests":   totalReqs,
+		"totalTokens":      totalTokens,
+		"promptTokens":     int(float64(totalTokens) * 0.7),
+		"completionTokens": int(float64(totalTokens) * 0.3),
+		"totalCost":        0.0,
+		"cacheHitRate":     0.0,
+		"avgLatency":       avgLatency,
+		"errorRate":        float64(errorsCount) / float64(max(totalReqs, 1)),
+	}
+
+	type NamedCount struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}
+	var byModelList []NamedCount
+	for k, v := range byModel {
+		byModelList = append(byModelList, NamedCount{Name: k, Count: v})
+	}
+	var byProvList []NamedCount
+	for k, v := range byProvider {
+		byProvList = append(byProvList, NamedCount{Name: k, Count: v})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"summary":        summary,
+		"byModel":        byModelList,
+		"byProvider":     byProvList,
+		"errorBreakdown": errorBreakdown,
+		"generatedAt":    time.Now().UTC().Format(time.RFC3339),
+	})
+}
+

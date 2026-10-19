@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/resilience"
 )
 
 type Target struct {
@@ -208,13 +209,19 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			continue
 		}
 
+		if resilience.GlobalCooldown.IsCooling(target.ProviderID, target.Model) {
+			log.Printf("[GoRoute] Skipping %s/%s (currently cooling down)", target.ProviderID, target.Model)
+			continue
+		}
+
 		// Clone request with target model
 		targetReq := *req
 		targetReq.Model = target.Model
 
 		body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
 		if err != nil {
-			log.Printf("[GoRoute] Failover: target %s/%s returned error: %v (status %d), trying next target...", target.ProviderID, target.Model, err, statusCode)
+			log.Printf("[GoRoute] Failover: target %s/%s returned error: %v (status %d), cooling down...", target.ProviderID, target.Model, err, statusCode)
+			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, err.Error(), 30*time.Second)
 			lastErr = err
 			if statusCode != 0 {
 				lastStatus = statusCode
@@ -227,8 +234,11 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			return body, isStream, statusCode, nil
 		}
 
-		// Upstream target failed (4xx or 5xx): close body, log, and cascade to next target in combo!
-		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d, trying next target...", target.ProviderID, target.Model, statusCode)
+		// Upstream target failed (4xx or 5xx): close body, mark cooldown, and cascade!
+		log.Printf("[GoRoute] Failover: target %s/%s returned HTTP %d, cooling down and trying next target...", target.ProviderID, target.Model, statusCode)
+		if statusCode == http.StatusTooManyRequests || statusCode >= 500 {
+			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, fmt.Sprintf("HTTP %d", statusCode), 30*time.Second)
+		}
 		if body != nil {
 			body.Close()
 		}
