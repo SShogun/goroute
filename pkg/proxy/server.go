@@ -445,10 +445,12 @@ func (s *Server) handleAgentSetup(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		ID      string `json:"id"`
-		Type    string `json:"type"`
-		BaseURL string `json:"base_url"`
-		APIKey  string `json:"api_key"`
+		ID           string `json:"id"`
+		Type         string `json:"type"`
+		BaseURL      string `json:"base_url"`
+		APIKey       string `json:"api_key"`
+		RefreshToken string `json:"refresh_token"`
+		ProfileARN   string `json:"profile_arn"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -479,16 +481,24 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 			cfg.Providers[i].BaseURL = req.BaseURL
 			cfg.Providers[i].APIKey = req.APIKey
 			cfg.Providers[i].Type = req.Type
+			if req.RefreshToken != "" {
+				cfg.Providers[i].RefreshToken = req.RefreshToken
+			}
+			if req.ProfileARN != "" {
+				cfg.Providers[i].ProfileARN = req.ProfileARN
+			}
 			found = true
 			break
 		}
 	}
 	if !found {
 		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
-			ID:      req.ID,
-			Type:    req.Type,
-			BaseURL: req.BaseURL,
-			APIKey:  req.APIKey,
+			ID:           req.ID,
+			Type:         req.Type,
+			BaseURL:      req.BaseURL,
+			APIKey:       req.APIKey,
+			RefreshToken: req.RefreshToken,
+			ProfileARN:   req.ProfileARN,
 		})
 	}
 

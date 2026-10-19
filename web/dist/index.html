@@ -579,7 +579,8 @@
       <div class="modal-title">Add Provider Connection / Account</div>
       <div class="modal-body">
         <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem;">
-          <button class="btn btn-primary" id="tab-api-btn" onclick="switchProviderTab('api')">Custom API Key Provider</button>
+          <button class="btn btn-primary" id="tab-api-btn" onclick="switchProviderTab('api')">Custom API Key</button>
+          <button class="btn" id="tab-kiro-btn" onclick="switchProviderTab('kiro')">AWS Kiro Account</button>
           <button class="btn" id="tab-oauth-btn" onclick="switchProviderTab('oauth')">Google Antigravity OAuth</button>
         </div>
 
@@ -598,6 +599,23 @@
             <input type="password" id="add-prov-key" class="text-input" placeholder="sk-..." style="width: 100%;">
           </div>
           <button class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;" onclick="submitNewProvider()">Save &amp; Connect Provider</button>
+        </div>
+
+        <div id="tab-kiro-content" style="display: none;">
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">Add another AWS CodeWhisperer / Kiro account for Claude Sonnet 4.5 &amp; Haiku 4.5:</p>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Provider ID</label>
+            <input type="text" id="add-kiro-id" class="text-input" placeholder="e.g. kiro-2, kiro-backup" value="kiro-2" style="width: 100%;">
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Refresh Token (aor...)</label>
+            <textarea id="add-kiro-token" class="text-input" placeholder="aorAAAAAG..." style="width: 100%; height: 60px; font-family: monospace; font-size: 0.75rem;"></textarea>
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Profile ARN (Optional)</label>
+            <input type="text" id="add-kiro-arn" class="text-input" placeholder="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK" value="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK" style="width: 100%;">
+          </div>
+          <button class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;" onclick="submitNewKiro()">Connect Kiro Account</button>
         </div>
 
         <div id="tab-oauth-content" style="display: none;">
@@ -640,16 +658,38 @@
     }
 
     function switchProviderTab(tab) {
-      if (tab === 'api') {
-        document.getElementById('tab-api-btn').className = 'btn btn-primary';
-        document.getElementById('tab-oauth-btn').className = 'btn';
-        document.getElementById('tab-api-content').style.display = 'block';
-        document.getElementById('tab-oauth-content').style.display = 'none';
-      } else {
-        document.getElementById('tab-api-btn').className = 'btn';
-        document.getElementById('tab-oauth-btn').className = 'btn btn-primary';
-        document.getElementById('tab-api-content').style.display = 'none';
-        document.getElementById('tab-oauth-content').style.display = 'block';
+      ['api', 'kiro', 'oauth'].forEach(t => {
+        const btn = document.getElementById(`tab-${t}-btn`);
+        const content = document.getElementById(`tab-${t}-content`);
+        if (btn) btn.className = (t === tab ? 'btn btn-primary' : 'btn');
+        if (content) content.style.display = (t === tab ? 'block' : 'none');
+      });
+    }
+
+    async function submitNewKiro() {
+      const id = document.getElementById('add-kiro-id').value.trim() || 'kiro-2';
+      const token = document.getElementById('add-kiro-token').value.trim();
+      const arn = document.getElementById('add-kiro-arn').value.trim();
+      if (!token) {
+        showToast('Refresh token required');
+        return;
+      }
+      try {
+        const res = await fetch('/api/providers/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, type: 'kiro', refresh_token: token, profile_arn: arn })
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast(`Kiro account "${id}" connected!`);
+          closeAddProviderModal();
+          loadStatus();
+        } else {
+          showToast(`Error: ${d.error || 'Failed'}`);
+        }
+      } catch (e) {
+        showToast(`Failed: ${e.message}`);
       }
     }
 
