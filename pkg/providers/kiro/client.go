@@ -164,6 +164,29 @@ func (p *Provider) Accounts() []*Account {
 	return res
 }
 
+func (p *Provider) TestAccount(ctx context.Context, accountID string) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if len(p.accounts) == 0 {
+		return fmt.Errorf("no accounts configured for kiro provider")
+	}
+	if accountID == "" {
+		_, err := p.accounts[0].GetValidAccessToken(ctx, p.client)
+		return err
+	}
+	for _, a := range p.accounts {
+		if a.ID == accountID {
+			_, err := a.GetValidAccessToken(ctx, p.client)
+			return err
+		}
+	}
+	return fmt.Errorf("account %q not found in kiro provider", accountID)
+}
+
+func (p *Provider) TestConnection(ctx context.Context) error {
+	return p.TestAccount(ctx, "")
+}
+
 type kiroToolSpec struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`

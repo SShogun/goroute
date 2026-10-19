@@ -408,16 +408,18 @@ func NewAuthCmd() *cobra.Command {
 							ProfileARN:   cfg.Providers[i].ProfileARN,
 						})
 					}
-					exists := false
-					for _, a := range cfg.Providers[i].Accounts {
-						if a.RefreshToken == tokData.RefreshToken {
-							exists = true
+					updated := false
+					for j, a := range cfg.Providers[i].Accounts {
+						if strings.HasPrefix(a.ID, "kiro-cli") {
+							cfg.Providers[i].Accounts[j].RefreshToken = tokData.RefreshToken
+							cfg.Providers[i].Accounts[j].ProfileARN = tokData.ProfileArn
+							updated = true
 							break
 						}
 					}
-					if !exists {
+					if !updated {
 						cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
-							ID:           fmt.Sprintf("kiro-cli-%d", len(cfg.Providers[i].Accounts)+1),
+							ID:           "kiro-cli",
 							RefreshToken: tokData.RefreshToken,
 							ProfileARN:   tokData.ProfileArn,
 						})

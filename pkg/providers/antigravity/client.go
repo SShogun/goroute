@@ -54,6 +54,27 @@ func (p *Provider) NextAccount() (*Account, error) {
 	return p.accounts[next%uint64(len(p.accounts))], nil
 }
 
+func (p *Provider) TestAccount(ctx context.Context, accountID string) error {
+	if len(p.accounts) == 0 {
+		return fmt.Errorf("no accounts configured for antigravity provider")
+	}
+	if accountID == "" {
+		_, err := p.accounts[0].GetValidAccessToken(ctx)
+		return err
+	}
+	for _, a := range p.accounts {
+		if a.ID == accountID || a.Email == accountID {
+			_, err := a.GetValidAccessToken(ctx)
+			return err
+		}
+	}
+	return fmt.Errorf("account %q not found in antigravity provider", accountID)
+}
+
+func (p *Provider) TestConnection(ctx context.Context) error {
+	return p.TestAccount(ctx, "")
+}
+
 type geminiInlineData struct {
 	MimeType string `json:"mimeType"`
 	Data     string `json:"data"`

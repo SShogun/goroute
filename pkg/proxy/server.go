@@ -84,6 +84,10 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
+	s.mux.Post("/api/providers/{id}/test", s.handleTestProvider)
+	s.mux.Post("/api/providers/{id}/accounts/{accId}/test", s.handleTestAccount)
+	s.mux.Delete("/api/providers/{id}", s.handleDeleteProvider)
+	s.mux.Delete("/api/providers/{id}/accounts/{accId}", s.handleDeleteAccount)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
@@ -592,6 +596,182 @@ func (s *Server) handleImportKiro(w http.ResponseWriter, r *http.Request) {
 		"status":  "ok",
 		"output":  strings.TrimSpace(string(out)),
 		"message": "Successfully imported Kiro account into active pool",
+	})
+}
+
+func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	var newProviders []config.ProviderConfig
+	for _, p := range cfg.Providers {
+		if p.ID != id {
+			newProviders = append(newProviders, p)
+		}
+	}
+	cfg.Providers = newProviders
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "deleted": id})
+}
+
+func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accId := chi.URLParam(r, "accId")
+	if id == "" || accId == "" {
+		http.Error(w, "provider id and account id required", http.StatusBadRequest)
+		return
+	}
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	for i, p := range cfg.Providers {
+		if p.ID == id {
+			var newAccounts []config.AccountConfig
+			for _, a := range p.Accounts {
+				if a.ID != accId {
+					newAccounts = append(newAccounts, a)
+				}
+			}
+			cfg.Providers[i].Accounts = newAccounts
+			break
+		}
+	}
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "deleted_account": accId})
+}
+
+func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+	p, ok := s.router.GetProvider(id)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"valid":  false,
+			"error":  fmt.Sprintf("provider %q not found in active router", id),
+		})
+		return
+	}
+
+	start := time.Now()
+	var err error
+	ctx := r.Context()
+
+	switch prov := p.(type) {
+	case *kiro.Provider:
+		err = prov.TestConnection(ctx)
+	case *antigravity.Provider:
+		err = prov.TestConnection(ctx)
+	case *openai.Provider:
+		err = prov.TestConnection(ctx)
+	default:
+		_, err = p.Models(ctx)
+	}
+
+	latency := time.Since(start).Milliseconds()
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     "error",
+			"valid":      false,
+			"latency_ms": latency,
+			"error":      err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"valid":      true,
+		"latency_ms": latency,
+		"message":    "Connection verified successfully",
+	})
+}
+
+func (s *Server) handleTestAccount(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accId := chi.URLParam(r, "accId")
+	if id == "" || accId == "" {
+		http.Error(w, "provider id and account id required", http.StatusBadRequest)
+		return
+	}
+
+	p, ok := s.router.GetProvider(id)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"valid":  false,
+			"error":  fmt.Sprintf("provider %q not found in active router", id),
+		})
+		return
+	}
+
+	start := time.Now()
+	var err error
+	ctx := r.Context()
+
+	switch prov := p.(type) {
+	case *kiro.Provider:
+		err = prov.TestAccount(ctx, accId)
+	case *antigravity.Provider:
+		err = prov.TestAccount(ctx, accId)
+	default:
+		err = fmt.Errorf("account-level testing not supported for %s", p.Type())
+	}
+
+	latency := time.Since(start).Milliseconds()
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     "error",
+			"valid":      false,
+			"latency_ms": latency,
+			"error":      err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"valid":      true,
+		"latency_ms": latency,
+		"message":    fmt.Sprintf("Account %s verified successfully", accId),
 	})
 }
 

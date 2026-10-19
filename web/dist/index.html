@@ -237,7 +237,43 @@
       margin-top: 0.15rem;
     }
 
-    /* Accounts List */
+    /* Provider & Accounts Cards */
+    .provider-card {
+      background: #0d131f;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      margin-bottom: 0.75rem;
+      overflow: hidden;
+      transition: border-color 0.15s ease;
+    }
+    .provider-card:hover {
+      border-color: #2e3d57;
+    }
+    .provider-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0.9rem;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .provider-accounts-list {
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(0, 0, 0, 0.15);
+      padding: 0.4rem 0.75rem 0.5rem 0.75rem;
+    }
+    .account-subrow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.4rem 0.5rem;
+      margin: 0.25rem 0;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+    .account-subrow:hover {
+      background: rgba(255, 255, 255, 0.04);
+    }
     .account-row {
       display: flex;
       align-items: center;
@@ -590,7 +626,7 @@
           </div>
           <button class="btn" onclick="openAddProviderModal()">+ Add</button>
         </div>
-        <div id="accounts-container">
+        <div id="accounts-container" style="max-height: 480px; overflow-y: auto; padding-right: 0.25rem;">
           <div style="color: var(--text-muted); font-size: 0.85rem;">Loading providers...</div>
         </div>
       </div>
@@ -1067,65 +1103,74 @@
         if (data.providers && data.providers.length > 0) {
           data.providers.forEach(p => {
             totalProviders++;
-            if (p.accounts && p.accounts.length > 0) {
-              p.accounts.forEach(a => {
-                let initial = 'G';
-                let bg = 'rgba(56, 189, 248, 0.15)';
-                let col = '#38bdf8';
-                if (p.type === 'kiro') {
-                  initial = 'K';
-                  bg = 'rgba(251, 146, 60, 0.15)';
-                  col = '#fb923c';
-                } else if (p.type === 'openai') {
-                  initial = 'O';
-                  bg = 'rgba(74, 222, 128, 0.15)';
-                  col = '#4ade80';
-                } else if (p.type === 'antigravity') {
-                  initial = 'G';
-                  bg = 'rgba(96, 165, 250, 0.15)';
-                  col = '#60a5fa';
-                }
-                const div = document.createElement('div');
-                div.className = 'account-row';
-                div.innerHTML = `
-                  <div class="account-info">
-                    <div class="account-avatar" style="background:${bg}; color:${col}; font-weight:700;">${initial}</div>
-                    <div>
-                      <div class="account-email">${a.email || a.id}</div>
-                      <div class="account-meta">${p.id} (${p.type}) • ${a.project_id || 'Active Account'}</div>
-                    </div>
-                  </div>
-                  <div>
-                    <span class="pill pill-green"><span class="dot"></span> Active</span>
-                  </div>
-                `;
-                accountsContainer.appendChild(div);
-              });
-            } else {
-              let initial = p.id.charAt(0).toUpperCase();
-              let bg = 'rgba(148, 163, 184, 0.15)';
-              let col = '#94a3b8';
-              if (p.type === 'kiro') {
-                initial = 'K';
-                bg = 'rgba(251, 146, 60, 0.15)';
-                col = '#fb923c';
-              }
-              const div = document.createElement('div');
-              div.className = 'account-row';
-              div.innerHTML = `
-                <div class="account-info">
+            let initial = p.id.charAt(0).toUpperCase();
+            let bg = 'rgba(148, 163, 184, 0.15)';
+            let col = '#94a3b8';
+            if (p.type === 'kiro') {
+              initial = 'K';
+              bg = 'rgba(251, 146, 60, 0.15)';
+              col = '#fb923c';
+            } else if (p.type === 'antigravity') {
+              initial = 'G';
+              bg = 'rgba(96, 165, 250, 0.15)';
+              col = '#60a5fa';
+            } else if (p.type === 'openai') {
+              initial = 'O';
+              bg = 'rgba(74, 222, 128, 0.15)';
+              col = '#4ade80';
+            }
+
+            const card = document.createElement('div');
+            card.className = 'provider-card';
+
+            const hasAccounts = p.accounts && p.accounts.length > 0;
+            const subtitle = p.base_url || (p.type === 'kiro' ? 'AWS CodeWhisperer OIDC pool' : p.type === 'antigravity' ? 'Google Cloud Code Assist pool' : 'Direct upstream');
+
+            card.innerHTML = `
+              <div class="provider-card-header">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
                   <div class="account-avatar" style="background:${bg}; color:${col}; font-weight:700;">${initial}</div>
                   <div>
-                    <div class="account-email">${p.id}</div>
-                    <div class="account-meta">${p.type} • ${p.base_url || 'Direct connector'}</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                      <span style="font-weight: 700; font-size: 0.95rem;">${p.id}</span>
+                      <span class="pill pill-blue" style="font-size: 0.7rem; padding: 0.1rem 0.45rem;">${p.type}</span>
+                      <span class="pill pill-green" style="font-size: 0.7rem; padding: 0.1rem 0.45rem;">
+                        ${hasAccounts ? p.accounts.length + ' account' + (p.accounts.length > 1 ? 's' : '') : 'Active'}
+                      </span>
+                    </div>
+                    <div style="font-size: 0.74rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px;">
+                      ${subtitle}
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <span class="pill ${p.has_key ? 'pill-green' : 'pill-blue'}"><span class="dot"></span> ${p.has_key ? 'Active Provider' : 'Configured'}</span>
+                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                  ${p.type === 'kiro' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportKiro()" title="Auto-import from CLI">📥 Import</button>` : ''}
+                  <button class="btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="testProvider('${p.id}', this)" title="Test connection">⚡ Test</button>
+                  <button class="btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteProvider('${p.id}')" title="Delete Provider">🗑</button>
                 </div>
-              `;
-              accountsContainer.appendChild(div);
-            }
+              </div>
+              ${hasAccounts ? `
+                <div class="provider-accounts-list">
+                  ${p.accounts.map(a => `
+                    <div class="account-subrow">
+                      <div style="display: flex; align-items: center; gap: 0.6rem; min-width: 0;">
+                        <span style="color: var(--text-muted); font-size: 0.8rem;">↳</span>
+                        <div style="min-width: 0;">
+                          <div style="font-size: 0.82rem; font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${a.email || a.id}</div>
+                          <div style="font-size: 0.68rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">ID: ${a.id} ${a.project_id ? '• ' + a.project_id : ''}</div>
+                        </div>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0;">
+                        <span class="pill pill-green" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;"><span class="dot"></span> Active</span>
+                        <button class="btn" style="padding: 0.18rem 0.45rem; font-size: 0.72rem;" onclick="testAccount('${p.id}', '${a.id}', this)" title="Test account credentials">⚡ Test</button>
+                        <button class="btn" style="padding: 0.18rem 0.45rem; font-size: 0.72rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteAccount('${p.id}', '${a.id}')" title="Delete Account">🗑</button>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              ` : ''}
+            `;
+            accountsContainer.appendChild(card);
           });
         }
 
@@ -1243,6 +1288,100 @@
       } finally {
         btn.disabled = false;
         btn.innerText = 'Run Prompt';
+      }
+    }
+
+    async function deleteAccount(provId, accId) {
+      if (!confirm(`Are you sure you want to remove account "${accId}" from ${provId}?`)) return;
+      try {
+        const res = await fetch(`/api/providers/${provId}/accounts/${accId}`, { method: 'DELETE' });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast(`Account "${accId}" removed`);
+          loadStatus();
+        } else {
+          showToast('Failed to delete account');
+        }
+      } catch (e) {
+        showToast('Delete failed: ' + e.message);
+      }
+    }
+
+    async function deleteProvider(provId) {
+      if (!confirm(`Are you sure you want to disconnect provider "${provId}"?`)) return;
+      try {
+        const res = await fetch(`/api/providers/${provId}`, { method: 'DELETE' });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast(`Provider "${provId}" disconnected`);
+          loadStatus();
+        } else {
+          showToast('Failed to delete provider');
+        }
+      } catch (e) {
+        showToast('Delete failed: ' + e.message);
+      }
+    }
+
+    async function testProvider(provId, btn) {
+      const origText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'Testing...';
+      try {
+        const res = await fetch(`/api/providers/${provId}/test`, { method: 'POST' });
+        const d = await res.json();
+        if (d.valid) {
+          btn.innerHTML = `✓ ${d.latency_ms}ms`;
+          btn.style.borderColor = 'rgba(74, 222, 128, 0.4)';
+          btn.style.color = '#4ade80';
+          showToast(`Provider "${provId}" OK (${d.latency_ms}ms)`);
+        } else {
+          btn.innerHTML = '✗ Failed';
+          btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          btn.style.color = '#ef4444';
+          showToast(`Test failed: ${d.error || 'Connection refused'}`);
+        }
+      } catch (e) {
+        btn.innerHTML = '✗ Error';
+        showToast('Test request error: ' + e.message);
+      } finally {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 3500);
+      }
+    }
+
+    async function testAccount(provId, accId, btn) {
+      const origText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = 'Testing...';
+      try {
+        const res = await fetch(`/api/providers/${provId}/accounts/${accId}/test`, { method: 'POST' });
+        const d = await res.json();
+        if (d.valid) {
+          btn.innerHTML = `✓ ${d.latency_ms}ms`;
+          btn.style.borderColor = 'rgba(74, 222, 128, 0.4)';
+          btn.style.color = '#4ade80';
+          showToast(`Account "${accId}" active (${d.latency_ms}ms)`);
+        } else {
+          btn.innerHTML = '✗ Invalid';
+          btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
+          btn.style.color = '#ef4444';
+          showToast(`Account error: ${d.error || 'Invalid credentials'}`);
+        }
+      } catch (e) {
+        btn.innerHTML = '✗ Error';
+        showToast('Test error: ' + e.message);
+      } finally {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = origText;
+          btn.style.borderColor = '';
+          btn.style.color = '';
+        }, 3500);
       }
     }
 

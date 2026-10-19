@@ -80,6 +80,14 @@ func (p *Provider) IsHealthy() bool {
 	return true
 }
 
+func (p *Provider) TestConnection(ctx context.Context) error {
+	// Call models endpoint with 10s timeout
+	testCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	_, err := p.Models(testCtx)
+	return err
+}
+
 func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
 	payload, err := json.Marshal(req)
 	if err != nil {
