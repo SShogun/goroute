@@ -134,6 +134,11 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
 	s.mux.Post("/v1/embeddings", s.handleEmbeddings)
+	s.mux.Post("/v1/images/generations", s.handleImageGenerations)
+	s.mux.Post("/v1/audio/speech", s.handleAudioSpeech)
+	s.mux.Post("/v1/audio/transcriptions", s.handleAudioTranscriptions)
+	s.mux.Post("/v1/rerank", s.handleRerank)
+	s.mux.Post("/v1/moderations", s.handleModerations)
 	if s.enableDashboard {
 		s.mux.Handle("/*", web.Handler())
 	}
