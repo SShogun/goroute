@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ziuus/goroute/pkg/providers"
 )
@@ -107,9 +108,11 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 		})
 	}
 
-	// Add provider direct models
+	// Add provider direct models with per-provider timeout
 	for _, p := range r.providers {
-		pModels, err := p.Models(ctx)
+		pCtx, pCancel := context.WithTimeout(ctx, 1500*time.Millisecond)
+		pModels, err := p.Models(pCtx)
+		pCancel()
 		if err == nil {
 			for _, m := range pModels {
 				models = append(models, providers.ModelInfo{
@@ -143,6 +146,35 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 	r.mu.RLock()
 	combo, isCombo := r.combos[normReq.Model]
 	r.mu.RUnlock()
+
+	// Alias resolution to combos if exact match not found
+	if !isCombo && !strings.Contains(normReq.Model, "/") {
+		lower := strings.ToLower(normReq.Model)
+		var resolvedCombo string
+		if strings.Contains(lower, "opus") {
+			resolvedCombo = "opus"
+		} else if strings.Contains(lower, "haiku") {
+			resolvedCombo = "haiku"
+		} else if strings.Contains(lower, "sonnet") || strings.Contains(lower, "claude") {
+			resolvedCombo = "sonnet"
+		} else if strings.Contains(lower, "gpt") {
+			resolvedCombo = "gpt"
+		} else if strings.Contains(lower, "gemini-pro") || strings.Contains(lower, "gemini-2.5-pro") {
+			resolvedCombo = "gemini-pro"
+		} else if strings.Contains(lower, "gemini") {
+			resolvedCombo = "gemini-flash"
+		}
+
+		if resolvedCombo != "" {
+			r.mu.RLock()
+			c, ok := r.combos[resolvedCombo]
+			r.mu.RUnlock()
+			if ok && len(c.Targets) > 0 {
+				combo = c
+				isCombo = true
+			}
+		}
+	}
 
 	if isCombo && len(combo.Targets) > 0 {
 		return r.executeCombo(ctx, combo, &normReq)
@@ -182,7 +214,11 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 
 		body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
 		if err != nil {
+			log.Printf("[GoRoute] Failover: target %s/%s returned error: %v (status %d), trying next target...", target.ProviderID, target.Model, err, statusCode)
 			lastErr = err
+			if statusCode != 0 {
+				lastStatus = statusCode
+			}
 			continue
 		}
 
