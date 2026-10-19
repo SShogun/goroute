@@ -421,14 +421,21 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 								Name      string      `json:"name"`
 								Input     interface{} `json:"input"`
 							}
-							if err := json.Unmarshal(payloadBytes, &evt); err == nil && evt.Name != "" {
+							if err := json.Unmarshal(payloadBytes, &evt); err == nil && (evt.Name != "" || evt.ToolUseId != "") {
 								argsStr := ""
 								switch v := evt.Input.(type) {
 								case string:
-									argsStr = v
+									if v != "null" {
+										argsStr = v
+									}
+								case nil:
+									argsStr = ""
 								default:
 									b, _ := json.Marshal(v)
-									argsStr = string(b)
+									s := string(b)
+									if s != "null" {
+										argsStr = s
+									}
 								}
 								chunk := map[string]interface{}{
 									"id":      respID,

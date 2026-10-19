@@ -332,7 +332,7 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 						}
 					}
 
-					if tc.Function.Arguments != "" {
+					if tc.Function.Arguments != "" && tc.Function.Arguments != "null" {
 						argsJSON, _ := json.Marshal(map[string]interface{}{
 							"type":  "content_block_delta",
 							"index": toolBlockIdx,
