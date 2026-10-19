@@ -109,7 +109,7 @@ func TestMultimodalMediaParsing(t *testing.T) {
 			},
 		},
 	}
-	parts := parseGeminiParts(openAIMedia)
+	parts := parseGeminiParts(openAIMedia, nil)
 	if len(parts) != 2 {
 		t.Fatalf("expected 2 parts, got %d", len(parts))
 	}
@@ -132,7 +132,7 @@ func TestMultimodalMediaParsing(t *testing.T) {
 			},
 		},
 	}
-	anthropicParts := parseGeminiParts(anthropicMedia)
+	anthropicParts := parseGeminiParts(anthropicMedia, nil)
 	if len(anthropicParts) != 2 {
 		t.Fatalf("expected 2 parts, got %d", len(anthropicParts))
 	}

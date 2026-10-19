@@ -60,11 +60,13 @@ type geminiInlineData struct {
 }
 
 type geminiFunctionCall struct {
+	ID   string                 `json:"id,omitempty"`
 	Name string                 `json:"name"`
 	Args map[string]interface{} `json:"args,omitempty"`
 }
 
 type geminiFunctionResponse struct {
+	ID       string                 `json:"id,omitempty"`
 	Name     string                 `json:"name"`
 	Response map[string]interface{} `json:"response"`
 }
@@ -102,7 +104,7 @@ func extractInlineDataFromURL(rawURL string) *geminiInlineData {
 	return nil
 }
 
-func parseGeminiParts(content interface{}) []geminiPart {
+func parseGeminiParts(content interface{}, toolUseNames map[string]string) []geminiPart {
 	var parts []geminiPart
 	switch v := content.(type) {
 	case string:
@@ -119,12 +121,20 @@ func parseGeminiParts(content interface{}) []geminiPart {
 				// 2. Anthropic tool_use block
 				if m["type"] == "tool_use" {
 					name, _ := m["name"].(string)
+					id, _ := m["id"].(string)
+					if id == "" {
+						id = fmt.Sprintf("toolu_%d", time.Now().UnixNano())
+					}
+					if toolUseNames != nil {
+						toolUseNames[id] = name
+					}
 					input, _ := m["input"].(map[string]interface{})
 					if input == nil {
 						input = make(map[string]interface{})
 					}
 					parts = append(parts, geminiPart{
 						FunctionCall: &geminiFunctionCall{
+							ID:   id,
 							Name: name,
 							Args: input,
 						},
@@ -134,13 +144,18 @@ func parseGeminiParts(content interface{}) []geminiPart {
 
 				// 3. Anthropic tool_result block
 				if m["type"] == "tool_result" {
+					toolUseID, _ := m["tool_use_id"].(string)
 					name, _ := m["name"].(string)
+					if name == "" && toolUseNames != nil && toolUseID != "" {
+						name = toolUseNames[toolUseID]
+					}
 					if name == "" {
 						name = "tool"
 					}
 					content := m["content"]
 					parts = append(parts, geminiPart{
 						FunctionResponse: &geminiFunctionResponse{
+							ID:   toolUseID,
 							Name: name,
 							Response: map[string]interface{}{
 								"result": content,
@@ -267,6 +282,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 
 		var contents []geminiContent
+		toolUseNames := make(map[string]string)
 		for _, msg := range req.Messages {
 			role := msg.Role
 			if role == "assistant" {
@@ -275,7 +291,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				role = "user"
 			}
 
-			parts := parseGeminiParts(msg.Content)
+			parts := parseGeminiParts(msg.Content, toolUseNames)
 			if len(parts) == 0 {
 				continue
 			}
