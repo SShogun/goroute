@@ -17,14 +17,14 @@
 [![NPM Version](https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/goroute)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ziuus/goroute?style=flat-square&color=8A2BE2)](https://github.com/ziuus/goroute/releases)
-[![Memory Footprint](https://img.shields.io/badge/memory-%3C%205MB%20RAM-00C853?style=flat-square)](#-benchmarks-vs-omniroute)
+[![Memory Footprint](https://img.shields.io/badge/memory-%3C%205MB%20RAM-00C853?style=flat-square)](#-benchmarks)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey?style=flat-square)](#-cross-platform-matrix)
 
 <p align="center">
   <a href="#-quickstart">Quickstart</a> •
   <a href="#-architecture">Architecture</a> •
   <a href="#-supported-coding-agents">Supported Agents</a> •
-  <a href="#-benchmarks-vs-omniroute">Benchmarks</a> •
+  <a href="#-benchmarks">Benchmarks</a> •
   <a href="#-features">Features</a> •
   <a href="#-cli-cheatsheet">Cheatsheet</a>
 </p>
@@ -108,16 +108,11 @@ go install github.com/ziuus/goroute/cmd/goroute@latest
 
 ### 2. Connect Your Accounts
 
-#### Migrate from OmniRoute in 1-Second:
-```bash
-goroute import omniroute
-```
-*Instantly imports all Antigravity OAuth tokens, custom provider keys, and combo routers into encrypted local storage (`~/.goroute/vault.json`).*
-
-#### Or sign in fresh with Google Antigravity (PKCE OAuth):
+#### Sign in with Google Antigravity (PKCE OAuth):
 ```bash
 goroute auth login antigravity
 ```
+*Securely links your Antigravity accounts into GoRoute's encrypted local storage (`~/.goroute/vault.json`).*
 
 ---
 
@@ -163,11 +158,11 @@ goroute run aider --model openai/claude-3-7-sonnet
 
 ---
 
-## 📊 Benchmarks vs OmniRoute
+## 📊 Benchmarks vs Traditional Gateways
 
 Tested on Linux x86_64 under 500 concurrent streaming requests:
 
-| Benchmark Metric | OmniRoute *(Node/Next.js)* | GoRoute *(Pure Go)* | Efficiency Gain |
+| Benchmark Metric | Traditional Gateways *(Node/Next.js/Python)* | GoRoute *(Pure Go)* | Efficiency Gain |
 | :--- | :--- | :--- | :--- |
 | **Idle Memory (RSS)** | `580 MB – 1,450 MB` | **`5.1 MB`** | **99.1% less RAM** |
 | **Memory Under 500 Req Load** | `850 MB – 2.1 GB` | **`16.5 MB`** | **98.0% less RAM** |
@@ -251,7 +246,6 @@ goroute run <agent> [args...]       # Launch agent with proxy env variables
 # Providers & Accounts
 goroute auth login antigravity      # Interactive PKCE OAuth login
 goroute auth list                   # List connected provider accounts
-goroute import omniroute            # Import all accounts & keys from OmniRoute
 goroute catalog                     # View 25+ built-in provider presets
 ```
 

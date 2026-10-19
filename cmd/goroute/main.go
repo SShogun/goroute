@@ -22,7 +22,6 @@ providing multi-account rotation, OAuth PKCE flows, and automatic fallback casca
 		NewServeCmd(),
 		NewAuthCmd(),
 		NewStatusCmd(),
-		NewImportCmd(),
 		NewProviderCmd(),
 		NewComboCmd(),
 		NewModelsCmd(),

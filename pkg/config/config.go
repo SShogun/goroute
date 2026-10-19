@@ -36,14 +36,14 @@ type ProviderConfig struct {
 }
 
 type ComboTarget struct {
-	ProviderID string `yaml:"provider_id"`
-	Model      string `yaml:"model"`
+	ProviderID string `yaml:"provider_id" json:"provider_id"`
+	Model      string `yaml:"model" json:"model"`
 }
 
 type ComboConfig struct {
-	Name     string        `yaml:"name"`
-	Strategy string        `yaml:"strategy"` // "failover", "round_robin"
-	Targets  []ComboTarget `yaml:"targets"`
+	Name     string        `yaml:"name" json:"name"`
+	Strategy string        `yaml:"strategy" json:"strategy"` // "failover", "round_robin"
+	Targets  []ComboTarget `yaml:"targets" json:"targets"`
 }
 
 type Config struct {

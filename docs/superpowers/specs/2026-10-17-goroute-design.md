@@ -6,7 +6,7 @@
 
 ## 1. Executive Summary
 
-`goroute` is a high-performance, ultra-resource-efficient AI gateway written in Go. It directly solves the excessive resource usage of Node/Electron gateways like OmniRoute (which consume 500MB–1.5GB of RAM and significant idle CPU) while maintaining their most valuable capabilities:
+`goroute` is a high-performance, ultra-resource-efficient AI gateway written in Go. It directly solves the excessive resource usage of heavy Node/Electron gateways (which consume 500MB–1.5GB of RAM and significant idle CPU) while providing robust multi-agent routing capabilities:
 1. **Interactive OAuth Logins & Auto-Refresh** (e.g. Google Antigravity CLI with multiple accounts).
 2. **Multi-Account Rotation** for the same provider (round-robin, least-loaded).
 3. **Automatic Fallback Cascades** (combos) when rate limits (429) or upstream errors (5xx) occur.

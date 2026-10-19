@@ -473,7 +473,7 @@
       </div>
     </div>
     <div class="header-actions">
-      <button class="btn" onclick="syncOmniRoute()">🔄 Sync from OmniRoute</button>
+      <button class="btn" onclick="reloadConfig()">🔄 Reload Config</button>
       <button class="btn btn-primary" onclick="openAddAccountModal()">+ Add Antigravity Account</button>
     </div>
   </header>
@@ -627,19 +627,15 @@
       <div class="modal-body">
         <p>GoRoute uses PKCE OAuth to securely link Google Antigravity accounts. Tokens are saved into your encrypted local vault.</p>
         
-        <p><strong>Option 1: Quick Terminal Command</strong></p>
+        <p><strong>Quick Terminal Command</strong></p>
         <div class="command-box">
           <span>goroute auth login antigravity</span>
           <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
         </div>
         <p style="font-size: 0.8rem;">This will open your default browser to select a Google account and automatically add it to your active pool.</p>
-
-        <p style="margin-top: 1rem;"><strong>Option 2: Sync from Existing OmniRoute</strong></p>
-        <p style="font-size: 0.8rem;">If you have accounts already signed in through OmniRoute, GoRoute can import all of them seamlessly.</p>
       </div>
       <div class="modal-actions">
-        <button class="btn" onclick="closeAddAccountModal()">Cancel</button>
-        <button class="btn btn-primary" onclick="syncOmniRoute(); closeAddAccountModal();">Sync from OmniRoute Now</button>
+        <button class="btn btn-primary" onclick="closeAddAccountModal()">Done</button>
       </div>
     </div>
   </div>
@@ -667,19 +663,19 @@
       document.getElementById('account-modal').classList.remove('open');
     }
 
-    async function syncOmniRoute() {
-      showToast('Syncing accounts from OmniRoute...');
+    async function reloadConfig() {
+      showToast('Reloading configuration...');
       try {
-        const res = await fetch('/api/import-omniroute', { method: 'POST' });
+        const res = await fetch('/api/reload', { method: 'POST' });
         const data = await res.json();
         if (data.status === 'ok') {
-          showToast('Success: ' + data.message);
+          showToast('Configuration reloaded successfully');
           loadStatus();
         } else {
-          showToast('Error importing: ' + (data.error || 'Unknown error'));
+          showToast('Reload failed: ' + (data.error || 'Unknown error'));
         }
       } catch (e) {
-        showToast('Failed to trigger sync: ' + e.message);
+        showToast('Failed to trigger reload: ' + e.message);
       }
     }
 
@@ -727,7 +723,7 @@
         if (totalAccs === 0) {
           accountsContainer.innerHTML = `
             <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; text-align: center;">
-              No accounts in pool. Click "+ Add Antigravity Account" or "Sync from OmniRoute".
+              No accounts in pool. Click "+ Add Antigravity Account" or run <code>goroute auth login antigravity</code>.
             </div>
           `;
         }
@@ -738,11 +734,14 @@
         if (data.combos && data.combos.length > 0) {
           data.combos.forEach(c => {
             const tr = document.createElement('tr');
-            const targetStr = (c.targets || []).map(t => `${t.provider_id}/${t.model}`).join(' ➔ ');
+            const name = c.name || c.Name || 'Combo';
+            const targets = c.targets || c.Targets || [];
+            const strategy = c.strategy || c.Strategy || 'priority';
+            const targetStr = targets.map(t => `${t.provider_id || t.ProviderID}/${t.model || t.Model}`).join(' ➔ ');
             tr.innerHTML = `
-              <td><strong>${c.name}</strong></td>
+              <td><strong>${name}</strong></td>
               <td><span class="badge-model">${targetStr}</span></td>
-              <td><span style="color:var(--text-muted)">${c.strategy || 'priority'}</span></td>
+              <td><span style="color:var(--text-muted)">${strategy}</span></td>
             `;
             tbody.appendChild(tr);
           });

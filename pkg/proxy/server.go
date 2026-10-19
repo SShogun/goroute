@@ -7,10 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -79,7 +77,6 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/logs", s.handleLogs)
 	s.mux.Get("/api/logs/stream", s.handleLogsStream)
 	s.mux.Post("/api/reload", s.handleReload)
-	s.mux.Post("/api/import-omniroute", s.handleAPIImportOmniRoute)
 	s.mux.Get("/v1/models", s.handleModels)
 	s.mux.Post("/v1/chat/completions", s.handleChatCompletions)
 	s.mux.Post("/v1/messages", s.handleMessages)
@@ -342,26 +339,6 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 			"codex":    map[string]interface{}{"configured": codexConfigured, "path": codexPath},
 		},
 	})
-}
-
-func (s *Server) handleAPIImportOmniRoute(w http.ResponseWriter, r *http.Request) {
-	out, err := exec.Command("goroute", "import", "omniroute").CombinedOutput()
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "error",
-			"error":  string(out),
-		})
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":  "ok",
-		"message": strings.TrimSpace(string(out)),
-	})
-	_ = s.Reload()
 }
 
 func (s *Server) handleReload(w http.ResponseWriter, r *http.Request) {
