@@ -8,14 +8,14 @@ import (
 )
 
 const (
-	// DefaultMaxToolResultChars limits single tool output to ~20k chars (~5k tokens)
-	DefaultMaxToolResultChars = 20000
-	headKeepChars             = 12000
-	tailKeepChars             = 6000
+	// DefaultMaxToolResultChars limits single tool output to ~15k chars (~3.5k tokens)
+	DefaultMaxToolResultChars = 15000
+	headKeepChars             = 9000
+	tailKeepChars             = 4000
 
-	// DefaultMaxTotalContextChars limits entire conversation history to ~160k chars (~40k tokens)
-	// to prevent AWS Kiro 413 / ValidationException and Google Cloud Code 400 errors on long agent runs.
-	DefaultMaxTotalContextChars = 160000
+	// DefaultMaxTotalContextChars limits entire conversation history to ~60k chars (~15k tokens)
+	// to ensure AWS Kiro, Google Cloud Code, and other providers never throw 413 / 400 errors.
+	DefaultMaxTotalContextChars = 60000
 )
 
 // SanitizeAndGuardrailMessages compresses tool outputs, strips historical thinking, and prunes older turns if oversized

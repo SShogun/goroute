@@ -413,8 +413,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			acc.InvalidateToken()
 		}
 
-		// If 402/429 (quota), 403 (unlicensed/permission), or 401, try next account
-		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode >= 500 {
+		// If 402/429 (quota), 403 (unlicensed/permission), 404 (not found on account), or 401, try next account
+		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
 			if lastBody != nil {
 				lastBody.Close()
 			}

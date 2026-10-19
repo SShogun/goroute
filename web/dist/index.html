@@ -474,7 +474,7 @@
     </div>
     <div class="header-actions">
       <button class="btn" onclick="reloadConfig()">🔄 Reload Config</button>
-      <button class="btn btn-primary" onclick="openAddAccountModal()">+ Add Antigravity Account</button>
+      <button class="btn btn-primary" onclick="openAddProviderModal()">+ Add Provider / Key</button>
     </div>
   </header>
 
@@ -482,7 +482,7 @@
     <div class="banner">
       <div>
         <h1>Unified Multi-Agent Gateway</h1>
-        <p>Zero-overhead proxy with native Anthropic &amp; OpenAI streaming, smart failover, and multi-account pool.</p>
+        <p>Zero-overhead proxy with native Anthropic &amp; OpenAI streaming, smart failover, and multi-provider pool.</p>
       </div>
       <div class="endpoints-box">
         <div class="endpoint-item">
@@ -499,17 +499,17 @@
     </div>
 
     <div class="grid-layout">
-      <!-- Connected Accounts -->
+      <!-- Connected Providers & Accounts -->
       <div class="card col-6">
         <div class="card-header">
           <div>
-            <div class="card-title">🔐 Connected Accounts Pool</div>
-            <div class="card-subtitle">Auto-balanced Google Antigravity &amp; custom provider accounts</div>
+            <div class="card-title">🔐 Connected Providers &amp; Accounts</div>
+            <div class="card-subtitle">Active API keys, AWS CodeWhisperer/Kiro, and Google Antigravity pool</div>
           </div>
-          <button class="btn" onclick="openAddAccountModal()">+ Add</button>
+          <button class="btn" onclick="openAddProviderModal()">+ Add</button>
         </div>
         <div id="accounts-container">
-          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading accounts...</div>
+          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading providers...</div>
         </div>
       </div>
 
@@ -517,61 +517,14 @@
       <div class="card col-6">
         <div class="card-header">
           <div>
-            <div class="card-title">🤖 Coding Agent Connections</div>
-            <div class="card-subtitle">One-command setup for developer CLI agents and IDEs</div>
+            <div class="card-title">🤖 Coding Agent Connections (14 Supported)</div>
+            <div class="card-subtitle">1-Click auto-configure or manual setup for CLI agents and IDEs</div>
           </div>
+          <button class="btn btn-primary" onclick="triggerAgentSetup('all')">⚡ Setup All Agents</button>
         </div>
-        <div class="agent-grid">
-          <div class="agent-box">
-            <div class="agent-header">
-              <span class="agent-name">Claude Code</span>
-              <span class="pill pill-green" id="claude-pill">Active</span>
-            </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">Settings: ~/.claude/settings.json</div>
-            <div class="agent-code" onclick="copyText('goroute setup claude')">
-              <span>goroute setup claude</span>
-              <span>📋</span>
-            </div>
-          </div>
-
-          <div class="agent-box">
-            <div class="agent-header">
-              <span class="agent-name">OpenCode</span>
-              <span class="pill pill-green" id="opencode-pill">Active</span>
-            </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">Config: ~/.config/opencode/</div>
-            <div class="agent-code" onclick="copyText('goroute setup opencode')">
-              <span>goroute setup opencode</span>
-              <span>📋</span>
-            </div>
-          </div>
-
-          <div class="agent-box">
-            <div class="agent-header">
-              <span class="agent-name">OpenAI Codex</span>
-              <span class="pill pill-green" id="codex-pill">Active</span>
-            </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">Config: ~/.codex/config.toml</div>
-            <div class="agent-code" onclick="copyText('goroute setup codex')">
-              <span>goroute setup codex</span>
-              <span>📋</span>
-            </div>
-          </div>
-
-          <div class="agent-box">
-            <div class="agent-header">
-              <span class="agent-name">Cursor / Cline</span>
-              <span class="pill pill-blue">Universal</span>
-            </div>
-            <div style="font-size: 0.78rem; color: var(--text-muted);">OpenAI Base: http://127.0.0.1:8128/v1</div>
-            <div class="agent-code" onclick="copyText('goroute setup cursor')">
-              <span>goroute setup cursor</span>
-              <span>📋</span>
-            </div>
-          </div>
+        <div class="agent-grid" id="agents-grid" style="max-height: 480px; overflow-y: auto; padding-right: 0.25rem;">
+          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading agents...</div>
         </div>
-      </div>
-
       <!-- Combos & Routing -->
       <div class="card col-6">
         <div class="card-header">
@@ -620,22 +573,45 @@
     </div>
   </main>
 
-  <!-- Modal for Adding Account -->
-  <div class="modal-overlay" id="account-modal">
-    <div class="modal-content">
-      <div class="modal-title">Add Google Antigravity Account</div>
+  <!-- Modal for Adding Provider / Account -->
+  <div class="modal-overlay" id="provider-modal">
+    <div class="modal-content" style="max-width: 520px;">
+      <div class="modal-title">Add Provider Connection / Account</div>
       <div class="modal-body">
-        <p>GoRoute uses PKCE OAuth to securely link Google Antigravity accounts. Tokens are saved into your encrypted local vault.</p>
-        
-        <p><strong>Quick Terminal Command</strong></p>
-        <div class="command-box">
-          <span>goroute auth login antigravity</span>
-          <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
+        <div style="display: flex; gap: 0.5rem; margin-bottom: 1rem; border-bottom: 1px solid var(--card-border); padding-bottom: 0.75rem;">
+          <button class="btn btn-primary" id="tab-api-btn" onclick="switchProviderTab('api')">Custom API Key Provider</button>
+          <button class="btn" id="tab-oauth-btn" onclick="switchProviderTab('oauth')">Google Antigravity OAuth</button>
         </div>
-        <p style="font-size: 0.8rem;">This will open your default browser to select a Google account and automatically add it to your active pool.</p>
+
+        <div id="tab-api-content">
+          <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.75rem;">Connect OpenAI, Anthropic, DeepSeek, OpenRouter, Groq, Ollama, or any custom endpoint:</p>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Provider ID</label>
+            <input type="text" id="add-prov-id" class="text-input" placeholder="e.g. deepseek, openrouter, groq, my-proxy" style="width: 100%;">
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">Base URL</label>
+            <input type="text" id="add-prov-url" class="text-input" placeholder="e.g. https://api.deepseek.com/v1" style="width: 100%;">
+          </div>
+          <div style="margin-bottom: 0.75rem;">
+            <label style="font-size: 0.78rem; color: var(--text-muted); display: block; margin-bottom: 0.25rem;">API Key / Bearer Token</label>
+            <input type="password" id="add-prov-key" class="text-input" placeholder="sk-..." style="width: 100%;">
+          </div>
+          <button class="btn btn-primary" style="width: 100%; margin-top: 0.5rem;" onclick="submitNewProvider()">Save &amp; Connect Provider</button>
+        </div>
+
+        <div id="tab-oauth-content" style="display: none;">
+          <p style="font-size: 0.85rem;">GoRoute uses PKCE OAuth to securely link Google Antigravity accounts into your encrypted local vault.</p>
+          <p style="margin-top: 1rem;"><strong>Quick Terminal Command:</strong></p>
+          <div class="command-box">
+            <span>goroute auth login antigravity</span>
+            <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">This will open your default browser to authorize Google Antigravity and automatically add it to your active pool.</p>
+        </div>
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-primary" onclick="closeAddAccountModal()">Done</button>
+      <div class="modal-actions" style="margin-top: 1rem;">
+        <button class="btn" onclick="closeAddProviderModal()">Close</button>
       </div>
     </div>
   </div>
@@ -656,11 +632,72 @@
       });
     }
 
-    function openAddAccountModal() {
-      document.getElementById('account-modal').classList.add('open');
+    function openAddProviderModal() {
+      document.getElementById('provider-modal').classList.add('open');
     }
-    function closeAddAccountModal() {
-      document.getElementById('account-modal').classList.remove('open');
+    function closeAddProviderModal() {
+      document.getElementById('provider-modal').classList.remove('open');
+    }
+
+    function switchProviderTab(tab) {
+      if (tab === 'api') {
+        document.getElementById('tab-api-btn').className = 'btn btn-primary';
+        document.getElementById('tab-oauth-btn').className = 'btn';
+        document.getElementById('tab-api-content').style.display = 'block';
+        document.getElementById('tab-oauth-content').style.display = 'none';
+      } else {
+        document.getElementById('tab-api-btn').className = 'btn';
+        document.getElementById('tab-oauth-btn').className = 'btn btn-primary';
+        document.getElementById('tab-api-content').style.display = 'none';
+        document.getElementById('tab-oauth-content').style.display = 'block';
+      }
+    }
+
+    async function submitNewProvider() {
+      const id = document.getElementById('add-prov-id').value.trim();
+      const url = document.getElementById('add-prov-url').value.trim();
+      const key = document.getElementById('add-prov-key').value.trim();
+      if (!id || !url) {
+        showToast('Provider ID and Base URL required');
+        return;
+      }
+      try {
+        const res = await fetch('/api/providers/add', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id, base_url: url, api_key: key, type: 'openai' })
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast(`Provider "${id}" connected!`);
+          closeAddProviderModal();
+          loadStatus();
+        } else {
+          showToast(`Error: ${d.error || 'Failed'}`);
+        }
+      } catch (e) {
+        showToast(`Failed: ${e.message}`);
+      }
+    }
+
+    async function triggerAgentSetup(agent) {
+      showToast(`Configuring ${agent}...`);
+      try {
+        const res = await fetch('/api/agents/setup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agent })
+        });
+        const d = await res.json();
+        if (d.status === 'ok') {
+          showToast(`Success! ${agent} configured.`);
+          loadStatus();
+        } else {
+          showToast(`Setup error: ${d.error || 'failed'}`);
+        }
+      } catch (e) {
+        showToast(`Setup failed: ${e.message}`);
+      }
     }
 
     async function reloadConfig() {
@@ -689,16 +726,16 @@
           document.getElementById('mem-pill').innerText = `RAM: ~${data.memory_mb.toFixed(1)} MB`;
         }
 
-        // Render accounts
+        // Render providers & accounts
         const accountsContainer = document.getElementById('accounts-container');
         accountsContainer.innerHTML = '';
-        let totalAccs = 0;
+        let totalProviders = 0;
 
         if (data.providers && data.providers.length > 0) {
           data.providers.forEach(p => {
+            totalProviders++;
             if (p.accounts && p.accounts.length > 0) {
               p.accounts.forEach(a => {
-                totalAccs++;
                 const initial = a.email ? a.email.charAt(0).toUpperCase() : 'G';
                 const div = document.createElement('div');
                 div.className = 'account-row';
@@ -716,16 +753,60 @@
                 `;
                 accountsContainer.appendChild(div);
               });
+            } else {
+              const initial = p.id.charAt(0).toUpperCase();
+              const div = document.createElement('div');
+              div.className = 'account-row';
+              div.innerHTML = `
+                <div class="account-info">
+                  <div class="account-avatar" style="background:#1e3a5f; color:#38bdf8;">${initial}</div>
+                  <div>
+                    <div class="account-email">${p.id}</div>
+                    <div class="account-meta">${p.type} • ${p.base_url || 'Direct connector'}</div>
+                  </div>
+                </div>
+                <div>
+                  <span class="pill ${p.has_key ? 'pill-green' : 'pill-blue'}"><span class="dot"></span> ${p.has_key ? 'Active Provider' : 'Configured'}</span>
+                </div>
+              `;
+              accountsContainer.appendChild(div);
             }
           });
         }
 
-        if (totalAccs === 0) {
+        if (totalProviders === 0) {
           accountsContainer.innerHTML = `
             <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; text-align: center;">
-              No accounts in pool. Click "+ Add Antigravity Account" or run <code>goroute auth login antigravity</code>.
+              No providers connected. Click "+ Add Provider / Key" to add one.
             </div>
           `;
+        }
+
+        // Render all 14 agents
+        const agentsGrid = document.getElementById('agents-grid');
+        if (data.agents && agentsGrid) {
+          agentsGrid.innerHTML = '';
+          Object.keys(data.agents).forEach(k => {
+            const ag = data.agents[k];
+            const isConn = ag.configured;
+            const div = document.createElement('div');
+            div.className = 'agent-box';
+            div.innerHTML = `
+              <div class="agent-header">
+                <span class="agent-name">${ag.name || k}</span>
+                <span class="pill ${isConn ? 'pill-green' : 'pill-blue'}">${isConn ? 'Connected' : 'Available'}</span>
+              </div>
+              <div style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.3;">${ag.desc || ''}</div>
+              <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: auto;">
+                <div class="agent-code" style="flex: 1;" onclick="copyText('${ag.cmd || 'goroute setup ' + k}')">
+                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${ag.cmd || 'goroute setup ' + k}</span>
+                  <span>📋</span>
+                </div>
+                <button class="btn" style="padding: 0.35rem 0.6rem; font-size: 0.72rem; white-space: nowrap;" onclick="triggerAgentSetup('${k}')">⚡ Setup</button>
+              </div>
+            `;
+            agentsGrid.appendChild(div);
+          });
         }
 
         // Render combos
@@ -749,20 +830,18 @@
           tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-muted)">Default provider direct routing active</td></tr>`;
         }
 
-        // Update agent pills
-        if (data.agents) {
-          if (data.agents.claude && data.agents.claude.configured) {
-            document.getElementById('claude-pill').className = 'pill pill-green';
-            document.getElementById('claude-pill').innerText = 'Connected';
-          }
-          if (data.agents.opencode && data.agents.opencode.configured) {
-            document.getElementById('opencode-pill').className = 'pill pill-green';
-            document.getElementById('opencode-pill').innerText = 'Connected';
-          }
-          if (data.agents.codex && data.agents.codex.configured) {
-            document.getElementById('codex-pill').className = 'pill pill-green';
-            document.getElementById('codex-pill').innerText = 'Connected';
-          }
+        // Update playground models dropdown
+        const modelSelect = document.getElementById('playground-model');
+        if (data.models && data.models.length > 0 && modelSelect.options.length <= 5) {
+          const currentVal = modelSelect.value;
+          modelSelect.innerHTML = '';
+          data.models.forEach(m => {
+            const opt = document.createElement('option');
+            opt.value = m.id;
+            opt.innerText = `${m.id} (${m.owned_by})`;
+            modelSelect.appendChild(opt);
+          });
+          if (currentVal) modelSelect.value = currentVal;
         }
 
       } catch (e) {
