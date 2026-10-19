@@ -23,6 +23,8 @@ type AnthropicMessageRequest struct {
 	Stream      bool                   `json:"stream,omitempty"`
 	Temperature *float64               `json:"temperature,omitempty"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	Tools       []interface{}          `json:"tools,omitempty"`
+	ToolChoice  interface{}            `json:"tool_choice,omitempty"`
 }
 
 type AnthropicMessage struct {
@@ -107,6 +109,8 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		Stream:      req.Stream,
 		MaxTokens:   maxTokensPtr,
 		Temperature: req.Temperature,
+		Tools:       req.Tools,
+		ToolChoice:  req.ToolChoice,
 		Messages:    make([]providers.ChatMessage, 0, len(req.Messages)+1),
 	}
 
@@ -224,14 +228,16 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 
 	// Send message_start
 	fmt.Fprintf(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"%s\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"%s\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1,\"output_tokens\":1}}}\n\n", msgID, model)
-	// Send content_block_start
-	fmt.Fprintf(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n")
 	if flusher != nil {
 		flusher.Flush()
 	}
 
 	scanner := bufio.NewScanner(upstream)
 	outputTokens := 0
+	inTextBlock := false
+	blockIndex := 0
+	stopReason := "end_turn"
+	seenTools := make(map[string]int)
 
 	for scanner.Scan() {
 		line := scanner.Bytes()
@@ -246,21 +252,37 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 		var chunk struct {
 			Choices []struct {
 				Delta struct {
-					Content string `json:"content"`
+					Content   string `json:"content"`
+					ToolCalls []struct {
+						Index    int    `json:"index"`
+						ID       string `json:"id"`
+						Type     string `json:"type"`
+						Function struct {
+							Name      string `json:"name"`
+							Arguments string `json:"arguments"`
+						} `json:"function"`
+					} `json:"tool_calls"`
 				} `json:"delta"`
+				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 		}
 
 		if err := json.Unmarshal(data, &chunk); err == nil && len(chunk.Choices) > 0 {
-			text := chunk.Choices[0].Delta.Content
-			if text != "" {
+			choice := chunk.Choices[0]
+
+			// Handle text content
+			if choice.Delta.Content != "" {
+				if !inTextBlock {
+					fmt.Fprintf(w, "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":%d,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n", blockIndex)
+					inTextBlock = true
+				}
 				outputTokens++
 				deltaJSON, _ := json.Marshal(map[string]interface{}{
 					"type":  "content_block_delta",
-					"index": 0,
+					"index": blockIndex,
 					"delta": map[string]string{
 						"type": "text_delta",
-						"text": text,
+						"text": choice.Delta.Content,
 					},
 				})
 				fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(deltaJSON))
@@ -268,13 +290,75 @@ func translateOpenAIToAnthropicSSE(upstream io.Reader, w io.Writer, flusher http
 					flusher.Flush()
 				}
 			}
+
+			// Handle tool calls
+			if len(choice.Delta.ToolCalls) > 0 {
+				for _, tc := range choice.Delta.ToolCalls {
+					stopReason = "tool_use"
+					toolCallID := tc.ID
+					if toolCallID == "" {
+						toolCallID = fmt.Sprintf("toolu_%d", blockIndex)
+					}
+
+					toolBlockIdx, seen := seenTools[toolCallID]
+					if !seen {
+						if inTextBlock {
+							fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
+							inTextBlock = false
+							blockIndex++
+						}
+						toolBlockIdx = blockIndex
+						seenTools[toolCallID] = toolBlockIdx
+						blockIndex++
+
+						toolName := tc.Function.Name
+						if toolName == "" {
+							toolName = "tool"
+						}
+
+						toolStartJSON, _ := json.Marshal(map[string]interface{}{
+							"type":  "content_block_start",
+							"index": toolBlockIdx,
+							"content_block": map[string]interface{}{
+								"type":  "tool_use",
+								"id":    toolCallID,
+								"name":  toolName,
+								"input": map[string]interface{}{},
+							},
+						})
+						fmt.Fprintf(w, "event: content_block_start\ndata: %s\n\n", string(toolStartJSON))
+						if flusher != nil {
+							flusher.Flush()
+						}
+					}
+
+					if tc.Function.Arguments != "" {
+						argsJSON, _ := json.Marshal(map[string]interface{}{
+							"type":  "content_block_delta",
+							"index": toolBlockIdx,
+							"delta": map[string]string{
+								"type":         "input_json_delta",
+								"partial_json": tc.Function.Arguments,
+							},
+						})
+						fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", string(argsJSON))
+						if flusher != nil {
+							flusher.Flush()
+						}
+					}
+				}
+			}
 		}
 	}
 
-	// Send content_block_stop
-	fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n")
+	if inTextBlock {
+		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", blockIndex)
+	}
+	for _, idx := range seenTools {
+		fmt.Fprintf(w, "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":%d}\n\n", idx)
+	}
 	// Send message_delta
-	fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", outputTokens)
+	fmt.Fprintf(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"%s\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":%d}}\n\n", stopReason, outputTokens)
 	// Send message_stop
 	fmt.Fprintf(w, "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
 	if flusher != nil {

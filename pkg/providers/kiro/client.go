@@ -120,10 +120,26 @@ func (p *Provider) getValidAccessToken(ctx context.Context) (string, error) {
 	return p.accessToken, nil
 }
 
+type kiroToolSpec struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	InputSchema map[string]interface{} `json:"inputSchema"`
+}
+
+type kiroToolItem struct {
+	ToolSpecification kiroToolSpec `json:"toolSpecification"`
+}
+
+type kiroUserInputContext struct {
+	Tools       []kiroToolItem           `json:"tools,omitempty"`
+	ToolResults []map[string]interface{} `json:"toolResults,omitempty"`
+}
+
 type kiroUserMsg struct {
-	Content string `json:"content"`
-	ModelID string `json:"modelId"`
-	Origin  string `json:"origin"`
+	Content                 string                `json:"content"`
+	ModelID                 string                `json:"modelId"`
+	Origin                  string                `json:"origin"`
+	UserInputMessageContext *kiroUserInputContext `json:"userInputMessageContext,omitempty"`
 }
 
 type kiroAssistMsg struct {
@@ -216,13 +232,52 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		userContent = "(empty prompt)"
 	}
 
+	var kiroTools []kiroToolItem
+	for _, t := range req.Tools {
+		m, ok := t.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := m["name"].(string)
+		desc, _ := m["description"].(string)
+		schema := m["input_schema"]
+		if schema == nil {
+			if fn, ok := m["function"].(map[string]interface{}); ok {
+				name, _ = fn["name"].(string)
+				desc, _ = fn["description"].(string)
+				schema = fn["parameters"]
+			}
+		}
+		schemaMap, ok := schema.(map[string]interface{})
+		if !ok {
+			schemaMap = map[string]interface{}{"type": "object"}
+		}
+		kiroTools = append(kiroTools, kiroToolItem{
+			ToolSpecification: kiroToolSpec{
+				Name:        name,
+				Description: desc,
+				InputSchema: map[string]interface{}{
+					"json": schemaMap,
+				},
+			},
+		})
+	}
+
+	var userCtx *kiroUserInputContext
+	if len(kiroTools) > 0 {
+		userCtx = &kiroUserInputContext{
+			Tools: kiroTools,
+		}
+	}
+
 	payload := kiroRequestPayload{
 		ConversationState: kiroConversationState{
 			CurrentMessage: kiroCurrentMsg{
 				UserInputMessage: kiroUserMsg{
-					Content: userContent,
-					ModelID: modelID,
-					Origin:  "AI_EDITOR",
+					Content:                 userContent,
+					ModelID:                 modelID,
+					Origin:                  "AI_EDITOR",
+					UserInputMessageContext: userCtx,
 				},
 			},
 			ChatTriggerType: "MANUAL",
@@ -354,6 +409,49 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 												"content": evt.Content,
 											},
 											"finish_reason": nil,
+										},
+									},
+								}
+								chunkBytes, _ := json.Marshal(chunk)
+								fmt.Fprintf(pw, "data: %s\n\n", string(chunkBytes))
+							}
+						} else if eventType == "toolUseEvent" {
+							var evt struct {
+								ToolUseId string      `json:"toolUseId"`
+								Name      string      `json:"name"`
+								Input     interface{} `json:"input"`
+							}
+							if err := json.Unmarshal(payloadBytes, &evt); err == nil && evt.Name != "" {
+								argsStr := ""
+								switch v := evt.Input.(type) {
+								case string:
+									argsStr = v
+								default:
+									b, _ := json.Marshal(v)
+									argsStr = string(b)
+								}
+								chunk := map[string]interface{}{
+									"id":      respID,
+									"object":  "chat.completion.chunk",
+									"created": created,
+									"model":   modelID,
+									"choices": []map[string]interface{}{
+										{
+											"index": 0,
+											"delta": map[string]interface{}{
+												"tool_calls": []map[string]interface{}{
+													{
+														"index": 0,
+														"id":    evt.ToolUseId,
+														"type":  "function",
+														"function": map[string]string{
+															"name":      evt.Name,
+															"arguments": argsStr,
+														},
+													},
+												},
+											},
+											"finish_reason": "tool_calls",
 										},
 									},
 								}
