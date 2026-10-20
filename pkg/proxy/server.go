@@ -151,6 +151,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/settings", s.handleGetSettings)
 	s.mux.Patch("/api/settings", s.handlePatchSettings)
 	s.mux.Post("/api/settings/purge-call-logs", s.handlePurgeCallLogs)
+	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
+	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
+	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
 	s.mux.Get("/api/keys", s.handleListKeys)
 	s.mux.Post("/api/keys", s.handleCreateKey)
 	s.mux.Delete("/api/keys/{id}", s.handleRevokeKey)
@@ -339,6 +342,68 @@ func (s *Server) handlePurgeCallLogs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetCapabilityStore()
+	list, err := store.ListOverrides()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if list == nil {
+		list = []storage.ModelCapabilityOverride{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"overrides": list,
+		"count":     len(list),
+	})
+}
+
+func (s *Server) handleSetCapabilityOverride(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Provider string      `json:"provider"`
+		ModelID  string      `json:"modelId"`
+		Key      string      `json:"key"`
+		Value    interface{} `json:"value"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetCapabilityStore()
+	if err := store.SetOverride(body.Provider, body.ModelID, body.Key, body.Value); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
+}
+
+func (s *Server) handleDeleteCapabilityOverride(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Provider string `json:"provider"`
+		ModelID  string `json:"modelId"`
+		Key      string `json:"key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetCapabilityStore()
+	if err := store.DeleteOverride(body.Provider, body.ModelID, body.Key); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "deleted"})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
