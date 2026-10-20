@@ -12,7 +12,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/rtk"
 )
 
 type Provider struct {
@@ -46,9 +48,16 @@ func (p *Provider) IsHealthy() bool {
 	return len(p.accounts) > 0
 }
 
-func (p *Provider) NextAccount() (*Account, error) {
+func (p *Provider) NextAccount(pinnedID string) (*Account, error) {
 	if len(p.accounts) == 0 {
 		return nil, fmt.Errorf("no accounts configured for provider %s", p.id)
+	}
+	if pinnedID != "" {
+		for _, a := range p.accounts {
+			if a.ID == pinnedID || a.Email == pinnedID {
+				return a, nil
+			}
+		}
 	}
 	next := atomic.AddUint64(&p.idx, 1)
 	return p.accounts[next%uint64(len(p.accounts))], nil
@@ -274,12 +283,21 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		return nil, false, 0, fmt.Errorf("no accounts configured for antigravity provider")
 	}
 
+	sessionKey := affinity.DeriveSessionKey(nil, req)
+	pinnedAcc := affinity.GlobalManager.GetAffinity(sessionKey, p.id)
+
 	maxAttempts := len(p.accounts)
 	var lastStatus int
 	var lastBody io.ReadCloser
 
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		acc, err := p.NextAccount()
+		var acc *Account
+		var err error
+		if attempt == 0 && pinnedAcc != "" {
+			acc, err = p.NextAccount(pinnedAcc)
+		} else {
+			acc, err = p.NextAccount("")
+		}
 		if err != nil {
 			continue
 		}
@@ -378,6 +396,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				}
 				var respMap map[string]interface{}
 				if str, ok := msg.Content.(string); ok {
+					if len(str) > 200 {
+						filtered := rtk.GlobalEngine.FilterCommandOutput("", str)
+						str = filtered.Output
+					}
 					if err := json.Unmarshal([]byte(str), &respMap); err != nil {
 						respMap = map[string]interface{}{"result": str}
 					}
@@ -489,6 +511,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			if lastBody != nil {
 				lastBody.Close()
 			}
+			if sessionKey != "" {
+				affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
+			}
 			if req.Stream {
 				return TranslateGeminiSSEToOpenAI(resp.Body, req.Model), true, resp.StatusCode, nil
 			}
@@ -509,6 +534,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 		// If 402/429 (quota), 403 (unlicensed/permission), 404 (not found on account), or 401, try next account
 		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
+			affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
 			if lastBody != nil {
 				lastBody.Close()
 			}
@@ -547,7 +573,7 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 }
 
 func (p *Provider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
-	acc, err := p.NextAccount()
+	acc, err := p.NextAccount("")
 	if err != nil {
 		return nil, err
 	}

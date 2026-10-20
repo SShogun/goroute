@@ -14,7 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/providers"
+	"github.com/ziuus/goroute/pkg/rtk"
 )
 
 type Account struct {
@@ -145,11 +147,18 @@ func (p *Provider) IsHealthy() bool {
 	return len(p.accounts) > 0
 }
 
-func (p *Provider) nextAccount() *Account {
+func (p *Provider) nextAccount(pinnedID string) *Account {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.accounts) == 0 {
 		return nil
+	}
+	if pinnedID != "" {
+		for _, a := range p.accounts {
+			if a.ID == pinnedID {
+				return a
+			}
+		}
 	}
 	acc := p.accounts[p.counter%uint64(len(p.accounts))]
 	p.counter++
@@ -356,6 +365,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 							}
 							if resContent == "" {
 								resContent = "(no output)"
+							} else if len(resContent) > 200 {
+								filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
+								resContent = filtered.Output
 							}
 							if len(resContent) > 12000 {
 								resContent = resContent[:12000] + "\n... [truncated by GoRoute to fit model context limit]"
@@ -455,12 +467,20 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		pruneKiroConversationState(&convState, 150000)
 	}
 
+	sessionKey := affinity.DeriveSessionKey(nil, req)
+	pinnedAcc := affinity.GlobalManager.GetAffinity(sessionKey, p.id)
+
 	var lastErr error
 	var lastStatusCode int
 	thresholdRetries := 0
 
 	for attempt := 0; attempt < accCount; attempt++ {
-		acc := p.nextAccount()
+		var acc *Account
+		if attempt == 0 && pinnedAcc != "" {
+			acc = p.nextAccount(pinnedAcc)
+		} else {
+			acc = p.nextAccount("")
+		}
 		if acc == nil {
 			break
 		}
@@ -522,9 +542,14 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 			if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
 				log.Printf("[kiro] Account %s returned %d (%s), failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
+				affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
 				continue
 			}
 			return nil, false, resp.StatusCode, lastErr
+		}
+
+		if sessionKey != "" {
+			affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
 		}
 
 		pr, pw := io.Pipe()

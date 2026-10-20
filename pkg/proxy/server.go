@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/cache"
 	"github.com/ziuus/goroute/pkg/catalog"
 	"github.com/ziuus/goroute/pkg/clitools"
@@ -33,6 +34,7 @@ import (
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/resilience"
 	"github.com/ziuus/goroute/pkg/router"
+	"github.com/ziuus/goroute/pkg/rtk"
 	"github.com/ziuus/goroute/pkg/store"
 	"github.com/ziuus/goroute/pkg/tunnel"
 	"github.com/ziuus/goroute/web"
@@ -134,6 +136,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/combos", s.handleListCombos)
 	s.mux.Post("/api/combos", s.handleSaveCombo)
 	s.mux.Delete("/api/combos/{name}", s.handleDeleteCombo)
+	s.mux.Get("/api/rtk/filters", s.handleListRTKFilters)
+	s.mux.Post("/api/rtk/test", s.handleTestRTKFilter)
+	s.mux.Get("/api/affinity/sessions", s.handleListAffinitySessions)
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
@@ -1961,6 +1966,44 @@ func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 		"deleted": name,
 	})
 }
+
+func (s *Server) handleListRTKFilters(w http.ResponseWriter, r *http.Request) {
+	filters := rtk.GlobalEngine.ListFilters()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"count":   len(filters),
+		"filters": filters,
+	})
+}
+
+func (s *Server) handleTestRTKFilter(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Command string `json:"command"`
+		Output  string `json:"output"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	res := rtk.GlobalEngine.FilterCommandOutput(payload.Command, payload.Output)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"result": res,
+	})
+}
+
+func (s *Server) handleListAffinitySessions(w http.ResponseWriter, r *http.Request) {
+	sessions := affinity.GlobalManager.ListSessions()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"count":    len(sessions),
+		"sessions": sessions,
+	})
+}
+
 
 
 
