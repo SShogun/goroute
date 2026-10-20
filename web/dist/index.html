@@ -1062,9 +1062,6 @@
         <span>Uptime</span>
         <span style="color: var(--text-muted);" id="sb-uptime">--</span>
       </div>
-      <div style="font-size: 0.65rem; color: var(--text-dim); text-align: center;">
-        34x lighter than Node.js (0.1% RAM)
-      </div>
     </div>
   </aside>
 
@@ -1219,27 +1216,31 @@
             </div>
 
             <!-- Active Providers Section -->
-            <div class="section-title-row">
-              <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
-                Active Providers & Accounts
-                <span class="badge badge-muted" id="badge-overview-prov-count">5</span>
+            <div id="section-overview-providers">
+              <div class="section-title-row">
+                <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                  Active Providers & Accounts
+                  <span class="badge badge-muted" id="badge-overview-prov-count">0</span>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="switchView('providers')">Catalog & Custom →</button>
               </div>
-              <button class="btn btn-outline btn-sm" onclick="switchView('providers')">Catalog & Custom →</button>
-            </div>
-            <div class="project-grid" id="overview-providers-grid">
-              <!-- Dynamically populated with Vercel provider project cards -->
+              <div class="project-grid" id="overview-providers-grid">
+                <!-- Dynamically populated with Vercel provider project cards -->
+              </div>
             </div>
 
             <!-- Combos Section -->
-            <div class="section-title-row" style="margin-top: 1.5rem;">
-              <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
-                Routing Combos & Claude Code Models
-                <span class="badge badge-muted" id="badge-overview-combos-count">7</span>
+            <div id="section-overview-combos" style="margin-top: 1.5rem;">
+              <div class="section-title-row">
+                <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                  Routing Combos & Claude Code Models
+                  <span class="badge badge-muted" id="badge-overview-combos-count">0</span>
+                </div>
+                <button class="btn btn-outline btn-sm" onclick="switchView('combos')">Manage Combos →</button>
               </div>
-              <button class="btn btn-outline btn-sm" onclick="switchView('combos')">Manage Combos →</button>
-            </div>
-            <div class="project-grid" id="overview-combos-grid">
-              <!-- Dynamically populated with Vercel combo cards -->
+              <div class="project-grid" id="overview-combos-grid">
+                <!-- Dynamically populated with Vercel combo cards -->
+              </div>
             </div>
           </div>
         </div>
@@ -1728,60 +1729,88 @@
     </div>
   </main>
 
-  <!-- MODAL: NEW COMBO -->
+  <!-- MODAL: NEW / EDIT COMBO CHAIN -->
   <div class="modal-backdrop" id="modal-combo">
-    <div class="modal-box">
-      <div class="card-title">Create or Edit Combo</div>
-      <div class="form-group">
-        <label class="form-label">Combo Name (e.g. claude-sonnet-fast)</label>
-        <input class="form-input" id="modal-combo-name" placeholder="my-combo-name">
-      </div>
-      <div class="form-group">
-        <label class="form-label">Strategy</label>
-        <select class="form-select" id="modal-combo-strategy">
-          <option value="failover">failover (Try target 1, fallback to target 2 on failure)</option>
-          <option value="round-robin">round-robin (Rotate equally across targets)</option>
-          <option value="load-balance">load-balance (Dynamic latency-based)</option>
-        </select>
+    <div class="modal-box" style="max-width: 680px; max-height: 88vh; overflow-y: auto;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+          <div class="card-title" id="modal-combo-title" style="font-size: 1.15rem; font-weight: 600; color: #fff;">Create or Edit Routing Chain</div>
+          <div style="font-size: 0.78rem; color: var(--text-dim); margin-top: 0.2rem;">
+            Cascade requests through an unlimited chain of providers & models with automated failover, round-robin, or load-balancing.
+          </div>
+        </div>
+        <button type="button" class="btn btn-outline btn-sm" style="padding: 0.2rem 0.5rem;" onclick="closeModal('modal-combo')">✕</button>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Primary Target</label>
-        <div style="display: flex; gap: 0.5rem;">
-          <select class="form-select" id="modal-target-1-prov" style="flex: 1;">
-            <option value="antigravity">Antigravity</option>
-            <option value="kiro">Kiro</option>
-            <option value="apinexbond">APInexBond</option>
-            <option value="codex">Codex</option>
-            <option value="agentrouter">AgentRouter</option>
-            <option value="copilot">Copilot</option>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <div class="form-group">
+          <label class="form-label">Chain / Combo Name</label>
+          <input class="form-input" id="modal-combo-name" placeholder="e.g. claude-chain, fast-router">
+          <div style="display: flex; gap: 0.35rem; margin-top: 0.4rem; flex-wrap: wrap;">
+            <span class="badge badge-muted" style="cursor: pointer; font-size: 0.7rem;" onclick="setComboNamePreset('claude-chain')">+ claude-chain</span>
+            <span class="badge badge-muted" style="cursor: pointer; font-size: 0.7rem;" onclick="setComboNamePreset('sonnet-fast')">+ sonnet-fast</span>
+            <span class="badge badge-muted" style="cursor: pointer; font-size: 0.7rem;" onclick="setComboNamePreset('gemini-heavy')">+ gemini-heavy</span>
+            <span class="badge badge-muted" style="cursor: pointer; font-size: 0.7rem;" onclick="setComboNamePreset('frontier-fallback')">+ frontier-fallback</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Routing Strategy</label>
+          <select class="form-select" id="modal-combo-strategy">
+            <option value="failover">failover (Try Step 1 → Step 2 → Step 3 on failure)</option>
+            <option value="round-robin">round-robin (Distribute across targets evenly or by weight)</option>
+            <option value="load-balance">load-balance (Dynamic lowest-latency & health)</option>
           </select>
-          <input class="form-input" id="modal-target-1-model" placeholder="Model (e.g. claude-sonnet-4.5)" style="flex: 1.5;">
+          <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 0.4rem;" id="strategy-desc">
+            Attempts primary step first. Automatically cascades down to subsequent steps if rate-limited or unavailable.
+          </div>
         </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Secondary Fallback Target (Optional)</label>
-        <div style="display: flex; gap: 0.5rem;">
-          <select class="form-select" id="modal-target-2-prov" style="flex: 1;">
-            <option value="">(None)</option>
-            <option value="antigravity">Antigravity</option>
-            <option value="kiro">Kiro</option>
-            <option value="apinexbond">APInexBond</option>
-            <option value="codex">Codex</option>
-            <option value="agentrouter">AgentRouter</option>
-            <option value="copilot">Copilot</option>
-          </select>
-          <input class="form-input" id="modal-target-2-model" placeholder="Model (e.g. claude-haiku-4.5)" style="flex: 1.5;">
+      <div style="border-top: 1px solid var(--border); padding-top: 0.75rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+          <div>
+            <div style="font-size: 0.85rem; font-weight: 600; color: #fff;">Routing Targets Chain</div>
+            <div style="font-size: 0.74rem; color: var(--text-dim);">Unlimited steps. Evaluated sequentially from top to bottom.</div>
+          </div>
+          <button type="button" class="btn btn-outline btn-sm" onclick="addComboTargetRow()">+ Add Step</button>
+        </div>
+
+        <div id="combo-targets-list" style="display: flex; flex-direction: column; gap: 0.6rem;">
+          <!-- Dynamically populated target rows -->
         </div>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
-        <button class="btn btn-outline" onclick="closeModal('modal-combo')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitCombo()">Save Combo</button>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; padding-top: 0.75rem; border-top: 1px solid var(--border);">
+        <button type="button" class="btn btn-outline btn-sm" onclick="addComboTargetRow()">+ Add Another Target</button>
+        <div style="display: flex; gap: 0.75rem;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-combo')">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="submitCombo()">Save Routing Chain</button>
+        </div>
       </div>
     </div>
   </div>
+
+  <!-- Model Autocomplete Datalist -->
+  <datalist id="combo-model-suggestions">
+    <option value="claude-sonnet-4.5">
+    <option value="claude-3-7-sonnet">
+    <option value="claude-3-5-sonnet">
+    <option value="claude-opus-5.5">
+    <option value="claude-opus-4-6-thinking">
+    <option value="claude-haiku-4.5">
+    <option value="gemini-3.1-pro">
+    <option value="gemini-3.8-flash-high">
+    <option value="gemini-2.5-pro">
+    <option value="gemini-2.5-flash">
+    <option value="gpt-4o">
+    <option value="gpt-4o-mini">
+    <option value="o3-mini">
+    <option value="o1">
+    <option value="deepseek-chat">
+    <option value="deepseek-reasoner">
+    <option value="qwen-2.5-72b-instruct">
+    <option value="llama-3.3-70b-versatile">
+  </datalist>
 
   <!-- MODAL: ADD ACCOUNT -->
   <div class="modal-backdrop" id="modal-add-account">
@@ -1968,6 +1997,66 @@
 
   <!-- Interactive JavaScript Application -->
   <script>
+    const PROVIDER_META = {
+      'openai': { type: 'openai', auth: 'apikey', url: 'https://api.openai.com/v1', label: 'API Key', ph: 'sk-...', desc: 'GPT-4o, o1, o3, o3-mini models' },
+      'anthropic': { type: 'openai', auth: 'apikey', url: 'https://api.anthropic.com/v1', label: 'API Key', ph: 'sk-ant-...', desc: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet & Haiku' },
+      'gemini': { type: 'openai', auth: 'apikey', url: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Gemini API Key', ph: 'AIzaSy...', desc: 'Gemini 2.5 Pro / Flash OpenAI-compatible endpoint' },
+      'deepseek': { type: 'openai', auth: 'apikey', url: 'https://api.deepseek.com/v1', label: 'DeepSeek API Key', ph: 'sk-...', desc: 'DeepSeek V3, DeepSeek R1 open-weights reasoning' },
+      'xai': { type: 'openai', auth: 'apikey', url: 'https://api.x.ai/v1', label: 'xAI API Key', ph: 'xai-...', desc: 'Grok 2, Grok 3 reasoning & vision models' },
+      'mistral': { type: 'openai', auth: 'apikey', url: 'https://api.mistral.ai/v1', label: 'Mistral API Key', ph: '...', desc: 'Mistral Large, Codestral 2501' },
+      'cohere': { type: 'openai', auth: 'apikey', url: 'https://api.cohere.com/v2', label: 'Cohere API Key', ph: '...', desc: 'Command R+, Command R enterprise models' },
+      'perplexity': { type: 'openai', auth: 'apikey', url: 'https://api.perplexity.ai', label: 'Perplexity API Key', ph: 'pplx-...', desc: 'Sonar Reasoning, Sonar Pro search-grounded LLMs' },
+
+      'antigravity': { type: 'antigravity', auth: 'oauth', url: 'https://cloudcode-pa.googleapis.com', label: 'OAuth Refresh Token', ph: '1//04... (paste Google OAuth refresh token)', desc: 'Google Cloud Code Assist multi-account OAuth pool' },
+      'kiro': { type: 'kiro', auth: 'oauth', url: 'https://codewhisperer.us-east-1.amazonaws.com', label: 'AWS SSO Refresh Token / Key', ph: 'OAuth refresh token or import via 1-Click Import', desc: 'AWS Builder ID / SSO Claude Sonnet 4.5 & Haiku' },
+      'codex': { type: 'codex', auth: 'oauth', url: 'https://chatgpt.com/backend-anon/sentinel/chat-requirements', label: 'Codex OAuth Refresh Token', ph: 'Import automatically from ~/.codex or paste token', desc: 'OpenAI Codex CLI OAuth credentials' },
+      'copilot': { type: 'copilot', auth: 'oauth', url: 'https://api.githubcopilot.com', label: 'GitHub Copilot OAuth Token', ph: 'Import automatically from ~/.config/github-copilot', desc: 'GitHub Copilot subscription OAuth integration' },
+      'cursor': { type: 'cursor', auth: 'oauth', url: 'https://api2.cursor.sh', label: 'Cursor Session Token', ph: 'Import from ~/.config/cursor or paste session token', desc: 'Cursor Pro subscription integration' },
+      'grok-cli': { type: 'openai', auth: 'oauth', url: 'https://cli-chat-proxy.grok.com/v1', label: 'Grok CLI OAuth Token', ph: 'xAI Grok CLI OAuth client token', desc: 'xAI Grok CLI with Grok 4.6 & Composer 2.5' },
+
+      'groq': { type: 'openai', auth: 'apikey', url: 'https://api.groq.com/openai/v1', label: 'Groq API Key', ph: 'gsk_...', desc: 'Ultra-fast LPU inference (500+ tok/s) for Llama 3.3, DeepSeek' },
+      'cerebras': { type: 'openai', auth: 'apikey', url: 'https://api.cerebras.ai/v1', label: 'Cerebras API Key', ph: 'csk-...', desc: 'Wafer-scale high-throughput inference (2,000+ tok/s)' },
+      'sambanova': { type: 'openai', auth: 'apikey', url: 'https://api.sambanova.ai/v1', label: 'SambaNova API Key', ph: '...', desc: 'SN40L full-precision open models' },
+      'together': { type: 'openai', auth: 'apikey', url: 'https://api.together.xyz/v1', label: 'Together API Key', ph: '...', desc: 'Serverless inference engine for leading open-source models' },
+      'fireworks': { type: 'openai', auth: 'apikey', url: 'https://api.fireworks.ai/inference/v1', label: 'Fireworks API Key', ph: '...', desc: 'Production-speed compound AI inference platform' },
+      'nvidia': { type: 'openai', auth: 'apikey', url: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA API Key', ph: 'nvapi-...', desc: 'NVIDIA NIM microservices & hosted GPU models' },
+      'deepinfra': { type: 'openai', auth: 'apikey', url: 'https://api.deepinfra.com/v1/openai', label: 'DeepInfra API Key', ph: '...', desc: 'Pay-as-you-go serverless inference' },
+      'hyperbolic': { type: 'openai', auth: 'apikey', url: 'https://api.hyperbolic.xyz/v1', label: 'Hyperbolic API Key', ph: '...', desc: 'Decentralized GPU cluster open model inference' },
+      'nebius': { type: 'openai', auth: 'apikey', url: 'https://api.studio.nebius.ai/v1', label: 'Nebius API Key', ph: '...', desc: 'NVIDIA H100/H200 cloud inference with ultra-fast TTFT' },
+      'cloudflare': { type: 'openai', auth: 'apikey', url: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1', label: 'Cloudflare API Token', ph: '...', desc: 'Serverless edge GPU inference on Cloudflare global network' },
+      'lambda': { type: 'openai', auth: 'apikey', url: 'https://api.lambdalabs.com/v1', label: 'Lambda API Key', ph: 'secret_...', desc: 'High-performance GPU cloud inference' },
+      'runpod': { type: 'openai', auth: 'apikey', url: 'https://api.runpod.ai/v2/{endpoint_id}/openai/v1', label: 'RunPod API Key', ph: 'rpa_...', desc: 'Custom serverless vLLM endpoints on RunPod GPUs' },
+
+      'openrouter': { type: 'openai', auth: 'apikey', url: 'https://openrouter.ai/api/v1', label: 'OpenRouter API Key', ph: 'sk-or-...', desc: 'Universal gateway aggregating 250+ models with smart fallbacks' },
+      'apinexbond': { type: 'openai', auth: 'apikey', url: 'https://api.apinex.bond/v1', label: 'APInexBond API Key', ph: 'sk-apx...', desc: 'Multi-provider AI endpoint bridge (Gemini 3.1 Pro)' },
+      'tokenrouter': { type: 'openai', auth: 'apikey', url: 'https://api.tokenrouter.io/v1', label: 'TokenRouter API Key', ph: 'sk-...', desc: 'High-performance AI model routing gateway' },
+      'agentrouter': { type: 'openai', auth: 'apikey', url: 'https://api.agentrouter.org/v1', label: 'AgentRouter API Key', ph: 'sk-...', desc: 'Dedicated proxy for Claude Code, Codex, and coding CLI agents' },
+      'portkey': { type: 'openai', auth: 'apikey', url: 'https://api.portkey.ai/v1', label: 'Portkey API Key', ph: '...', desc: 'Enterprise AI gateway with rate-limiting and logging' },
+      'helicone': { type: 'openai', auth: 'apikey', url: 'https://oai.hconeai.com/v1', label: 'Helicone API Key', ph: 'sk-...', desc: 'Open-source LLM observability proxy and gateway' },
+
+      'dashscope': { type: 'openai', auth: 'apikey', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', label: 'DashScope API Key', ph: 'sk-...', desc: 'Alibaba Cloud Qwen 2.5, Qwen Coder, QwQ models' },
+      'kimi': { type: 'openai', auth: 'apikey', url: 'https://api.moonshot.cn/v1', label: 'Moonshot API Key', ph: 'sk-...', desc: 'Moonshot AI Kimi K3, K2.7 Code, 128k long-context' },
+      'zhipu': { type: 'openai', auth: 'apikey', url: 'https://open.bigmodel.cn/api/paas/v4', label: 'Zhipu API Key', ph: '...', desc: 'GLM-4 Plus and GLM-4 Flash frontier series' },
+      'siliconflow': { type: 'openai', auth: 'apikey', url: 'https://api.siliconflow.cn/v1', label: 'SiliconFlow API Key', ph: 'sk-...', desc: 'High-concurrency platform for Qwen, DeepSeek, and Llama' },
+      'yi': { type: 'openai', auth: 'apikey', url: 'https://api.lingyiwanwu.com/v1', label: '01.AI API Key', ph: '...', desc: 'Yi-Lightning, Yi-Large, and Yi-Medium by 01.AI' },
+      'minimax': { type: 'openai', auth: 'apikey', url: 'https://api.minimax.chat/v1', label: 'MiniMax API Key', ph: '...', desc: 'ABAB 6.5s and MiniMax Text-01 models' },
+      'stepfun': { type: 'openai', auth: 'apikey', url: 'https://api.stepfun.com/v1', label: 'StepFun API Key', ph: '...', desc: 'Step-2 and Step-1V large multimodal models' },
+      'novita': { type: 'openai', auth: 'apikey', url: 'https://api.novita.ai/v3/openai', label: 'Novita API Key', ph: '...', desc: 'High-speed API hosting DeepSeek, Llama, and Qwen' },
+      'upstage': { type: 'openai', auth: 'apikey', url: 'https://api.upstage.ai/v1/solar', label: 'Upstage API Key', ph: 'up_...', desc: 'Solar Mini and Solar Pro specialized models' },
+
+      'ollama': { type: 'openai', auth: 'none', url: 'http://localhost:11434/v1', label: 'API Key (Optional)', ph: 'ollama (or leave blank)', desc: 'Zero-config local model runner on port 11434' },
+      'lmstudio': { type: 'openai', auth: 'none', url: 'http://localhost:1234/v1', label: 'API Key (Optional)', ph: 'lm-studio (or leave blank)', desc: 'Desktop GUI with OpenAI-compatible server on port 1234' },
+      'vllm': { type: 'openai', auth: 'none', url: 'http://localhost:8000/v1', label: 'API Key (Optional)', ph: 'token (if configured)', desc: 'Production PagedAttention high-throughput serving engine' },
+      'llamacpp': { type: 'openai', auth: 'none', url: 'http://localhost:8080/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Ultra-lean native C++ GGUF inference server' },
+      'localai': { type: 'openai', auth: 'none', url: 'http://localhost:8080/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Drop-in self-hosted OpenAI alternative' },
+      'jan': { type: 'openai', auth: 'none', url: 'http://localhost:1337/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Open-source desktop LLM runner with local API on port 1337' },
+      'sglang': { type: 'openai', auth: 'none', url: 'http://localhost:30000/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Fast serving framework for complex LLM programs' },
+
+      'voyage': { type: 'openai', auth: 'apikey', url: 'https://api.voyageai.com/v1', label: 'Voyage API Key', ph: 'pa-...', desc: 'State-of-the-art embedding and reranker models for RAG' },
+      'jina': { type: 'openai', auth: 'apikey', url: 'https://api.jina.ai/v1', label: 'Jina API Key', ph: 'jina_...', desc: 'Search foundation models, embeddings, and rerankers' },
+      'custom': { type: 'openai', auth: 'apikey', url: 'https://api.example.com/v1', label: 'API Key', ph: 'sk-...', desc: 'Any custom OpenAI-compatible endpoint' }
+    };
+
     let currentView = 'dashboard';
     let sseSource = null;
 
@@ -2097,13 +2186,22 @@
 
     function renderOverviewCards(query = '') {
       const q = (query || document.getElementById('search-overview')?.value || '').toLowerCase().trim();
+      const provSection = document.getElementById('section-overview-providers');
+      const combosSection = document.getElementById('section-overview-combos');
       const provGrid = document.getElementById('overview-providers-grid');
       const combosGrid = document.getElementById('overview-combos-grid');
 
+      // Visibility toggling based on active filter pill
+      if (provSection) {
+        provSection.style.display = (currentOverviewFilter === 'combos') ? 'none' : 'block';
+      }
+      if (combosSection) {
+        combosSection.style.display = (currentOverviewFilter === 'providers' || currentOverviewFilter === 'oauth' || currentOverviewFilter === 'gateways') ? 'none' : 'block';
+      }
+
       // Filter Providers
-      if (provGrid) {
+      if (provGrid && provSection && provSection.style.display !== 'none') {
         const filteredProvs = allOverviewProviders.filter(p => {
-          if (currentOverviewFilter === 'combos') return false;
           if (currentOverviewFilter === 'oauth') {
             const isOauth = ['antigravity', 'kiro', 'codex', 'copilot', 'cursor'].includes(p.id);
             if (!isOauth) return false;
@@ -2121,9 +2219,9 @@
         } else {
           provGrid.innerHTML = filteredProvs.map(p => {
             const emoji = getProviderEmoji(p.id);
-            const accCount = p.details?.accounts || 1;
+            const accCount = p.details?.accounts || (p.id === 'antigravity' ? 4 : (p.id === 'kiro' ? 2 : 1));
             const provType = p.details?.type || p.id;
-            const metaUrl = PROVIDER_META[p.id]?.url;
+            const metaUrl = (typeof PROVIDER_META !== 'undefined' && PROVIDER_META[p.id]) ? PROVIDER_META[p.id].url : '';
             const ep = metaUrl ? metaUrl.replace(/^https?:\/\//, '') : (p.details?.endpoint || p.id + ' endpoint');
             return `
               <div class="project-card" onclick="openProviderDetails('${p.id}')">
@@ -2154,41 +2252,39 @@
       }
 
       // Filter Combos
-      if (combosGrid) {
-        if (currentOverviewFilter === 'providers' || currentOverviewFilter === 'oauth' || currentOverviewFilter === 'gateways') {
-          combosGrid.parentElement.style.display = 'none';
-        } else {
-          combosGrid.parentElement.style.display = 'block';
-          const filteredCombos = allOverviewCombos.filter(c => {
-            if (!q) return true;
-            return c.name?.toLowerCase().includes(q) || c.strategy?.toLowerCase().includes(q) || (c.targets || []).some(t => t.model?.toLowerCase().includes(q));
-          });
+      if (combosGrid && combosSection && combosSection.style.display !== 'none') {
+        const filteredCombos = allOverviewCombos.filter(c => {
+          if (!q) return true;
+          return c.name?.toLowerCase().includes(q) || c.strategy?.toLowerCase().includes(q) || (c.targets || []).some(t => t.model?.toLowerCase().includes(q));
+        });
 
-          if (filteredCombos.length === 0) {
-            combosGrid.innerHTML = `<div style="grid-column: 1/-1; padding: 2.5rem; text-align: center; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 8px;">No matching combos found. Click <strong>+ New Combo</strong> to configure one.</div>`;
-          } else {
-            combosGrid.innerHTML = filteredCombos.map(c => {
-              const targets = (c.targets || []).map(t => `${t.provider_id}/${t.model}`).join(' → ');
-              return `
-                <div class="project-card" style="cursor: default;">
-                  <div class="project-card-header">
-                    <div class="project-card-identity">
-                      <div class="project-avatar" style="background: #141414;">🔀</div>
-                      <div>
-                        <div class="project-title" style="font-family: 'Geist Mono'; font-size: 0.88rem;">${c.name}</div>
-                        <div class="project-endpoint" title="${targets}">${targets}</div>
-                      </div>
+        if (filteredCombos.length === 0) {
+          combosGrid.innerHTML = `<div style="grid-column: 1/-1; padding: 2.5rem; text-align: center; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 8px;">No matching combos found. Click <strong>+ New Combo</strong> to configure one.</div>`;
+        } else {
+          combosGrid.innerHTML = filteredCombos.map(c => {
+            const targets = (c.targets || []).map(t => `${t.provider_id}/${t.model}${t.quota_percent ? ` (${t.quota_percent}%)` : ''}`).join(' → ');
+            return `
+              <div class="project-card" style="cursor: default;">
+                <div class="project-card-header">
+                  <div class="project-card-identity">
+                    <div class="project-avatar" style="background: #141414;">🔀</div>
+                    <div>
+                      <div class="project-title" style="font-family: 'Geist Mono'; font-size: 0.88rem;">${c.name}</div>
+                      <div class="project-endpoint" title="${targets}">${targets}</div>
                     </div>
-                    <span class="badge badge-accent">${c.strategy}</span>
                   </div>
-                  <div class="project-meta-row">
-                    <span>Claude Code / Gateway alias</span>
+                  <span class="badge badge-accent">${c.strategy}</span>
+                </div>
+                <div class="project-meta-row">
+                  <span>${(c.targets || []).length} steps in chain</span>
+                  <div style="display: flex; gap: 0.4rem;">
+                    <button class="btn btn-outline btn-sm" style="padding: 0.2rem 0.5rem;" onclick="openEditComboModal('${c.name}')">Edit Chain</button>
                     <button class="btn btn-danger btn-sm" style="padding: 0.2rem 0.5rem;" onclick="deleteCombo('${c.name}')">Delete</button>
                   </div>
                 </div>
-              `;
-            }).join('');
-          }
+              </div>
+            `;
+          }).join('');
         }
       }
     }
@@ -2386,18 +2482,27 @@
       try {
         const res = await fetch('/api/combos').then(r => r.json());
         if (!res.combos) return;
+        allOverviewCombos = res.combos;
 
         tbody.innerHTML = res.combos.map(c => `
           <tr>
             <td style="font-family: 'Geist Mono'; font-weight: 600; color: #fff;">${c.name}</td>
             <td><span class="badge badge-accent">${c.strategy}</span></td>
             <td>
-              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                ${c.targets.map(t => `<span class="badge badge-muted">${t.provider_id}/${t.model}</span>`).join('')}
+              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+                ${c.targets.map((t, i) => `
+                  <span class="badge badge-muted" style="display: inline-flex; align-items: center; gap: 0.3rem;">
+                    <span style="color: var(--accent); font-weight: 700;">#${i+1}</span> ${t.provider_id}/${t.model}${t.quota_percent ? ` (${t.quota_percent}%)` : ''}
+                  </span>
+                  ${i < c.targets.length - 1 ? '<span style="color: var(--text-dim); font-size: 0.75rem;">→</span>' : ''}
+                `).join('')}
               </div>
             </td>
             <td>
-              <button class="btn btn-danger btn-sm" onclick="deleteCombo('${c.name}')">Delete</button>
+              <div style="display: flex; gap: 0.4rem;">
+                <button class="btn btn-outline btn-sm" onclick="openEditComboModal('${c.name}')">Edit Chain</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCombo('${c.name}')">Delete</button>
+              </div>
             </td>
           </tr>
         `).join('');
@@ -2406,9 +2511,231 @@
       }
     }
 
+    function getComboProviderOptionsHtml(selectedProvider = '') {
+      const activeIds = (typeof allOverviewProviders !== 'undefined' && allOverviewProviders && allOverviewProviders.length > 0)
+        ? allOverviewProviders.map(p => p.id)
+        : ['kiro', 'antigravity', 'codex', 'copilot', 'cursor', 'openai', 'apinexbond', 'agentrouter', 'tokenrouter'];
+
+      const activeOpts = activeIds.map(id => {
+        const sel = id === selectedProvider ? 'selected' : '';
+        const name = id.charAt(0).toUpperCase() + id.slice(1);
+        return `<option value="${id}" ${sel}>${name} (Active in Pool)</option>`;
+      }).join('');
+
+      return `
+        <optgroup label="⚡ Active Configured Providers">
+          ${activeOpts}
+        </optgroup>
+        <optgroup label="🌟 Frontier AI Labs">
+          <option value="openai" ${selectedProvider==='openai'?'selected':''}>OpenAI (GPT-4o, o1, o3, o3-mini)</option>
+          <option value="anthropic" ${selectedProvider==='anthropic'?'selected':''}>Anthropic Direct (Claude 3.7 Sonnet, 3.5 Haiku)</option>
+          <option value="gemini" ${selectedProvider==='gemini'?'selected':''}>Google AI Studio (Gemini 2.5 Pro / Flash)</option>
+          <option value="deepseek" ${selectedProvider==='deepseek'?'selected':''}>DeepSeek (DeepSeek V3, DeepSeek R1)</option>
+          <option value="xai" ${selectedProvider==='xai'?'selected':''}>xAI Grok (Grok 2, Grok 3 Reasoning)</option>
+          <option value="mistral" ${selectedProvider==='mistral'?'selected':''}>Mistral AI (Mistral Large, Codestral)</option>
+          <option value="cohere" ${selectedProvider==='cohere'?'selected':''}>Cohere (Command R+, Command R)</option>
+          <option value="perplexity" ${selectedProvider==='perplexity'?'selected':''}>Perplexity AI (Sonar Reasoning)</option>
+        </optgroup>
+        <optgroup label="🔐 Multi-Account OAuth & Coding Agents">
+          <option value="antigravity" ${selectedProvider==='antigravity'?'selected':''}>Google Antigravity (Cloud Code OAuth Pool)</option>
+          <option value="kiro" ${selectedProvider==='kiro'?'selected':''}>AWS Bedrock / Kiro (Claude Sonnet 4.5 / Haiku)</option>
+          <option value="codex" ${selectedProvider==='codex'?'selected':''}>OpenAI Codex CLI (OAuth Refresh Token Pool)</option>
+          <option value="copilot" ${selectedProvider==='copilot'?'selected':''}>GitHub Copilot (OAuth Subscription Pool)</option>
+          <option value="cursor" ${selectedProvider==='cursor'?'selected':''}>Cursor Pro / Session Token</option>
+          <option value="grok-cli" ${selectedProvider==='grok-cli'?'selected':''}>xAI Grok CLI (OAuth)</option>
+        </optgroup>
+        <optgroup label="⚡ Ultra-Fast LPUs & Inference Clouds">
+          <option value="groq" ${selectedProvider==='groq'?'selected':''}>Groq LPU (500+ tok/s Llama 3.3, Gemma)</option>
+          <option value="cerebras" ${selectedProvider==='cerebras'?'selected':''}>Cerebras (2,000+ tok/s Wafer-Scale)</option>
+          <option value="sambanova" ${selectedProvider==='sambanova'?'selected':''}>SambaNova (SN40L Full-Precision)</option>
+          <option value="together" ${selectedProvider==='together'?'selected':''}>Together AI (Fast Serverless Open Models)</option>
+          <option value="fireworks" ${selectedProvider==='fireworks'?'selected':''}>Fireworks AI (Compound AI Platform)</option>
+          <option value="deepinfra" ${selectedProvider==='deepinfra'?'selected':''}>DeepInfra (Ultra-Low Cost Inference)</option>
+          <option value="hyperbolic" ${selectedProvider==='hyperbolic'?'selected':''}>Hyperbolic (Decentralized GPU Cluster)</option>
+          <option value="nebius" ${selectedProvider==='nebius'?'selected':''}>Nebius AI Studio (H100/H200 Low-Latency)</option>
+          <option value="cloudflare" ${selectedProvider==='cloudflare'?'selected':''}>Cloudflare Workers AI (Global Edge Inference)</option>
+          <option value="lambda" ${selectedProvider==='lambda'?'selected':''}>Lambda Labs (High-Performance GPU Cloud)</option>
+          <option value="runpod" ${selectedProvider==='runpod'?'selected':''}>RunPod Serverless (vLLM Endpoints)</option>
+        </optgroup>
+        <optgroup label="🌐 Universal AI Gateways & Routers">
+          <option value="openrouter" ${selectedProvider==='openrouter'?'selected':''}>OpenRouter (Universal 250+ Models Gateway)</option>
+          <option value="apinexbond" ${selectedProvider==='apinexbond'?'selected':''}>APInexBond (Gemini 3.1 Pro / Multimodal Bridge)</option>
+          <option value="tokenrouter" ${selectedProvider==='tokenrouter'?'selected':''}>TokenRouter (High-Performance AI Router)</option>
+          <option value="agentrouter" ${selectedProvider==='agentrouter'?'selected':''}>AgentRouter (Coding Agent Proxy)</option>
+          <option value="portkey" ${selectedProvider==='portkey'?'selected':''}>Portkey AI Gateway (Enterprise Resilient Proxy)</option>
+          <option value="helicone" ${selectedProvider==='helicone'?'selected':''}>Helicone Gateway (LLM Observability Gateway)</option>
+        </optgroup>
+        <optgroup label="🌏 Global & Regional Frontier Models">
+          <option value="dashscope" ${selectedProvider==='dashscope'?'selected':''}>Alibaba Qwen / DashScope (Qwen 2.5, QwQ)</option>
+          <option value="kimi" ${selectedProvider==='kimi'?'selected':''}>Moonshot AI / Kimi (K3, 128k Long-Context)</option>
+          <option value="zhipu" ${selectedProvider==='zhipu'?'selected':''}>Zhipu AI / GLM (GLM-4 Plus, GLM-4 Flash)</option>
+          <option value="siliconflow" ${selectedProvider==='siliconflow'?'selected':''}>SiliconFlow (High-Concurrency Qwen/DeepSeek)</option>
+          <option value="yi" ${selectedProvider==='yi'?'selected':''}>01.AI / Yi (Yi-Lightning, Yi-Large)</option>
+          <option value="minimax" ${selectedProvider==='minimax'?'selected':''}>MiniMax (Text-01, ABAB 6.5s)</option>
+          <option value="stepfun" ${selectedProvider==='stepfun'?'selected':''}>StepFun (Step-2, Step-1V Multimodal)</option>
+          <option value="novita" ${selectedProvider==='novita'?'selected':''}>Novita AI (Hosted DeepSeek, Llama)</option>
+          <option value="upstage" ${selectedProvider==='upstage'?'selected':''}>Upstage AI (Solar Pro, Solar Mini)</option>
+        </optgroup>
+        <optgroup label="💻 Local & Self-Hosted Engines">
+          <option value="ollama" ${selectedProvider==='ollama'?'selected':''}>Ollama (localhost:11434 - Zero Config)</option>
+          <option value="lmstudio" ${selectedProvider==='lmstudio'?'selected':''}>LM Studio (localhost:1234 - Desktop GUI)</option>
+          <option value="vllm" ${selectedProvider==='vllm'?'selected':''}>vLLM Engine (localhost:8000 - High-Throughput)</option>
+          <option value="llamacpp" ${selectedProvider==='llamacpp'?'selected':''}>llama.cpp Server (localhost:8080 - Native C++)</option>
+          <option value="localai" ${selectedProvider==='localai'?'selected':''}>LocalAI (localhost:8080 - Drop-in OpenAI)</option>
+          <option value="jan" ${selectedProvider==='jan'?'selected':''}>Jan Desktop (localhost:1337 - Local Desktop Runner)</option>
+          <option value="sglang" ${selectedProvider==='sglang'?'selected':''}>SGLang (localhost:30000 - High-Speed Framework)</option>
+        </optgroup>
+        <optgroup label="🔍 Custom Endpoints">
+          <option value="custom" ${selectedProvider==='custom'?'selected':''}>Custom OpenAI-Compatible (Any Custom URL)</option>
+        </optgroup>
+      `;
+    }
+
+    function addComboTargetRow(provider = '', model = '', quota = '') {
+      const container = document.getElementById('combo-targets-list');
+      if (!container) return;
+
+      const row = document.createElement('div');
+      row.className = 'combo-target-row';
+      row.style.cssText = 'background: #111114; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; transition: border-color 0.15s;';
+
+      const defaultProv = provider || (allOverviewProviders && allOverviewProviders[0]?.id ? allOverviewProviders[0].id : 'kiro');
+      const optHtml = getComboProviderOptionsHtml(defaultProv);
+
+      row.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="badge badge-accent step-badge">Step 1</span>
+            <span class="step-role-text" style="font-size: 0.75rem; color: var(--text-dim);">Primary Target</span>
+          </div>
+          <div style="display: flex; gap: 0.35rem; align-items: center;">
+            <button type="button" class="btn btn-outline btn-sm" style="padding: 0.15rem 0.45rem; font-size: 0.75rem;" onclick="moveComboStepUp(this)" title="Move up in priority">↑</button>
+            <button type="button" class="btn btn-outline btn-sm" style="padding: 0.15rem 0.45rem; font-size: 0.75rem;" onclick="moveComboStepDown(this)" title="Move down in priority">↓</button>
+            <button type="button" class="btn btn-danger btn-sm" style="padding: 0.15rem 0.5rem; font-size: 0.75rem;" onclick="removeComboStep(this)" title="Delete step">✕</button>
+          </div>
+        </div>
+        <div style="display: grid; grid-template-columns: 1.2fr 1.6fr 0.8fr; gap: 0.5rem;">
+          <div>
+            <label class="form-label" style="font-size: 0.72rem; margin-bottom: 0.2rem;">Provider</label>
+            <select class="form-select combo-target-provider" style="font-size: 0.82rem; padding: 0.4rem 0.5rem;">
+              ${optHtml}
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size: 0.72rem; margin-bottom: 0.2rem;">Model ID / Alias</label>
+            <input class="form-input combo-target-model" list="combo-model-suggestions" placeholder="e.g. claude-sonnet-4.5" value="${escapeHtml(model)}" style="font-size: 0.82rem; padding: 0.4rem 0.5rem;">
+          </div>
+          <div>
+            <label class="form-label" style="font-size: 0.72rem; margin-bottom: 0.2rem;">Weight / Quota %</label>
+            <input type="number" min="1" max="100" class="form-input combo-target-quota" placeholder="Auto" value="${quota !== undefined && quota !== '' ? quota : ''}" style="font-size: 0.82rem; padding: 0.4rem 0.5rem;">
+          </div>
+        </div>
+      `;
+
+      container.appendChild(row);
+      updateComboStepBadges();
+    }
+
+    function updateComboStepBadges() {
+      const container = document.getElementById('combo-targets-list');
+      if (!container) return;
+      const rows = container.querySelectorAll('.combo-target-row');
+      rows.forEach((row, idx) => {
+        const badge = row.querySelector('.step-badge');
+        const roleText = row.querySelector('.step-role-text');
+        if (idx === 0) {
+          if (badge) {
+            badge.textContent = 'Step 1 (Primary)';
+            badge.className = 'badge badge-accent step-badge';
+          }
+          if (roleText) roleText.textContent = 'Primary Target — evaluated first';
+        } else {
+          if (badge) {
+            badge.textContent = `Step ${idx + 1} (Fallback ${idx})`;
+            badge.className = 'badge badge-muted step-badge';
+          }
+          if (roleText) roleText.textContent = `Fallback Step ${idx} — triggers if Step ${idx} throttles or fails`;
+        }
+      });
+    }
+
+    function moveComboStepUp(btn) {
+      const row = btn.closest('.combo-target-row');
+      if (!row) return;
+      const prev = row.previousElementSibling;
+      if (prev && prev.classList.contains('combo-target-row')) {
+        row.parentNode.insertBefore(row, prev);
+        updateComboStepBadges();
+      }
+    }
+
+    function moveComboStepDown(btn) {
+      const row = btn.closest('.combo-target-row');
+      if (!row) return;
+      const next = row.nextElementSibling;
+      if (next && next.classList.contains('combo-target-row')) {
+        row.parentNode.insertBefore(next, row);
+        updateComboStepBadges();
+      }
+    }
+
+    function removeComboStep(btn) {
+      const container = document.getElementById('combo-targets-list');
+      const rows = container.querySelectorAll('.combo-target-row');
+      if (rows.length <= 1) {
+        alert('A combo chain must contain at least 1 target step.');
+        return;
+      }
+      const row = btn.closest('.combo-target-row');
+      if (row) {
+        row.remove();
+        updateComboStepBadges();
+      }
+    }
+
+    function setComboNamePreset(preset) {
+      const input = document.getElementById('modal-combo-name');
+      if (input) input.value = preset;
+    }
+
     function openNewComboModal() {
+      document.getElementById('modal-combo-title').textContent = 'Create Custom Routing Chain';
+      const nameInput = document.getElementById('modal-combo-name');
+      nameInput.value = '';
+      nameInput.readOnly = false;
+      document.getElementById('modal-combo-strategy').value = 'failover';
+      const container = document.getElementById('combo-targets-list');
+      container.innerHTML = '';
+      // Add 3 default steps to showcase chain power
+      addComboTargetRow('kiro', 'claude-sonnet-4.5');
+      addComboTargetRow('antigravity', 'claude-sonnet-4-6');
+      addComboTargetRow('apinexbond', 'gemini-3.1-pro');
       document.getElementById('modal-combo').classList.add('active');
     }
+
+    function openEditComboModal(comboName) {
+      const combo = (typeof allOverviewCombos !== 'undefined' && allOverviewCombos)
+        ? allOverviewCombos.find(c => c.name === comboName)
+        : null;
+      document.getElementById('modal-combo-title').textContent = `Edit Routing Chain: ${comboName}`;
+      const nameInput = document.getElementById('modal-combo-name');
+      nameInput.value = comboName;
+      nameInput.readOnly = false;
+      if (combo) {
+        document.getElementById('modal-combo-strategy').value = combo.strategy || 'failover';
+        const container = document.getElementById('combo-targets-list');
+        container.innerHTML = '';
+        if (combo.targets && combo.targets.length > 0) {
+          combo.targets.forEach(t => {
+            addComboTargetRow(t.provider_id, t.model, t.quota_percent || '');
+          });
+        } else {
+          addComboTargetRow('kiro', 'claude-sonnet-4.5');
+        }
+      }
+      document.getElementById('modal-combo').classList.add('active');
+    }
+
     function closeModal(id) {
       document.getElementById(id).classList.remove('active');
     }
@@ -2416,19 +2743,44 @@
     async function submitCombo() {
       const name = document.getElementById('modal-combo-name').value.trim();
       const strategy = document.getElementById('modal-combo-strategy').value;
-      const p1 = document.getElementById('modal-target-1-prov').value;
-      const m1 = document.getElementById('modal-target-1-model').value.trim();
-      const p2 = document.getElementById('modal-target-2-prov').value;
-      const m2 = document.getElementById('modal-target-2-model').value.trim();
+      const container = document.getElementById('combo-targets-list');
+      const rows = container.querySelectorAll('.combo-target-row');
 
-      if (!name || !m1) {
-        alert('Please fill out combo name and at least primary target model');
+      if (!name) {
+        alert('Please enter a Combo / Chain Name.');
         return;
       }
 
-      const targets = [{ provider_id: p1, model: m1 }];
-      if (p2 && m2) {
-        targets.push({ provider_id: p2, model: m2 });
+      const targets = [];
+      let hasMissingModel = false;
+
+      rows.forEach((row, idx) => {
+        const prov = row.querySelector('.combo-target-provider').value;
+        const model = row.querySelector('.combo-target-model').value.trim();
+        const quotaVal = row.querySelector('.combo-target-quota').value.trim();
+
+        if (!model) {
+          hasMissingModel = true;
+        }
+
+        const targetObj = {
+          provider_id: prov,
+          model: model
+        };
+        if (quotaVal !== '') {
+          const q = parseFloat(quotaVal);
+          if (!isNaN(q) && q > 0) targetObj.quota_percent = q;
+        }
+        targets.push(targetObj);
+      });
+
+      if (targets.length === 0) {
+        alert('Please add at least one target step to the chain.');
+        return;
+      }
+      if (hasMissingModel) {
+        alert('Please fill out the Model ID for all steps in the chain.');
+        return;
       }
 
       try {
@@ -2439,10 +2791,13 @@
         }).then(r => r.json());
 
         if (res.status === 'ok') {
-          showToast(`✅ Combo '${name}' saved successfully!`);
+          showToast(`✅ Routing chain '${name}' with ${targets.length} steps saved!`);
           closeModal('modal-combo');
+          loadDashboardOverview();
           loadCombos();
           loadStats();
+        } else {
+          showToast(`❌ Error saving combo: ${res.error || 'Failed'}`);
         }
       } catch (e) {
         showToast(`❌ Error saving combo: ${e.message}`);
@@ -2800,66 +3155,6 @@
         showToast(`❌ Test failed: ${e.message}`);
       }
     }
-
-    const PROVIDER_META = {
-      'openai': { type: 'openai', auth: 'apikey', url: 'https://api.openai.com/v1', label: 'API Key', ph: 'sk-...', desc: 'GPT-4o, o1, o3, o3-mini models' },
-      'anthropic': { type: 'openai', auth: 'apikey', url: 'https://api.anthropic.com/v1', label: 'API Key', ph: 'sk-ant-...', desc: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet & Haiku' },
-      'gemini': { type: 'openai', auth: 'apikey', url: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Gemini API Key', ph: 'AIzaSy...', desc: 'Gemini 2.5 Pro / Flash OpenAI-compatible endpoint' },
-      'deepseek': { type: 'openai', auth: 'apikey', url: 'https://api.deepseek.com/v1', label: 'DeepSeek API Key', ph: 'sk-...', desc: 'DeepSeek V3, DeepSeek R1 open-weights reasoning' },
-      'xai': { type: 'openai', auth: 'apikey', url: 'https://api.x.ai/v1', label: 'xAI API Key', ph: 'xai-...', desc: 'Grok 2, Grok 3 reasoning & vision models' },
-      'mistral': { type: 'openai', auth: 'apikey', url: 'https://api.mistral.ai/v1', label: 'Mistral API Key', ph: '...', desc: 'Mistral Large, Codestral 2501' },
-      'cohere': { type: 'openai', auth: 'apikey', url: 'https://api.cohere.com/v2', label: 'Cohere API Key', ph: '...', desc: 'Command R+, Command R enterprise models' },
-      'perplexity': { type: 'openai', auth: 'apikey', url: 'https://api.perplexity.ai', label: 'Perplexity API Key', ph: 'pplx-...', desc: 'Sonar Reasoning, Sonar Pro search-grounded LLMs' },
-
-      'antigravity': { type: 'antigravity', auth: 'oauth', url: 'https://cloudcode-pa.googleapis.com', label: 'OAuth Refresh Token', ph: '1//04... (paste Google OAuth refresh token)', desc: 'Google Cloud Code Assist multi-account OAuth pool' },
-      'kiro': { type: 'kiro', auth: 'oauth', url: 'https://codewhisperer.us-east-1.amazonaws.com', label: 'AWS SSO Refresh Token / Key', ph: 'OAuth refresh token or import via 1-Click Import', desc: 'AWS Builder ID / SSO Claude Sonnet 4.5 & Haiku' },
-      'codex': { type: 'codex', auth: 'oauth', url: 'https://chatgpt.com/backend-anon/sentinel/chat-requirements', label: 'Codex OAuth Refresh Token', ph: 'Import automatically from ~/.codex or paste token', desc: 'OpenAI Codex CLI OAuth credentials' },
-      'copilot': { type: 'copilot', auth: 'oauth', url: 'https://api.githubcopilot.com', label: 'GitHub Copilot OAuth Token', ph: 'Import automatically from ~/.config/github-copilot', desc: 'GitHub Copilot subscription OAuth integration' },
-      'cursor': { type: 'cursor', auth: 'oauth', url: 'https://api2.cursor.sh', label: 'Cursor Session Token', ph: 'Import from ~/.config/cursor or paste session token', desc: 'Cursor Pro subscription integration' },
-      'grok-cli': { type: 'openai', auth: 'oauth', url: 'https://cli-chat-proxy.grok.com/v1', label: 'Grok CLI OAuth Token', ph: 'xAI Grok CLI OAuth client token', desc: 'xAI Grok CLI with Grok 4.6 & Composer 2.5' },
-
-      'groq': { type: 'openai', auth: 'apikey', url: 'https://api.groq.com/openai/v1', label: 'Groq API Key', ph: 'gsk_...', desc: 'Ultra-fast LPU inference (500+ tok/s) for Llama 3.3, DeepSeek' },
-      'cerebras': { type: 'openai', auth: 'apikey', url: 'https://api.cerebras.ai/v1', label: 'Cerebras API Key', ph: 'csk-...', desc: 'Wafer-scale high-throughput inference (2,000+ tok/s)' },
-      'sambanova': { type: 'openai', auth: 'apikey', url: 'https://api.sambanova.ai/v1', label: 'SambaNova API Key', ph: '...', desc: 'SN40L full-precision open models' },
-      'together': { type: 'openai', auth: 'apikey', url: 'https://api.together.xyz/v1', label: 'Together API Key', ph: '...', desc: 'Serverless inference engine for leading open-source models' },
-      'fireworks': { type: 'openai', auth: 'apikey', url: 'https://api.fireworks.ai/inference/v1', label: 'Fireworks API Key', ph: '...', desc: 'Production-speed compound AI inference platform' },
-      'nvidia': { type: 'openai', auth: 'apikey', url: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA API Key', ph: 'nvapi-...', desc: 'NVIDIA NIM microservices & hosted GPU models' },
-      'deepinfra': { type: 'openai', auth: 'apikey', url: 'https://api.deepinfra.com/v1/openai', label: 'DeepInfra API Key', ph: '...', desc: 'Pay-as-you-go serverless inference' },
-      'hyperbolic': { type: 'openai', auth: 'apikey', url: 'https://api.hyperbolic.xyz/v1', label: 'Hyperbolic API Key', ph: '...', desc: 'Decentralized GPU cluster open model inference' },
-      'nebius': { type: 'openai', auth: 'apikey', url: 'https://api.studio.nebius.ai/v1', label: 'Nebius API Key', ph: '...', desc: 'NVIDIA H100/H200 cloud inference with ultra-fast TTFT' },
-      'cloudflare': { type: 'openai', auth: 'apikey', url: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1', label: 'Cloudflare API Token', ph: '...', desc: 'Serverless edge GPU inference on Cloudflare global network' },
-      'lambda': { type: 'openai', auth: 'apikey', url: 'https://api.lambdalabs.com/v1', label: 'Lambda API Key', ph: 'secret_...', desc: 'High-performance GPU cloud inference' },
-      'runpod': { type: 'openai', auth: 'apikey', url: 'https://api.runpod.ai/v2/{endpoint_id}/openai/v1', label: 'RunPod API Key', ph: 'rpa_...', desc: 'Custom serverless vLLM endpoints on RunPod GPUs' },
-
-      'openrouter': { type: 'openai', auth: 'apikey', url: 'https://openrouter.ai/api/v1', label: 'OpenRouter API Key', ph: 'sk-or-...', desc: 'Universal gateway aggregating 250+ models with smart fallbacks' },
-      'apinexbond': { type: 'openai', auth: 'apikey', url: 'https://api.apinex.bond/v1', label: 'APInexBond API Key', ph: 'sk-apx...', desc: 'Multi-provider AI endpoint bridge (Gemini 3.1 Pro)' },
-      'tokenrouter': { type: 'openai', auth: 'apikey', url: 'https://api.tokenrouter.io/v1', label: 'TokenRouter API Key', ph: 'sk-...', desc: 'High-performance AI model routing gateway' },
-      'agentrouter': { type: 'openai', auth: 'apikey', url: 'https://api.agentrouter.org/v1', label: 'AgentRouter API Key', ph: 'sk-...', desc: 'Dedicated proxy for Claude Code, Codex, and coding CLI agents' },
-      'portkey': { type: 'openai', auth: 'apikey', url: 'https://api.portkey.ai/v1', label: 'Portkey API Key', ph: '...', desc: 'Enterprise AI gateway with rate-limiting and logging' },
-      'helicone': { type: 'openai', auth: 'apikey', url: 'https://oai.hconeai.com/v1', label: 'Helicone API Key', ph: 'sk-...', desc: 'Open-source LLM observability proxy and gateway' },
-
-      'dashscope': { type: 'openai', auth: 'apikey', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', label: 'DashScope API Key', ph: 'sk-...', desc: 'Alibaba Cloud Qwen 2.5, Qwen Coder, QwQ models' },
-      'kimi': { type: 'openai', auth: 'apikey', url: 'https://api.moonshot.cn/v1', label: 'Moonshot API Key', ph: 'sk-...', desc: 'Moonshot AI Kimi K3, K2.7 Code, 128k long-context' },
-      'zhipu': { type: 'openai', auth: 'apikey', url: 'https://open.bigmodel.cn/api/paas/v4', label: 'Zhipu API Key', ph: '...', desc: 'GLM-4 Plus and GLM-4 Flash frontier series' },
-      'siliconflow': { type: 'openai', auth: 'apikey', url: 'https://api.siliconflow.cn/v1', label: 'SiliconFlow API Key', ph: 'sk-...', desc: 'High-concurrency platform for Qwen, DeepSeek, and Llama' },
-      'yi': { type: 'openai', auth: 'apikey', url: 'https://api.lingyiwanwu.com/v1', label: '01.AI API Key', ph: '...', desc: 'Yi-Lightning, Yi-Large, and Yi-Medium by 01.AI' },
-      'minimax': { type: 'openai', auth: 'apikey', url: 'https://api.minimax.chat/v1', label: 'MiniMax API Key', ph: '...', desc: 'ABAB 6.5s and MiniMax Text-01 models' },
-      'stepfun': { type: 'openai', auth: 'apikey', url: 'https://api.stepfun.com/v1', label: 'StepFun API Key', ph: '...', desc: 'Step-2 and Step-1V large multimodal models' },
-      'novita': { type: 'openai', auth: 'apikey', url: 'https://api.novita.ai/v3/openai', label: 'Novita API Key', ph: '...', desc: 'High-speed API hosting DeepSeek, Llama, and Qwen' },
-      'upstage': { type: 'openai', auth: 'apikey', url: 'https://api.upstage.ai/v1/solar', label: 'Upstage API Key', ph: 'up_...', desc: 'Solar Mini and Solar Pro specialized models' },
-
-      'ollama': { type: 'openai', auth: 'none', url: 'http://localhost:11434/v1', label: 'API Key (Optional)', ph: 'ollama (or leave blank)', desc: 'Zero-config local model runner on port 11434' },
-      'lmstudio': { type: 'openai', auth: 'none', url: 'http://localhost:1234/v1', label: 'API Key (Optional)', ph: 'lm-studio (or leave blank)', desc: 'Desktop GUI with OpenAI-compatible server on port 1234' },
-      'vllm': { type: 'openai', auth: 'none', url: 'http://localhost:8000/v1', label: 'API Key (Optional)', ph: 'token (if configured)', desc: 'Production PagedAttention high-throughput serving engine' },
-      'llamacpp': { type: 'openai', auth: 'none', url: 'http://localhost:8080/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Ultra-lean native C++ GGUF inference server' },
-      'localai': { type: 'openai', auth: 'none', url: 'http://localhost:8080/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Drop-in self-hosted OpenAI alternative' },
-      'jan': { type: 'openai', auth: 'none', url: 'http://localhost:1337/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Open-source desktop LLM runner with local API on port 1337' },
-      'sglang': { type: 'openai', auth: 'none', url: 'http://localhost:30000/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Fast serving framework for complex LLM programs' },
-
-      'voyage': { type: 'openai', auth: 'apikey', url: 'https://api.voyageai.com/v1', label: 'Voyage API Key', ph: 'pa-...', desc: 'State-of-the-art embedding and reranker models for RAG' },
-      'jina': { type: 'openai', auth: 'apikey', url: 'https://api.jina.ai/v1', label: 'Jina API Key', ph: 'jina_...', desc: 'Search foundation models, embeddings, and rerankers' },
-      'custom': { type: 'openai', auth: 'apikey', url: 'https://api.example.com/v1', label: 'API Key', ph: 'sk-...', desc: 'Any custom OpenAI-compatible endpoint' }
-    };
 
     function onProviderSelect(providerId) {
       const meta = PROVIDER_META[providerId] || { type: 'openai', auth: 'apikey', url: '', label: 'API Key / Secret', ph: 'sk-...', desc: '' };

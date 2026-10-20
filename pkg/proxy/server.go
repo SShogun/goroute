@@ -2285,31 +2285,6 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	for _, c := range cfg.Combos {
-		nodes = append(nodes, Node{
-			ID:     "combo-" + c.Name,
-			Label:  c.Name,
-			Type:   "combo",
-			Status: "active",
-			Details: map[string]interface{}{
-				"strategy": c.Strategy,
-				"targets":  len(c.Targets),
-			},
-		})
-		links = append(links, Link{
-			Source: "goroute",
-			Target: "combo-" + c.Name,
-			Status: "active",
-		})
-		for _, t := range c.Targets {
-			links = append(links, Link{
-				Source: "combo-" + c.Name,
-				Target: t.ProviderID,
-				Status: "active",
-			})
-		}
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
