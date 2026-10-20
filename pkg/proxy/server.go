@@ -142,6 +142,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/{id}/accounts/{accId}/toggle", s.handleToggleAccount)
 	s.mux.Post("/api/providers/{id}/test-all-accounts", s.handleTestAllAccounts)
 	s.mux.Get("/api/resilience/model-cooldowns", s.handleModelCooldowns)
+	s.mux.Get("/api/resilience/cooldowns", s.handleConnectionCooldowns)
+	s.mux.Get("/api/resilience/connections", s.handleResilienceConnections)
 	s.mux.Post("/api/resilience/reset", s.handleResilienceReset)
 	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
 	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
@@ -2549,6 +2551,53 @@ func (s *Server) handleModelCooldowns(w http.ResponseWriter, r *http.Request) {
 		"status":    "ok",
 		"count":     len(cooldowns),
 		"cooldowns": cooldowns,
+	})
+}
+
+func (s *Server) handleConnectionCooldowns(w http.ResponseWriter, r *http.Request) {
+	cooldowns := resilience.GlobalCooldown.List()
+	var connections []map[string]interface{}
+	provs := s.router.GetAllProviders()
+	for _, p := range provs {
+		connections = append(connections, map[string]interface{}{
+			"id":        p.ID(),
+			"provider":  p.Type(),
+			"name":      p.ID(),
+			"isActive":  p.IsHealthy(),
+			"isHealthy": p.IsHealthy(),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"connections": connections,
+		"cooldowns":   cooldowns,
+		"generatedAt": time.Now().UTC().Format(time.RFC3339),
+	})
+}
+
+func (s *Server) handleResilienceConnections(w http.ResponseWriter, r *http.Request) {
+	var connStates []map[string]interface{}
+	provs := s.router.GetAllProviders()
+	for _, p := range provs {
+		connStates = append(connStates, map[string]interface{}{
+			"id":             p.ID(),
+			"provider":       p.Type(),
+			"name":           p.ID(),
+			"authType":       "bearer",
+			"priority":       1,
+			"isActive":       p.IsHealthy(),
+			"testStatus":     "active",
+			"circuitBreaker": "closed",
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"connections": connStates,
+		"total":       len(connStates),
 	})
 }
 
