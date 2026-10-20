@@ -21,9 +21,14 @@ import (
 type Provider struct {
 	id       string
 	accounts []*Account
+	strategy string
 	idx      uint64
 	baseURL  string
 	client   *http.Client
+}
+
+func (p *Provider) SetStrategy(s string) {
+	p.strategy = s
 }
 
 func NewProvider(id string, accounts []*Account) *Provider {
@@ -92,7 +97,11 @@ func (p *Provider) NextAccount(ctx context.Context, pinnedID string) (*Account, 
 		candidateIDs = append(candidateIDs, a.ID)
 	}
 
-	pl := pool.GlobalPool.GetOrCreatePool(targetPool, "balanced")
+	strat := p.strategy
+	if strat == "" {
+		strat = "priority"
+	}
+	pl := pool.GlobalPool.GetOrCreatePool(targetPool, strat)
 	bestID := pl.SelectBestAccount(candidateIDs)
 	if bestID != "" {
 		for _, a := range poolAccounts {

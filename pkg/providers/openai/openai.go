@@ -12,17 +12,25 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ziuus/goroute/pkg/pool"
 	"github.com/ziuus/goroute/pkg/providers"
 )
 
 type Provider struct {
-	id      string
-	baseURL string
-	apiKeys []string
-	counter uint64
-	headers map[string]string
-	client  *http.Client
-	mu      sync.RWMutex
+	id       string
+	baseURL  string
+	apiKeys  []string
+	strategy string
+	counter  uint64
+	headers  map[string]string
+	client   *http.Client
+	mu       sync.RWMutex
+}
+
+func (p *Provider) SetStrategy(s string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.strategy = s
 }
 
 func NewProvider(id, baseURL, apiKey string, headers map[string]string) *Provider {
@@ -66,6 +74,15 @@ func (p *Provider) nextKey() string {
 	defer p.mu.Unlock()
 	if len(p.apiKeys) == 0 {
 		return ""
+	}
+	strat := p.strategy
+	if strat == "" {
+		strat = "priority"
+	}
+	pl := pool.GlobalPool.GetOrCreatePool(p.id, strat)
+	bestKey := pl.SelectBestAccount(p.apiKeys)
+	if bestKey != "" {
+		return bestKey
 	}
 	k := p.apiKeys[p.counter%uint64(len(p.apiKeys))]
 	p.counter++

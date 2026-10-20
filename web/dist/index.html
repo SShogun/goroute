@@ -962,6 +962,72 @@
     .view-panel.active {
       display: flex;
     }
+    /* Vercel Clean Toggle Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 32px;
+      height: 18px;
+      vertical-align: middle;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #27272a;
+      transition: .2s;
+      border-radius: 20px;
+      border: 1px solid #3f3f46;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 12px;
+      width: 12px;
+      left: 2px;
+      bottom: 2px;
+      background-color: #a1a1aa;
+      transition: .2s;
+      border-radius: 50%;
+    }
+    input:checked + .slider {
+      background-color: #10b981;
+      border-color: #10b981;
+    }
+    input:checked + .slider:before {
+      transform: translateX(14px);
+      background-color: #ffffff;
+    }
+
+    /* Reorder Buttons */
+    .reorder-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #a1a1aa;
+      border-radius: 4px;
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 0.75rem;
+      transition: all 0.15s;
+    }
+    .reorder-btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.25);
+    }
+    .reorder-btn:disabled {
+      opacity: 0.25;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
@@ -1076,8 +1142,8 @@
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           Refresh
         </button>
-        <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">
-          + New Combo
+        <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">
+          + Add Connection
         </button>
       </div>
     </header>
@@ -1094,11 +1160,10 @@
             <kbd class="kbd">/</kbd>
           </div>
           <div class="filter-pills">
-            <button class="pill active" onclick="setOverviewFilter('all', this)">All</button>
-            <button class="pill" onclick="setOverviewFilter('providers', this)">Providers</button>
-            <button class="pill" onclick="setOverviewFilter('combos', this)">Combos</button>
-            <button class="pill" onclick="setOverviewFilter('oauth', this)">OAuth</button>
+            <button class="pill active" onclick="setOverviewFilter('all', this)">All Providers</button>
+            <button class="pill" onclick="setOverviewFilter('oauth', this)">OAuth / Free</button>
             <button class="pill" onclick="setOverviewFilter('gateways', this)">Gateways</button>
+            <button class="pill" onclick="setOverviewFilter('combos', this)">Custom Combos</button>
           </div>
           <div class="action-buttons">
             <button class="btn btn-outline" onclick="openImportModal()">
@@ -1107,10 +1172,7 @@
             </button>
             <button class="btn btn-primary" onclick="openAddAccountModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Add Account
-            </button>
-            <button class="btn btn-outline" onclick="openNewComboModal()">
-              + New Combo
+              + Add Connection
             </button>
           </div>
         </div>
@@ -1229,8 +1291,8 @@
               </div>
             </div>
 
-            <!-- Combos Section -->
-            <div id="section-overview-combos" style="margin-top: 1.5rem;">
+            <!-- Combos Section (Hidden on main overview, shown under Combos filter) -->
+            <div id="section-overview-combos" style="display: none; margin-top: 1.5rem;">
               <div class="section-title-row">
                 <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
                   Routing Combos & Claude Code Models
@@ -1330,15 +1392,15 @@
         </div>
       </div>
 
-      <!-- VIEW: PROVIDER DETAILS (OMNIROUTE-PARITY & ADVANCED PLAYGROUND) -->
+      <!-- VIEW: PROVIDER DETAILS (OMNIROUTE PARITY: ACCOUNT STRATEGY & CONNECTION PRIORITY) -->
       <div id="view-provider-details" class="view-panel">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
           <button class="btn btn-outline btn-sm" onclick="switchView('providers')">
             ← Back to Providers
           </button>
           <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-outline btn-sm" onclick="testCurrentProvider()">⚡ Test Connection</button>
-            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal(null, currentProviderId)">+ Add Account</button>
+            <button class="btn btn-outline btn-sm" onclick="testAllProviderAccounts()">▷ Test All Connections</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal(null, currentProviderId)">+ Add Connection</button>
           </div>
         </div>
 
@@ -1351,37 +1413,78 @@
               </div>
               <div>
                 <div style="display: flex; align-items: center; gap: 0.75rem;">
-                  <span class="card-title" style="font-size: 1.4rem;" id="pd-title">Apinexbond</span>
-                  <span class="badge badge-success" id="pd-conn-count">1 connection</span>
+                  <span class="card-title" style="font-size: 1.4rem;" id="pd-title">Provider</span>
+                  <span class="badge badge-success" id="pd-conn-count">1 connected</span>
                 </div>
                 <div class="card-subtitle" id="pd-endpoint" style="font-family: 'Geist Mono'; font-size: 0.75rem;">
-                  Chat Completions — https://api.apinex.bond/v1/chat/completions
+                  API Endpoint
                 </div>
               </div>
             </div>
             <div style="display: flex; gap: 0.5rem;">
               <button class="btn btn-outline btn-sm" onclick="syncProviderModels()">🔄 Sync from /models</button>
+              <button class="btn btn-outline btn-sm" onclick="testCurrentProvider()">⚡ Test Ping</button>
             </div>
           </div>
         </div>
 
-        <!-- Connections Section -->
+        <!-- Account Routing Strategy Card (OmniRoute Parity) -->
         <div class="card">
-          <div class="card-header">
+          <div style="display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem;">
             <div>
-              <div class="card-title">Connections & Credentials</div>
-              <div class="card-subtitle">Active authentication sessions and round-robin health status</div>
+              <div class="card-title" style="font-size: 1rem;">Account strategy</div>
+              <div class="card-subtitle" style="font-size: 0.8rem; margin-top: 0.2rem;">
+                Sequential failover honors the exact priority order configured below. If #1 hits 429/quota, requests route automatically to #2, #3, etc.
+              </div>
+            </div>
+            <span class="badge badge-primary" id="pd-strategy-badge">Priority / Failover</span>
+          </div>
+          <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; max-width: 420px;">
+              <select class="form-select" id="pd-strategy-select" onchange="updateProviderStrategy(this.value)">
+                <option value="priority">Priority / Failover (Order #1 -> #2 -> ...)</option>
+                <option value="round_robin">Round-robin (Even Distribution)</option>
+                <option value="balanced">Dynamic Fair-Share (Token Balancing)</option>
+              </select>
             </div>
           </div>
+        </div>
+
+        <!-- Connections List Panel (OmniRoute Parity) -->
+        <div class="card">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <div class="card-title">Connections & Credentials</div>
+              <div class="card-subtitle">Active authentication sessions. Reorder rows with ↑ / ↓ to adjust fallback priority on the fly.</div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <button class="btn btn-outline btn-sm" onclick="testAllProviderAccounts()">▷ Test All</button>
+              <button class="btn btn-primary btn-sm" onclick="openAddAccountModal(null, currentProviderId)">+ Add Connection</button>
+            </div>
+          </div>
+
+          <!-- Filter & Search Toolbar -->
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem;">
+            <input class="form-input" id="pd-conn-search" placeholder="Search connections..." style="flex: 1; min-width: 220px;" oninput="filterProviderConnections(this.value)">
+            <div style="display: flex; gap: 0.35rem;" id="pd-conn-filters">
+              <span class="filter-chip active" onclick="setConnFilter('all', this)">All (<span id="conn-cnt-all">0</span>)</span>
+              <span class="filter-chip" onclick="setConnFilter('active', this)">Active (<span id="conn-cnt-active">0</span>)</span>
+              <span class="filter-chip" onclick="setConnFilter('cooling', this)">Cooling (<span id="conn-cnt-cooling">0</span>)</span>
+              <span class="filter-chip" onclick="setConnFilter('disabled', this)">Disabled (<span id="conn-cnt-disabled">0</span>)</span>
+            </div>
+          </div>
+
+          <!-- Table of Connections -->
           <div style="overflow-x: auto;">
             <table class="table">
               <thead>
                 <tr>
-                  <th>Account / Label</th>
+                  <th style="width: 90px;">Priority</th>
+                  <th>Identity / Account</th>
                   <th>Status</th>
                   <th>Pool</th>
-                  <th>Type</th>
-                  <th>Actions</th>
+                  <th>Latency</th>
+                  <th style="text-align: right;">Actions</th>
                 </tr>
               </thead>
               <tbody id="pd-accounts-table">
@@ -2845,9 +2948,24 @@
       }
     }
 
-    let currentProviderId = 'apinexbond';
+    let currentProviderId = 'antigravity';
     let currentProviderModels = [];
     let currentProviderData = null;
+    let currentConnFilter = 'all';
+    let currentConnSearch = '';
+
+    function maskAccountIdentifier(str) {
+      if (!str) return 'Default Account';
+      if (str.includes('@')) {
+        const parts = str.split('@');
+        const user = parts[0];
+        const domain = parts[1];
+        if (user.length <= 3) return `${user}***@${domain}`;
+        return `${user.slice(0, 3)}${'*'.repeat(Math.max(3, user.length - 4))}${user.slice(-1)}@${domain}`;
+      }
+      if (str.length > 24) return `${str.slice(0, 8)}...${str.slice(-6)}`;
+      return str;
+    }
 
     async function openProviderDetails(providerId) {
       currentProviderId = providerId;
@@ -2859,50 +2977,237 @@
       document.getElementById('pd-title').textContent = providerId.charAt(0).toUpperCase() + providerId.slice(1);
       document.getElementById('pd-icon').textContent = getProviderEmoji(providerId);
 
+      await reloadCurrentProviderDetails();
+      syncProviderModels();
+    }
+
+    async function reloadCurrentProviderDetails() {
       try {
         const statusRes = await fetch('/api/status').then(r => r.json());
-        const prov = statusRes.providers?.find(p => p.id === providerId);
+        const prov = statusRes.providers?.find(p => p.id === currentProviderId);
         currentProviderData = prov;
 
         if (prov) {
           const accounts = prov.accounts || [];
-          document.getElementById('pd-conn-count').textContent = `${accounts.length || 1} connection${accounts.length > 1 ? 's' : ''}`;
+          document.getElementById('pd-conn-count').textContent = `${accounts.length || 1} connected`;
           
           let endpointStr = prov.base_url 
             ? `Chat Completions — ${prov.base_url}/chat/completions`
-            : `Native API — Authenticated via OAuth / Token Secret`;
+            : `Native API Protocol — Authenticated Session Cluster`;
           document.getElementById('pd-endpoint').textContent = endpointStr;
 
-          const tbody = document.getElementById('pd-accounts-table');
-          if (accounts.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 1rem;">No extra accounts configured. Primary key is active.</td></tr>`;
-          } else {
-            tbody.innerHTML = accounts.map((acc, idx) => `
-              <tr>
-                <td>
-                  <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <span class="status-dot"></span>
-                    <strong style="color: #fff; font-family: 'Geist Mono';">${acc.id || acc.email}</strong>
-                  </div>
-                </td>
-                <td><span class="badge badge-success">● Connected #${idx+1}</span></td>
-                <td><span class="badge badge-muted">${acc.pool || 'pool1'}</span></td>
-                <td><span style="font-size: 0.75rem; color: var(--text-dim);">${prov.type || 'openai'}</span></td>
-                <td>
-                  <div style="display: flex; gap: 0.35rem;">
-                    <button class="btn btn-outline btn-sm" onclick="testSingleAccount('${providerId}', '${acc.id}')">⚡ Retest</button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteAccount('${providerId}', '${acc.id}')">🗑️</button>
-                  </div>
-                </td>
-              </tr>
-            `).join('');
+          // Strategy dropdown
+          const stratSelect = document.getElementById('pd-strategy-select');
+          const stratBadge = document.getElementById('pd-strategy-badge');
+          const currentStrat = prov.strategy || 'priority';
+          if (stratSelect) stratSelect.value = currentStrat;
+          if (stratBadge) {
+            if (currentStrat === 'priority') stratBadge.textContent = 'Priority / Failover';
+            else if (currentStrat === 'round_robin') stratBadge.textContent = 'Round-robin';
+            else stratBadge.textContent = 'Dynamic Fair-Share';
           }
+
+          renderProviderConnectionsTable();
         }
       } catch (e) {
         console.error('Error fetching provider details:', e);
       }
+    }
 
-      syncProviderModels();
+    function renderProviderConnectionsTable() {
+      const tbody = document.getElementById('pd-accounts-table');
+      if (!tbody || !currentProviderData) return;
+      const accounts = currentProviderData.accounts || [];
+
+      // Update counters
+      const totalCnt = accounts.length;
+      const activeCnt = accounts.filter(a => !a.disabled && a.status !== 'cooling' && a.status !== 'error').length;
+      const coolingCnt = accounts.filter(a => a.status === 'cooling').length;
+      const disabledCnt = accounts.filter(a => a.disabled).length;
+
+      const cntAll = document.getElementById('conn-cnt-all');
+      if (cntAll) cntAll.textContent = totalCnt;
+      const cntAct = document.getElementById('conn-cnt-active');
+      if (cntAct) cntAct.textContent = activeCnt;
+      const cntCool = document.getElementById('conn-cnt-cooling');
+      if (cntCool) cntCool.textContent = coolingCnt;
+      const cntDis = document.getElementById('conn-cnt-disabled');
+      if (cntDis) cntDis.textContent = disabledCnt;
+
+      let filtered = accounts.slice();
+      if (currentConnFilter === 'active') {
+        filtered = filtered.filter(a => !a.disabled && a.status !== 'cooling' && a.status !== 'error');
+      } else if (currentConnFilter === 'cooling') {
+        filtered = filtered.filter(a => a.status === 'cooling');
+      } else if (currentConnFilter === 'disabled') {
+        filtered = filtered.filter(a => a.disabled);
+      }
+
+      if (currentConnSearch) {
+        const q = currentConnSearch.toLowerCase();
+        filtered = filtered.filter(a => (a.id && a.id.toLowerCase().includes(q)) || (a.email && a.email.toLowerCase().includes(q)));
+      }
+
+      if (accounts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No secondary accounts configured. Primary key is active. Click <strong>+ Add Connection</strong> to attach another account.</td></tr>`;
+        return;
+      }
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No connections match current filter.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map((acc) => {
+        const originalIndex = accounts.findIndex(a => a.id === acc.id);
+        const isFirst = originalIndex === 0;
+        const isLast = originalIndex === accounts.length - 1;
+        const masked = maskAccountIdentifier(acc.email || acc.id);
+        
+        let statusBadge = '<span class="badge badge-success"><span class="pulse-dot"></span> Active</span>';
+        if (acc.disabled) {
+          statusBadge = '<span class="badge badge-muted">● Disabled</span>';
+        } else if (acc.status === 'cooling') {
+          statusBadge = '<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24;"><span class="pulse-dot"></span> Cooling (429)</span>';
+        } else if (acc.status === 'error') {
+          statusBadge = '<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">● Error</span>';
+        }
+
+        return `
+          <tr id="row-conn-${acc.id}">
+            <td>
+              <div style="display: flex; align-items: center; gap: 0.35rem;">
+                <span class="badge badge-muted" style="font-family: 'Geist Mono'; font-weight: 700; width: 28px; text-align: center;">#${originalIndex + 1}</span>
+                <div style="display: flex; flex-direction: column; gap: 1px;">
+                  <button class="reorder-btn" title="Move Up (Increase Priority)" ${isFirst ? 'disabled' : ''} onclick="moveAccountPriority('${currentProviderId}', ${originalIndex}, -1)">▲</button>
+                  <button class="reorder-btn" title="Move Down (Decrease Priority)" ${isLast ? 'disabled' : ''} onclick="moveAccountPriority('${currentProviderId}', ${originalIndex}, 1)">▼</button>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: ${acc.disabled ? '#71717a' : (acc.status === 'cooling' ? '#f59e0b' : '#10b981')};"></div>
+                <div>
+                  <div style="color: #fff; font-family: 'Geist Mono'; font-size: 0.85rem; font-weight: 500;">${masked}</div>
+                  <div style="font-size: 0.72rem; color: var(--text-dim);">${acc.id}</div>
+                </div>
+                <span class="badge badge-muted" style="font-size: 0.68rem;">connected #${originalIndex + 1}</span>
+              </div>
+            </td>
+            <td>${statusBadge}</td>
+            <td><span class="badge badge-muted">${acc.pool || 'pool1'}</span></td>
+            <td><span style="font-family: 'Geist Mono'; font-size: 0.8rem; color: var(--text-muted);" id="lat-${acc.id}">-- ms</span></td>
+            <td style="text-align: right;">
+              <div style="display: flex; gap: 0.45rem; justify-content: flex-end; align-items: center;">
+                <button class="btn btn-outline btn-sm" onclick="testSingleAccount('${currentProviderId}', '${acc.id}')">⚡ Retest</button>
+                <label class="switch" title="Toggle active/disabled">
+                  <input type="checkbox" ${acc.disabled ? '' : 'checked'} onchange="toggleAccountDisabled('${currentProviderId}', '${acc.id}', this.checked)">
+                  <span class="slider"></span>
+                </label>
+                <button class="btn btn-danger btn-sm" onclick="deleteAccount('${currentProviderId}', '${acc.id}')" title="Delete connection">🗑️</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function moveAccountPriority(providerId, index, direction) {
+      if (!currentProviderData || !currentProviderData.accounts) return;
+      const accs = currentProviderData.accounts.slice();
+      const targetIndex = index + direction;
+      if (targetIndex < 0 || targetIndex >= accs.length) return;
+
+      const temp = accs[index];
+      accs[index] = accs[targetIndex];
+      accs[targetIndex] = temp;
+
+      const newIds = accs.map(a => a.id);
+      try {
+        const res = await fetch(`/api/providers/${providerId}/reorder-accounts`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ account_ids: newIds })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`⇅ Priority adjusted: #${index + 1} ↔ #${targetIndex + 1}`);
+          await reloadCurrentProviderDetails();
+        } else {
+          showToast(`❌ Error: ${res.error || 'Failed to reorder'}`);
+        }
+      } catch (e) {
+        showToast(`❌ Error: ${e.message}`);
+      }
+    }
+
+    async function updateProviderStrategy(strategy) {
+      try {
+        const res = await fetch(`/api/providers/${currentProviderId}/strategy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ strategy })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`Routing strategy set to '${strategy}'`);
+          await reloadCurrentProviderDetails();
+        } else {
+          showToast(`❌ Error setting strategy`);
+        }
+      } catch (e) {
+        showToast(`❌ Error: ${e.message}`);
+      }
+    }
+
+    async function toggleAccountDisabled(providerId, accId, isChecked) {
+      try {
+        const res = await fetch(`/api/providers/${providerId}/accounts/${accId}/toggle`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ disabled: !isChecked })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`Connection ${accId} is now ${isChecked ? 'active' : 'disabled'}`);
+          await reloadCurrentProviderDetails();
+        }
+      } catch (e) {
+        showToast(`❌ Error: ${e.message}`);
+      }
+    }
+
+    function setConnFilter(filter, el) {
+      currentConnFilter = filter;
+      document.querySelectorAll('#pd-conn-filters .filter-chip').forEach(c => c.classList.remove('active'));
+      if (el) el.classList.add('active');
+      renderProviderConnectionsTable();
+    }
+
+    function filterProviderConnections(query) {
+      currentConnSearch = (query || '').trim();
+      renderProviderConnectionsTable();
+    }
+
+    async function testAllProviderAccounts() {
+      showToast(`Testing all connections for ${currentProviderId}...`);
+      try {
+        const res = await fetch(`/api/providers/${currentProviderId}/test-all-accounts`, { method: 'POST' }).then(r => r.json());
+        if (res.results) {
+          let healthyCount = 0;
+          res.results.forEach(r => {
+            const latEl = document.getElementById(`lat-${r.id}`);
+            if (latEl) {
+              latEl.textContent = `${r.latency_ms} ms`;
+              latEl.style.color = r.status === 'active' ? '#10b981' : '#f87171';
+            }
+            if (r.status === 'active') healthyCount++;
+          });
+          showToast(`Batch test complete: ${healthyCount}/${res.results.length} active`);
+        }
+      } catch (e) {
+        showToast(`❌ Batch test error: ${e.message}`);
+      }
     }
 
     function getProviderEmoji(id) {
@@ -3156,6 +3461,59 @@
       }
     }
 
+    async function loadCatalogToModal() {
+      try {
+        const res = await fetch('/api/catalog').then(r => r.json());
+        if (!res.data || !Array.isArray(res.data)) return;
+        
+        const provSelect = document.getElementById('modal-acc-provider');
+        if (!provSelect) return;
+
+        const catLabels = {
+          frontier: '🌟 Frontier AI Labs',
+          gateway: '🌐 Universal Gateways & Proxies',
+          inference: '⚡ Inference Clouds & LPUs',
+          cloud: '🏢 Enterprise Cloud Platforms',
+          asia: '🌏 Regional & Asian Model Providers',
+          media: '🎨 Specialty & Multimodal',
+          oauth: '🔐 Multi-Account OAuth & Coding Agents',
+          local: '💻 Local Engines & Self-Hosted',
+          free: '🎁 Free / No-Auth Providers',
+          cookie: '🍪 Web Cookie Sessions'
+        };
+
+        const grouped = {};
+        res.data.forEach(entry => {
+          const cat = entry.category || 'gateway';
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(entry);
+
+          PROVIDER_META[entry.id] = {
+            name: entry.name,
+            type: entry.type || 'openai',
+            auth: entry.auth_type || 'apikey',
+            url: entry.base_url || '',
+            label: entry.auth_type === 'oauth' ? 'Refresh Token / OAuth Secret' : (entry.auth_type === 'none' ? 'Optional Key (or leave blank)' : 'API Key / Secret'),
+            ph: entry.auth_type === 'oauth' ? 'Paste refresh token...' : 'sk-...',
+            desc: entry.description || ''
+          };
+        });
+
+        let html = '';
+        for (const [cat, entries] of Object.entries(grouped)) {
+          const label = catLabels[cat] || cat.toUpperCase();
+          html += `<optgroup label="${label}">`;
+          entries.forEach(e => {
+            html += `<option value="${e.id}">${e.name} (${e.id})</option>`;
+          });
+          html += `</optgroup>`;
+        }
+        provSelect.innerHTML = html;
+      } catch (e) {
+        console.error('Failed to load catalog into modal:', e);
+      }
+    }
+
     function onProviderSelect(providerId) {
       const meta = PROVIDER_META[providerId] || { type: 'openai', auth: 'apikey', url: '', label: 'API Key / Secret', ph: 'sk-...', desc: '' };
       const urlInput = document.getElementById('modal-acc-baseurl');
@@ -3182,7 +3540,7 @@
       }
     }
 
-    function openAddAccountModal(targetPool) {
+    function openAddAccountModal(targetPool, defaultProvider) {
       const select = document.getElementById('modal-acc-pool');
       const customInput = document.getElementById('modal-acc-pool-custom');
       if (targetPool) {
@@ -3204,6 +3562,9 @@
       }
       const provSelect = document.getElementById('modal-acc-provider');
       if (provSelect) {
+        if (defaultProvider) {
+          provSelect.value = defaultProvider;
+        }
         onProviderSelect(provSelect.value);
       }
       document.getElementById('modal-add-account').classList.add('active');
@@ -3331,6 +3692,11 @@
         const start = performance.now();
         const res = await fetch(`/api/providers/${providerId}/accounts/${accountId}/test`, { method: 'POST' }).then(r => r.json());
         const latency = Math.round(performance.now() - start);
+        const latEl = document.getElementById(`lat-${accountId}`);
+        if (latEl) {
+          latEl.textContent = `${latency} ms`;
+          latEl.style.color = (res.status === 'ok' || !res.error) ? '#10b981' : '#f87171';
+        }
         if (res.status === 'ok' || !res.error) {
           showToast(`⚡ ${accountId} active & healthy (${latency}ms)`);
         } else {
@@ -3649,6 +4015,7 @@
 
     // Init
     window.addEventListener('DOMContentLoaded', () => {
+      loadCatalogToModal();
       loadStats();
       loadTopology('dash-topology-svg');
       initSSEStream();

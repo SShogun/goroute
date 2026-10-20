@@ -27,6 +27,7 @@ type AccountConfig struct {
 	APIKey       string    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
 	AccountID    string    `yaml:"account_id,omitempty" json:"account_id,omitempty"`
 	Status       string    `yaml:"status,omitempty" json:"status,omitempty"`
+	Disabled     bool      `yaml:"disabled,omitempty" json:"disabled,omitempty"`
 	Weight       float64   `yaml:"weight,omitempty" json:"weight,omitempty"`
 }
 
@@ -37,6 +38,7 @@ type ProviderConfig struct {
 	APIKey       string            `yaml:"api_key,omitempty"`
 	RefreshToken string            `yaml:"refresh_token,omitempty"`
 	ProfileARN   string            `yaml:"profile_arn,omitempty"`
+	Strategy     string            `yaml:"strategy,omitempty"` // "priority", "round_robin", "balanced"
 	Headers      map[string]string `yaml:"headers,omitempty"`
 	Accounts     []AccountConfig   `yaml:"accounts,omitempty"`
 }

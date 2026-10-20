@@ -100,9 +100,14 @@ func (a *Account) GetValidAccessToken(ctx context.Context, client *http.Client) 
 type Provider struct {
 	id       string
 	accounts []*Account
+	strategy string
 	counter  uint64
 	mu       sync.RWMutex
 	client   *http.Client
+}
+
+func (p *Provider) SetStrategy(s string) {
+	p.strategy = s
 }
 
 func NewProvider(id, refreshToken, profileARN string) *Provider {
@@ -193,7 +198,11 @@ func (p *Provider) nextAccount(ctx context.Context, pinnedID string) *Account {
 		candidateIDs = append(candidateIDs, a.ID)
 	}
 
-	pl := pool.GlobalPool.GetOrCreatePool(targetPool, "balanced")
+	strat := p.strategy
+	if strat == "" {
+		strat = "priority"
+	}
+	pl := pool.GlobalPool.GetOrCreatePool(targetPool, strat)
 	bestID := pl.SelectBestAccount(candidateIDs)
 	if bestID != "" {
 		for _, a := range poolAccounts {

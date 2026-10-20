@@ -130,6 +130,10 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/{id}/accounts/{accId}/test", s.handleTestAccount)
 	s.mux.Delete("/api/providers/{id}", s.handleDeleteProvider)
 	s.mux.Delete("/api/providers/{id}/accounts/{accId}", s.handleDeleteAccount)
+	s.mux.Post("/api/providers/{id}/reorder-accounts", s.handleReorderAccounts)
+	s.mux.Post("/api/providers/{id}/strategy", s.handleSetProviderStrategy)
+	s.mux.Post("/api/providers/{id}/accounts/{accId}/toggle", s.handleToggleAccount)
+	s.mux.Post("/api/providers/{id}/test-all-accounts", s.handleTestAllAccounts)
 	s.mux.Get("/api/resilience/model-cooldowns", s.handleModelCooldowns)
 	s.mux.Post("/api/resilience/reset", s.handleResilienceReset)
 	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
@@ -537,10 +541,13 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate sanitized provider accounts
 	type AccountSummary struct {
-		ID        string `json:"id"`
-		Email     string `json:"email"`
-		Status    string `json:"status"`
-		ProjectID string `json:"project_id,omitempty"`
+		ID        string  `json:"id"`
+		Email     string  `json:"email"`
+		Status    string  `json:"status"` // "active", "cooling", "disabled"
+		Disabled  bool    `json:"disabled"`
+		Pool      string  `json:"pool,omitempty"`
+		ProjectID string  `json:"project_id,omitempty"`
+		Weight    float64 `json:"weight,omitempty"`
 	}
 	type ProviderSummary struct {
 		ID       string           `json:"id"`
@@ -548,17 +555,23 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		BaseURL  string           `json:"base_url,omitempty"`
 		HasKey   bool             `json:"has_key"`
 		Status   string           `json:"status"`
+		Strategy string           `json:"strategy"`
 		Accounts []AccountSummary `json:"accounts,omitempty"`
 	}
 
 	var provSummaries []ProviderSummary
 	for _, p := range cfg.Providers {
+		strat := p.Strategy
+		if strat == "" {
+			strat = "priority"
+		}
 		ps := ProviderSummary{
-			ID:      p.ID,
-			Type:    p.Type,
-			BaseURL: p.BaseURL,
-			HasKey:  p.APIKey != "" || p.RefreshToken != "" || len(p.Accounts) > 0,
-			Status:  "active",
+			ID:       p.ID,
+			Type:     p.Type,
+			BaseURL:  p.BaseURL,
+			HasKey:   p.APIKey != "" || p.RefreshToken != "" || len(p.Accounts) > 0,
+			Status:   "active",
+			Strategy: strat,
 		}
 		if len(p.Accounts) > 0 {
 			for _, a := range p.Accounts {
@@ -566,18 +579,26 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 				if label == "" {
 					label = a.ID
 				}
+				accStatus := "active"
+				if a.Disabled {
+					accStatus = "disabled"
+				}
 				ps.Accounts = append(ps.Accounts, AccountSummary{
 					ID:        a.ID,
 					Email:     label,
-					Status:    "active",
+					Status:    accStatus,
+					Disabled:  a.Disabled,
+					Pool:      a.Pool,
 					ProjectID: a.ProjectID,
+					Weight:    a.Weight,
 				})
 			}
 		} else if p.RefreshToken != "" || p.APIKey != "" {
 			ps.Accounts = append(ps.Accounts, AccountSummary{
-				ID:     p.ID,
-				Email:  "Default Account",
-				Status: "active",
+				ID:       p.ID,
+				Email:    "Default Account",
+				Status:   "active",
+				Disabled: false,
 			})
 		}
 		provSummaries = append(provSummaries, ps)
@@ -1146,6 +1167,275 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "deleted_account": accId})
 }
 
+func (s *Server) handleReorderAccounts(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		AccountIDs []string `json:"account_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == id {
+			found = true
+			accMap := make(map[string]config.AccountConfig)
+			for _, a := range p.Accounts {
+				accMap[a.ID] = a
+			}
+			var reordered []config.AccountConfig
+			seen := make(map[string]bool)
+			for _, aid := range req.AccountIDs {
+				if a, ok := accMap[aid]; ok {
+					reordered = append(reordered, a)
+					seen[aid] = true
+				}
+			}
+			// Keep remaining
+			for _, a := range p.Accounts {
+				if !seen[a.ID] {
+					reordered = append(reordered, a)
+				}
+			}
+			cfg.Providers[i].Accounts = reordered
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "provider not found", http.StatusNotFound)
+		return
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": "account priority reordered successfully",
+	})
+}
+
+func (s *Server) handleSetProviderStrategy(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Strategy string `json:"strategy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == id {
+			found = true
+			cfg.Providers[i].Strategy = req.Strategy
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "provider not found", http.StatusNotFound)
+		return
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"strategy": req.Strategy,
+	})
+}
+
+func (s *Server) handleToggleAccount(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	accId := chi.URLParam(r, "accId")
+	if id == "" || accId == "" {
+		http.Error(w, "provider id and account id required", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		Disabled *bool `json:"disabled"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	var newDisabled bool
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == id {
+			for j, a := range p.Accounts {
+				if a.ID == accId {
+					found = true
+					if req.Disabled != nil {
+						newDisabled = *req.Disabled
+					} else {
+						newDisabled = !a.Disabled
+					}
+					cfg.Providers[i].Accounts[j].Disabled = newDisabled
+					break
+				}
+			}
+			break
+		}
+	}
+	if !found {
+		http.Error(w, "account not found", http.StatusNotFound)
+		return
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"account":  accId,
+		"disabled": newDisabled,
+	})
+}
+
+func (s *Server) handleTestAllAccounts(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, _ := config.Load(cfgPath)
+	if cfg == nil {
+		http.Error(w, "could not load config", http.StatusInternalServerError)
+		return
+	}
+
+	var targetAccounts []config.AccountConfig
+	for _, p := range cfg.Providers {
+		if p.ID == id {
+			targetAccounts = p.Accounts
+			break
+		}
+	}
+
+	type TestResult struct {
+		ID        string `json:"id"`
+		Status    string `json:"status"`
+		LatencyMS int64  `json:"latency_ms"`
+		Error     string `json:"error,omitempty"`
+	}
+
+	var results []TestResult
+	ctx := r.Context()
+
+	for _, acc := range targetAccounts {
+		start := time.Now()
+		var terr error
+
+		p, ok := s.router.GetProvider(id)
+		if ok {
+			switch prov := p.(type) {
+			case *antigravity.Provider:
+				terr = prov.TestAccount(ctx, acc.ID)
+			case *kiro.Provider:
+				terr = prov.TestAccount(ctx, acc.ID)
+			case *codex.Provider:
+				terr = prov.TestAccount(ctx, acc.ID)
+			case *copilot.Provider:
+				terr = prov.TestAccount(ctx, acc.ID)
+			case *cursor.Provider:
+				valid, msg, _, kerr := prov.TestAccount(ctx, acc.ID)
+				if !valid || kerr != nil {
+					terr = fmt.Errorf("%s", msg)
+				}
+			case *openai.Provider:
+				terr = prov.TestConnection(ctx)
+			default:
+				_, terr = p.Models(ctx)
+			}
+		}
+
+		lat := time.Since(start).Milliseconds()
+		status := "active"
+		errMsg := ""
+		if terr != nil {
+			status = "error"
+			errMsg = terr.Error()
+		}
+
+		results = append(results, TestResult{
+			ID:        acc.ID,
+			Status:    status,
+			LatencyMS: lat,
+			Error:     errMsg,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"results": results,
+	})
+}
+
 func (s *Server) handleTestProvider(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
@@ -1542,6 +1832,9 @@ func (s *Server) Reload() error {
 						weight = 1.0
 					}
 					pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
+					if a.Disabled {
+						pool.GlobalPool.SetAccountDisabled(a.ID, true)
+					}
 				}
 			}
 			if pCfg.APIKey != "" {
@@ -1549,6 +1842,9 @@ func (s *Server) Reload() error {
 				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID+"-primary", 1.0)
 			}
 			prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+			if pCfg.Strategy != "" {
+				prov.SetStrategy(pCfg.Strategy)
+			}
 			s.router.RegisterProvider(prov)
 		case "antigravity":
 			var accounts []*antigravity.Account
@@ -1576,8 +1872,14 @@ func (s *Server) Reload() error {
 					weight = 1.0
 				}
 				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
+				if a.Disabled {
+					pool.GlobalPool.SetAccountDisabled(a.ID, true)
+				}
 			}
 			prov := antigravity.NewProvider(pCfg.ID, accounts)
+			if pCfg.Strategy != "" {
+				prov.SetStrategy(pCfg.Strategy)
+			}
 			s.router.RegisterProvider(prov)
 		case "kiro":
 			var accounts []*kiro.Account
@@ -1602,6 +1904,9 @@ func (s *Server) Reload() error {
 					weight = 1.0
 				}
 				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
+				if a.Disabled {
+					pool.GlobalPool.SetAccountDisabled(a.ID, true)
+				}
 			}
 			if len(accounts) == 0 && pCfg.RefreshToken != "" {
 				accounts = append(accounts, &kiro.Account{
@@ -1613,6 +1918,9 @@ func (s *Server) Reload() error {
 				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
+			if pCfg.Strategy != "" {
+				prov.SetStrategy(pCfg.Strategy)
+			}
 			s.router.RegisterProvider(prov)
 		case "codex":
 			var accounts []*codex.Account

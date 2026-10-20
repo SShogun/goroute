@@ -113,6 +113,19 @@ func (p *AccountPool) SetCooldown(accountID string, duration time.Duration) {
 	}
 }
 
+func (p *AccountPool) SetAccountDisabled(accountID string, disabled bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if acc, ok := p.accounts[accountID]; ok {
+		if disabled {
+			acc.Status = "disabled"
+		} else if acc.Status == "disabled" {
+			acc.Status = "active"
+		}
+	}
+}
+
 // SelectBestAccount implements Fair-Share Token Balancing.
 // It selects the account with the lowest normalized token usage (WindowTokens / Weight).
 func (p *AccountPool) SelectBestAccount(candidates []string) string {
@@ -148,10 +161,51 @@ func (p *AccountPool) SelectBestAccount(candidates []string) string {
 		}
 	}
 
+	// Mode: "priority" or "failover" (OmniRoute parity: honors exact sequence order #1 -> #2 -> ...)
+	if p.mode == "priority" || p.mode == "failover" {
+		for _, cid := range candidates {
+			acc := p.accounts[cid]
+			if acc.Status == "disabled" {
+				continue
+			}
+			if acc.Status == "active" {
+				return cid
+			}
+		}
+		// All non-disabled accounts are in cooldown; choose the one with earliest recovery
+		var bestID string
+		var earliestCooldown time.Time
+		for _, cid := range candidates {
+			acc := p.accounts[cid]
+			if acc.Status == "disabled" {
+				continue
+			}
+			if bestID == "" || acc.CooldownUntil.Before(earliestCooldown) {
+				earliestCooldown = acc.CooldownUntil
+				bestID = cid
+			}
+		}
+		if bestID != "" {
+			return bestID
+		}
+		return candidates[0]
+	}
+
 	if p.mode == "round_robin" {
-		idx := p.rrCounter % uint64(len(candidates))
+		// Filter out disabled
+		var activeCandidates []string
+		for _, cid := range candidates {
+			acc := p.accounts[cid]
+			if acc.Status != "disabled" {
+				activeCandidates = append(activeCandidates, cid)
+			}
+		}
+		if len(activeCandidates) == 0 {
+			activeCandidates = candidates
+		}
+		idx := p.rrCounter % uint64(len(activeCandidates))
 		p.rrCounter++
-		return candidates[idx]
+		return activeCandidates[idx]
 	}
 
 	// Mode: "balanced" (Fair-Share Token Leveling)
@@ -176,6 +230,9 @@ func (p *AccountPool) SelectBestAccount(candidates []string) string {
 		var earliestCooldown time.Time
 		for _, cid := range candidates {
 			acc := p.accounts[cid]
+			if acc.Status == "disabled" {
+				continue
+			}
 			if bestID == "" || acc.CooldownUntil.Before(earliestCooldown) {
 				earliestCooldown = acc.CooldownUntil
 				bestID = cid
@@ -285,6 +342,14 @@ func (m *PoolManager) SetCooldown(poolID, accID string, duration time.Duration) 
 	}
 	for _, p := range m.pools {
 		p.SetCooldown(accID, duration)
+	}
+}
+
+func (m *PoolManager) SetAccountDisabled(accID string, disabled bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, p := range m.pools {
+		p.SetAccountDisabled(accID, disabled)
 	}
 }
 
