@@ -30,6 +30,11 @@ providing multi-account rotation, OAuth PKCE flows, and automatic fallback casca
 		NewLaunchCmd(),
 		NewRunCmd(),
 		NewAutostartCmd(),
+		NewDoctorCmd(),
+		NewChatCmd(),
+		NewLogsCmd(),
+		NewReloadCmd(),
+		NewKeysCmd(),
 	)
 	return rootCmd
 }
