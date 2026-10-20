@@ -94,6 +94,16 @@ func (r *Router) GetProvider(id string) (providers.Provider, bool) {
 	return p, ok
 }
 
+func (r *Router) GetAllProviders() []providers.Provider {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	var list []providers.Provider
+	for _, p := range r.providers {
+		list = append(list, p)
+	}
+	return list
+}
+
 func (r *Router) GetCombos() map[string]*Combo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

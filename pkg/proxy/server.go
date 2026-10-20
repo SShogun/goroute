@@ -37,6 +37,7 @@ import (
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/rtk"
 	"github.com/ziuus/goroute/pkg/store"
+	"github.com/ziuus/goroute/pkg/tokens"
 	"github.com/ziuus/goroute/pkg/tunnel"
 	"github.com/ziuus/goroute/web"
 )
@@ -83,6 +84,7 @@ func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *
 	}
 
 	s.setupRoutes()
+	tokens.InitScheduler(s.router, 3*time.Minute)
 	return s
 }
 
@@ -143,6 +145,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/acp/sessions", s.handleListAcpSessions)
 	s.mux.Post("/api/acp/spawn", s.handleSpawnAcpSession)
 	s.mux.Delete("/api/acp/sessions/{id}", s.handleKillAcpSession)
+	s.mux.Get("/api/tokens/health", s.handleListTokensHealth)
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
@@ -2063,6 +2066,17 @@ func (s *Server) handleKillAcpSession(w http.ResponseWriter, r *http.Request) {
 		"killed": id,
 	})
 }
+
+func (s *Server) handleListTokensHealth(w http.ResponseWriter, r *http.Request) {
+	healthList := tokens.GlobalScheduler.ListHealth()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"count":  len(healthList),
+		"health": healthList,
+	})
+}
+
 
 
 
