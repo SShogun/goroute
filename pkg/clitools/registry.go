@@ -294,7 +294,7 @@ func setupClaude(home string) error {
 	env["ANTHROPIC_DEFAULT_SONNET_MODEL"] = "claude-sonnet-4.5"
 	env["ANTHROPIC_DEFAULT_OPUS_MODEL"] = "claude-opus-5.5"
 	env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = "claude-haiku-4.5"
-	env["ANTHROPIC_DEFAULT_FABLE_MODEL"] = "claude-opus-4.6"
+	env["ANTHROPIC_DEFAULT_FABLE_MODEL"] = "claude-gemini-3.1-pro"
 	env["CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY"] = "1"
 	env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] = "200000"
 	settings["customBaseUrl"] = "http://127.0.0.1:8128"
