@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -47,6 +48,7 @@ type Server struct {
 	mux             *chi.Mux
 	cfgPath         string
 	storePath       string
+	startTime       time.Time
 }
 
 func (s *Server) SetConfigPaths(cfgPath, storePath string) {
@@ -72,6 +74,7 @@ func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *
 		mcpServer:       mcp.NewServer(resilience.GlobalCooldown),
 		enableDashboard: enableDashboard,
 		cfgPath:         cfgPath,
+		startTime:       time.Now(),
 		mux:             chi.NewRouter(),
 	}
 
@@ -268,6 +271,29 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(statusCode)
 		io.Copy(w, body)
+		return
+	}
+
+	if isStream && !chatReq.Stream {
+		consolidated, err := consolidateSSEStream(body, chatReq.Model)
+		if err != nil {
+			http.Error(w, "failed to consolidate stream: "+err.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		w.Write(consolidated)
+		if statusCode == http.StatusOK && cacheKey != "" {
+			s.cache.Set(cacheKey, consolidated)
+		}
+		RecordRequest(RequestLog{
+			ID:         fmt.Sprintf("req_%d", time.Now().UnixNano()),
+			Timestamp:  start,
+			Endpoint:   "/v1/chat/completions",
+			Model:      chatReq.Model,
+			StatusCode: statusCode,
+			DurationMs: time.Since(start).Milliseconds(),
+		})
 		return
 	}
 
@@ -500,16 +526,23 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 		provSummaries = append(provSummaries, ps)
 	}
 
+	uptimeSec := time.Since(s.startTime).Seconds()
+	if s.startTime.IsZero() {
+		uptimeSec = 1.0
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":    "active",
-		"engine":    "goroute",
-		"port":      8128,
-		"memory_mb": float64(m.Alloc) / 1024 / 1024,
-		"providers": provSummaries,
-		"combos":    cfg.Combos,
-		"models":    models,
-		"agents":    agentMap,
+		"status":         "active",
+		"engine":         "goroute",
+		"port":           8128,
+		"uptime":         int64(uptimeSec),
+		"uptime_seconds": int64(uptimeSec),
+		"memory_mb":      float64(m.Alloc) / 1024 / 1024,
+		"providers":      provSummaries,
+		"combos":         cfg.Combos,
+		"models":         models,
+		"agents":         agentMap,
 	})
 }
 
@@ -1576,6 +1609,86 @@ func (s *Server) handleSetRouterQuota(w http.ResponseWriter, r *http.Request) {
 		"quota_percent": payload.QuotaPercent,
 	})
 }
+
+func consolidateSSEStream(body io.Reader, model string) ([]byte, error) {
+	scanner := bufio.NewScanner(body)
+	var fullContent strings.Builder
+	var toolCalls []map[string]interface{}
+	finishReason := "stop"
+	respID := fmt.Sprintf("chatcmpl-goroute-%d", time.Now().UnixNano())
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || line == "data: [DONE]" {
+			continue
+		}
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		payload := strings.TrimPrefix(line, "data: ")
+		var chunk struct {
+			ID      string `json:"id"`
+			Model   string `json:"model"`
+			Choices []struct {
+				Delta struct {
+					Content   string        `json:"content"`
+					ToolCalls []interface{} `json:"tool_calls"`
+				} `json:"delta"`
+				FinishReason *string `json:"finish_reason"`
+			} `json:"choices"`
+		}
+		if err := json.Unmarshal([]byte(payload), &chunk); err == nil {
+			if chunk.ID != "" {
+				respID = chunk.ID
+			}
+			if len(chunk.Choices) > 0 {
+				c := chunk.Choices[0]
+				if c.Delta.Content != "" {
+					fullContent.WriteString(c.Delta.Content)
+				}
+				for _, tc := range c.Delta.ToolCalls {
+					if tcMap, ok := tc.(map[string]interface{}); ok {
+						toolCalls = append(toolCalls, tcMap)
+					}
+				}
+				if c.FinishReason != nil && *c.FinishReason != "" {
+					finishReason = *c.FinishReason
+				}
+			}
+		}
+	}
+
+	contentStr := fullContent.String()
+	choiceMsg := map[string]interface{}{
+		"role":    "assistant",
+		"content": contentStr,
+	}
+	if len(toolCalls) > 0 {
+		choiceMsg["tool_calls"] = toolCalls
+		finishReason = "tool_calls"
+	}
+
+	res := map[string]interface{}{
+		"id":      respID,
+		"object":  "chat.completion",
+		"created": time.Now().Unix(),
+		"model":   model,
+		"choices": []map[string]interface{}{
+			{
+				"index":         0,
+				"message":       choiceMsg,
+				"finish_reason": finishReason,
+			},
+		},
+		"usage": map[string]interface{}{
+			"prompt_tokens":     10,
+			"completion_tokens": len(contentStr) / 4,
+			"total_tokens":      10 + (len(contentStr) / 4),
+		},
+	}
+	return json.Marshal(res)
+}
+
 
 
 

@@ -18,7 +18,7 @@ var (
 
 	// Intensity: Lite (Polite framing & greetings)
 	pleasantriesRegex = regexp.MustCompile(`(?i)\b(?:thank you so much|thank you|thanks a lot|thanks|no problem|you'?re welcome|i'?d be happy to|i would be glad to|glad to help|of course|certainly|cheers)\b[,.!?\s]*`)
-	politeRegex       = regexp.MustCompile(`(?i)\b(?:could you please|would you please|can you please|would you kindly|could you kindly|please|kindly|i would like you to|i need you to|i want you to)\b\s*`)
+	politeRegex       = regexp.MustCompile(`(?i)\b(?:could you please|would you please|can you please|would you kindly|could you kindly|please|kindly|i would like you to|i need you to|i want you to|i would be (?:very )?grateful if you could|i would appreciate it if you could)\b\s*`)
 
 	// Intensity: Full (Hedging & verbose prompts)
 	hedgingRegex = regexp.MustCompile(`(?i)\b(?:it seems like|it appears that|i think that|i believe that|in my opinion|probably|possibly)\b\s*`)
