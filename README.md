@@ -51,21 +51,21 @@ Instead of running bloated Node/Electron proxies that consume **600MB to 1.5GB o
 │                                     ⚡ GOROUTE CORE                                       │
 │                                                                                           │
 │  ┌───────────────────────┐  ┌───────────────────────┐  ┌───────────────────────────────┐  │
-│  │   Dual-Protocol SSE   │  │   Zero-Alloc Cache    │  │    Multi-Account PKCE Pool    │  │
-│  │  OpenAI ⇆ Anthropic   │  │   0ms Repeat Hits     │  │  Antigravity Token Refresh    │  │
+│  │   Dual-Protocol SSE   │  │   55 RTK Filters      │  │    Session Account Affinity   │  │
+│  │  OpenAI ⇆ Anthropic   │  │   70-90% Noise Cut    │  │  Prompt Cache Preservation    │  │
 │  └───────────────────────┘  └───────────────────────┘  └───────────────────────────────┘  │
 │                                                                                           │
 │  ┌─────────────────────────────────────────────────────────────────────────────────────┐  │
-│  │                        Intelligent Failover & Quota Router                          │  │
-│  │              (Auto-cascades across accounts on 429 quota or 503 limits)             │  │
+│  │                     Autonomous Token Health Scheduler & Router                      │  │
+│  │         (Cascades across accounts on 429 quota or 503 limits; proactive refresh)    │  │
 │  └─────────────────────────────────────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────┬────────────────────────────────────────────┘
                                                │
                ┌───────────────────────────────┼───────────────────────────────┐
                ▼                               ▼                               ▼
  ┌───────────────────────────┐   ┌───────────────────────────┐   ┌───────────────────────────┐
- │ Google Antigravity Pool   │   │  OpenAI / Claude Direct   │   │  DeepSeek / TokenRouter   │
- │ 4x Accounts • Sonnet 4.6  │   │   OpenAI Compatible API   │   │  Custom Fallback Gateway  │
+ │ Google Antigravity Pool   │   │  AWS CodeWhisperer (Kiro) │   │  OpenAI / Codex Direct    │
+ │ Multi-Account • Sonnet    │   │  Context Auto-Pruning     │   │  OpenAI Compatible API    │
  └───────────────────────────┘   └───────────────────────────┘   └───────────────────────────┘
 ```
 
