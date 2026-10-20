@@ -1,23 +1,17 @@
-# ⚡ GoRoute
-
 <div align="center">
 
-```
-   ______      ____             __       
-  / ____/___  / __ \____  __  __/ /____  
- / / __/ __ \/ /_/ / __ \/ / / / __/ _ \ 
-/ /_/ / /_/ / _, _/ /_/ / /_/ / /_/  __/ 
-\____/\____/_/ |_|\____/\__,_/\__/\___/  
-```
+<img src="./assets/banner.svg" alt="GoRoute Banner" width="100%" />
+
+<br/>
 
 ### The Ultra-Lightweight LLM Gateway & Multi-Provider Router for Coding Agents
-**Sub-10ms Latency • < 5MB Idle RAM • Zero-Alloc Cache • 100% Native Pure Go**
+**Sub-10ms Latency • < 17MB RAM • 55 RTK Filters • 18 CLI Agents • Zero Node.js Overhead**
 
 [![Go Version](https://img.shields.io/badge/go-1.24%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![NPM Version](https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/goroute)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ziuus/goroute?style=flat-square&color=8A2BE2)](https://github.com/ziuus/goroute/releases)
-[![Memory Footprint](https://img.shields.io/badge/memory-%3C%205MB%20RAM-00C853?style=flat-square)](#-benchmarks)
+[![Memory Footprint](https://img.shields.io/badge/memory-%3C%2017MB%20RAM-00C853?style=flat-square)](#-benchmarks)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey?style=flat-square)](#-cross-platform-matrix)
 
 <p align="center">
@@ -130,7 +124,7 @@ goroute setup claude
 # Configure OpenAI Codex CLI
 goroute setup codex
 
-# Configure ALL 14 supported agents in one click
+# Configure ALL 18 supported agents in one click
 goroute setup all
 ```
 
