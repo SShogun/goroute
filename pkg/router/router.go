@@ -334,30 +334,49 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 	// Alias resolution to combos if exact match not found
 	if !isCombo && !strings.Contains(normReq.Model, "/") {
 		lower := strings.ToLower(normReq.Model)
-		var resolvedCombo string
-		if strings.Contains(lower, "opus") {
-			resolvedCombo = "opus"
-		} else if strings.Contains(lower, "haiku") {
-			resolvedCombo = "haiku"
-		} else if strings.Contains(lower, "sonnet") || strings.Contains(lower, "claude") {
-			resolvedCombo = "sonnet"
-		} else if strings.Contains(lower, "gpt") {
-			resolvedCombo = "gpt"
-		} else if strings.Contains(lower, "gemini-pro") || strings.Contains(lower, "gemini-2.5-pro") {
-			resolvedCombo = "gemini-pro"
-		} else if strings.Contains(lower, "gemini") {
-			resolvedCombo = "gemini-flash"
-		}
-
-		if resolvedCombo != "" {
-			r.mu.RLock()
-			c, ok := r.combos[resolvedCombo]
-			r.mu.RUnlock()
-			if ok && len(c.Targets) > 0 {
+		r.mu.RLock()
+		for name, c := range r.combos {
+			cLower := strings.ToLower(name)
+			if strings.Contains(lower, "opus") && strings.Contains(cLower, "opus") {
 				combo = c
 				isCombo = true
+				break
+			}
+			if strings.Contains(lower, "haiku") && strings.Contains(cLower, "haiku") {
+				combo = c
+				isCombo = true
+				break
+			}
+			if (strings.Contains(lower, "sonnet") || strings.Contains(lower, "claude")) && (strings.Contains(cLower, "sonnet") || strings.Contains(cLower, "claude")) {
+				combo = c
+				isCombo = true
+				break
+			}
+			if strings.Contains(lower, "gemini") && strings.Contains(cLower, "gemini") {
+				combo = c
+				isCombo = true
+				break
 			}
 		}
+
+		if !isCombo {
+			if c, ok := r.combos["claude-sonnet-4.5"]; ok && len(c.Targets) > 0 {
+				combo = c
+				isCombo = true
+			} else if c, ok := r.combos["sonnet"]; ok && len(c.Targets) > 0 {
+				combo = c
+				isCombo = true
+			} else {
+				for _, c := range r.combos {
+					if len(c.Targets) > 0 {
+						combo = c
+						isCombo = true
+						break
+					}
+				}
+			}
+		}
+		r.mu.RUnlock()
 	}
 
 	if isCombo && len(combo.Targets) > 0 {
@@ -455,18 +474,29 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 		}
 	}
 
-	// Otherwise, send to first available provider
+	// Otherwise, send to first available provider with failover across healthy providers
+	var lastErr error
+	var lastStatus int
 	for _, p := range r.providers {
 		if p.IsHealthy() {
 			start := time.Now()
 			body, isStream, statusCode, err := p.ChatCompletion(ctx, req)
 			if err == nil && statusCode >= 200 && statusCode < 400 {
 				r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
+				return body, isStream, statusCode, nil
 			}
-			return body, isStream, statusCode, err
+			log.Printf("[GoRoute] executeDirect: provider %s failed with status %d (err: %v), trying next provider...", p.ID(), statusCode, err)
+			lastErr = err
+			lastStatus = statusCode
+			if body != nil {
+				body.Close()
+			}
 		}
 	}
 
+	if lastErr != nil {
+		return nil, false, lastStatus, lastErr
+	}
 	return nil, false, http.StatusNotFound, fmt.Errorf("no provider found for model: %s", req.Model)
 }
 

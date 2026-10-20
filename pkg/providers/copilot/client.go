@@ -98,6 +98,7 @@ type Provider struct {
 	accounts []*Account
 	idx      uint64
 	client   *http.Client
+	healthy  bool
 	mu       sync.RWMutex
 }
 
@@ -112,6 +113,7 @@ func NewProvider(id string, accounts []*Account) *Provider {
 			},
 			Timeout: 0,
 		},
+		healthy: true,
 	}
 }
 
@@ -126,7 +128,7 @@ func (p *Provider) Type() string {
 func (p *Provider) IsHealthy() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	return len(p.accounts) > 0
+	return p.healthy && len(p.accounts) > 0
 }
 
 func (p *Provider) Accounts() []*Account {
@@ -185,6 +187,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	acc := accs[0]
 	copilotToken, err := acc.GetValidCopilotToken(ctx, p.client)
 	if err != nil {
+		p.mu.Lock()
+		p.healthy = false
+		p.mu.Unlock()
 		return nil, false, http.StatusUnauthorized, fmt.Errorf("copilot token exchange error: %w", err)
 	}
 

@@ -500,12 +500,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		History:         history,
 	}
 
-	// Pre-emptively prune payload if it exceeds 160KB to avoid CONTENT_LENGTH_EXCEEDS_THRESHOLD
-	initialBytes, _ := json.Marshal(convState)
-	if len(initialBytes) > 160000 {
-		log.Printf("[kiro] Pre-emptively pruning large conversation state (%d bytes > 160KB)", len(initialBytes))
-		pruneKiroConversationState(&convState, 150000)
-	}
+	// Full fidelity passthrough by default; auto-recovery only triggers if AWS returns CONTENT_LENGTH_EXCEEDS_THRESHOLD
 
 	sessionKey := affinity.DeriveSessionKey(nil, req)
 	pinnedAcc := affinity.GlobalManager.GetAffinity(sessionKey, p.id)
@@ -836,13 +831,17 @@ func pruneKiroConversationState(state *kiroConversationState, maxBytes int) {
 		}
 	}
 
-	// 3. Sliding window on history turns: keep first turn (instructions/system context) and latest turns
-	for len(state.History) > 2 {
+	// 3. Sliding window on history turns: drop in assistant+user pairs (2 turns) to prevent TOOL_USE_RESULT_MISMATCH
+	for len(state.History) >= 3 {
 		b, err := json.Marshal(state)
 		if err == nil && len(b) <= maxBytes {
 			break
 		}
-		// Drop the oldest turn after the initial context
-		state.History = append(state.History[:1], state.History[2:]...)
+		// Drop a full pair (2 turns: assistant + user)
+		if len(state.History) >= 4 {
+			state.History = append(state.History[:1], state.History[3:]...)
+		} else {
+			break
+		}
 	}
 }
