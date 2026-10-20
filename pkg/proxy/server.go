@@ -150,6 +150,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/usage/call-logs/filters", s.handleUsageCallLogFilters)
 	s.mux.Get("/api/settings", s.handleGetSettings)
 	s.mux.Patch("/api/settings", s.handlePatchSettings)
+	s.mux.Post("/api/settings/purge-call-logs", s.handlePurgeCallLogs)
 	s.mux.Get("/api/keys", s.handleListKeys)
 	s.mux.Post("/api/keys", s.handleCreateKey)
 	s.mux.Delete("/api/keys/{id}", s.handleRevokeKey)
@@ -304,6 +305,40 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
 	json.NewEncoder(w).Encode(settings)
+}
+
+func (s *Server) handlePurgeCallLogs(w http.ResponseWriter, r *http.Request) {
+	db := storage.GetDB()
+	if db == nil {
+		http.Error(w, "database not ready", http.StatusInternalServerError)
+		return
+	}
+
+	var req struct {
+		Window string `json:"window"` // "24h", "7d", "30d", or "all"
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	var cutoff time.Time
+	switch req.Window {
+	case "24h":
+		cutoff = time.Now().Add(-24 * time.Hour)
+	case "7d":
+		cutoff = time.Now().Add(-7 * 24 * time.Hour)
+	case "30d":
+		cutoff = time.Now().Add(-30 * 24 * time.Hour)
+	default:
+		cutoff = time.Time{} // all
+	}
+
+	result, err := db.PurgeCallLogs(cutoff)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
