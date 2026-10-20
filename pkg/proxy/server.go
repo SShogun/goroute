@@ -146,6 +146,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
 	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
 	s.mux.Get("/api/usage/ledger", s.handleUsageLedger)
+	s.mux.Get("/api/usage/call-logs", s.handleUsageCallLogs)
 	s.mux.Get("/api/settings", s.handleGetSettings)
 	s.mux.Patch("/api/settings", s.handlePatchSettings)
 	s.mux.Get("/api/keys", s.handleListKeys)
@@ -210,6 +211,47 @@ func (s *Server) handleUsageLedger(w http.ResponseWriter, r *http.Request) {
 	summary := quota.GlobalLedger.Summary()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(summary)
+}
+
+func (s *Server) handleUsageCallLogs(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	filter := storage.CallLogFilter{
+		Status:       q.Get("status"),
+		Model:        q.Get("model"),
+		Provider:     q.Get("provider"),
+		Account:      q.Get("account"),
+		Search:       q.Get("search"),
+		ExcludeTests: q.Get("excludeTests") == "1",
+	}
+
+	if limitStr := q.Get("limit"); limitStr != "" {
+		fmt.Sscanf(limitStr, "%d", &filter.Limit)
+	}
+	if offsetStr := q.Get("offset"); offsetStr != "" {
+		fmt.Sscanf(offsetStr, "%d", &filter.Offset)
+	}
+
+	db := storage.GetDB()
+	var logs []storage.CallLog
+	var err error
+	if db != nil {
+		logs, err = db.QueryFilteredLogs(filter)
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if logs == nil {
+		logs = []storage.CallLog{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"logs":   logs,
+		"count":  len(logs),
+		"filter": filter,
+	})
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
