@@ -150,6 +150,26 @@ var Registry = []CatalogEntry{
 		Description: "Cursor Pro subscription OAuth credentials with 1-click import from ~/.config/cursor/auth.json",
 		Models:      []string{"auto", "composer-2", "claude-4.6-sonnet-medium", "claude-4.6-opus-high-thinking-fast", "gpt-5.4-low-fast", "gpt-5.3-codex", "gemini-3.1-pro", "grok-4.6-medium"},
 	},
+	{
+		ID:          "grok-cli",
+		Name:        "xAI Grok CLI",
+		Type:        "openai",
+		Category:    "oauth",
+		BaseURL:     "https://cli-chat-proxy.grok.com/v1",
+		AuthType:    "oauth",
+		Description: "xAI Grok CLI OAuth client with Grok 4.6, 4.5, and Composer 2.5",
+		Models:      []string{"grok-4.6", "grok-4.5", "grok-composer-2.5-fast"},
+	},
+	{
+		ID:          "kimi",
+		Name:        "Moonshot Kimi AI",
+		Type:        "openai",
+		Category:    "asia",
+		BaseURL:     "https://api.moonshot.cn/v1",
+		AuthType:    "apikey",
+		Description: "Moonshot AI Kimi K3, K2.7 Code, and long-context 128k models",
+		Models:      []string{"kimi-k3", "kimi-k2.7-code", "kimi-k2.5", "moonshot-v1-128k", "moonshot-v1-32k", "moonshot-v1-8k"},
+	},
 
 	// ─── Ultra-Fast LPUs & High-Speed Inference ──────────────────────────────
 	{
