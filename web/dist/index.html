@@ -622,7 +622,11 @@
         <div class="nav-items">
           <a class="nav-item" onclick="switchView('cli-agents')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/></svg>
-            CLI Agents
+            CLI Agents Fleet
+          </a>
+          <a class="nav-item" onclick="switchView('acp')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            ACP Subprocesses
           </a>
           <a class="nav-item" onclick="switchView('combos')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
@@ -657,6 +661,10 @@
           <a class="nav-item" onclick="switchView('keys')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
             API Virtual Keys
+          </a>
+          <a class="nav-item" onclick="switchView('token-health')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            Token Health
           </a>
         </div>
       </div>
@@ -1038,6 +1046,67 @@
         </div>
       </div>
 
+      <!-- VIEW: ACP AGENTS -->
+      <div id="view-acp" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">ACP (Agent Client Protocol) Process Fleet</div>
+            <div class="card-subtitle">Local CLI agents spawned as managed child processes with capped memory buffers and direct stdin/stdout control</div>
+          </div>
+          <span class="badge badge-success"><span class="pulse-dot"></span> 1MB Safe Ring Buffer</span>
+        </div>
+
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Session ID</th>
+                  <th>Agent / Binary</th>
+                  <th>Uptime</th>
+                  <th>Buffer Size</th>
+                  <th>Process State</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="acp-table-tbody">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 2rem;">No active ACP subprocesses spawned yet</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: TOKEN HEALTH -->
+      <div id="view-token-health" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Autonomous Token Health Prober</div>
+            <div class="card-subtitle">Continuous background scheduler verifying OAuth tokens and API keys across all provider accounts</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="loadTokenHealth()">Probe Now</button>
+        </div>
+
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Provider Target</th>
+                  <th>Account ID</th>
+                  <th>Status</th>
+                  <th>Roundtrip Latency</th>
+                  <th>Last Probe Time</th>
+                </tr>
+              </thead>
+              <tbody id="token-health-tbody">
+                <tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 2rem;">Loading health state...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </div>
   </main>
 
@@ -1146,6 +1215,10 @@
         loadAffinitySessions();
       } else if (currentView === 'keys') {
         loadKeys();
+      } else if (currentView === 'acp') {
+        loadAcpSessions();
+      } else if (currentView === 'token-health') {
+        loadTokenHealth();
       }
     }
 
@@ -1549,6 +1622,71 @@
         `).join('');
       } catch (e) {
         console.error('loadAffinitySessions error:', e);
+      }
+    }
+
+    // ACP Sessions
+    async function loadAcpSessions() {
+      try {
+        const res = await fetch('/api/acp/sessions').then(r => r.json());
+        const tbody = document.getElementById('acp-table-tbody');
+        if (!res.sessions || res.sessions.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 2rem;">No active ACP subprocesses spawned yet</td></tr>';
+          return;
+        }
+        tbody.innerHTML = res.sessions.map(s => `
+          <tr>
+            <td style="font-family: 'Geist Mono'; font-weight: 600;">${s.id}</td>
+            <td><b>${s.agent_id}</b> <span style="color: var(--text-dim);">(${s.binary})</span></td>
+            <td>${s.age_sec}s</td>
+            <td>${(s.buffer_len / 1024).toFixed(1)} KB</td>
+            <td>${s.alive ? '<span class="badge badge-success">Running</span>' : '<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">Stopped</span>'}</td>
+            <td>
+              <button class="btn btn-danger btn-sm" onclick="killAcpSession('${s.id}')">Kill</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error('loadAcpSessions error:', e);
+      }
+    }
+
+    async function killAcpSession(id) {
+      try {
+        await fetch(`/api/acp/sessions/${id}`, { method: 'DELETE' });
+        showToast(`Killed ACP process ${id}`);
+        loadAcpSessions();
+      } catch (e) {
+        showToast(`❌ Kill error: ${e.message}`);
+      }
+    }
+
+    // Token Health
+    async function loadTokenHealth() {
+      try {
+        const res = await fetch('/api/tokens/health').then(r => r.json());
+        const tbody = document.getElementById('token-health-tbody');
+        if (!res.health || res.health.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 2rem;">No accounts monitored yet</td></tr>';
+          return;
+        }
+        tbody.innerHTML = res.health.map(h => {
+          const isHealthy = h.status === 'healthy';
+          const badge = isHealthy 
+            ? '<span class="badge badge-success">Healthy</span>' 
+            : `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">${h.status}</span>`;
+          return `
+            <tr>
+              <td><b>${h.provider_id}</b></td>
+              <td style="font-family: 'Geist Mono'; font-size: 0.8rem;">${h.account_id}</td>
+              <td>${badge}</td>
+              <td style="font-family: 'Geist Mono';">${h.latency_ms} ms</td>
+              <td style="color: var(--text-dim); font-size: 0.75rem;">${new Date(h.last_check).toLocaleTimeString()}</td>
+            </tr>
+          `;
+        }).join('');
+      } catch (e) {
+        console.error('loadTokenHealth error:', e);
       }
     }
 
