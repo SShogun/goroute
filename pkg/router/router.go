@@ -202,13 +202,18 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 	defer r.mu.RUnlock()
 
 	var models []providers.ModelInfo
-	// Add combos
-	for name := range r.combos {
-		models = append(models, providers.ModelInfo{
-			ID:      name,
-			Object:  "model",
-			OwnedBy: "goroute-combo",
-		})
+
+	// If custom combos are configured, expose only the curated combos
+	// This prevents flooding clients (Claude Code, etc.) with 100+ raw provider models
+	if len(r.combos) > 0 {
+		for name := range r.combos {
+			models = append(models, providers.ModelInfo{
+				ID:      name,
+				Object:  "model",
+				OwnedBy: "goroute",
+			})
+		}
+		return models, nil
 	}
 
 	// Add provider direct models with per-provider timeout
