@@ -26,6 +26,7 @@ import (
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/keys"
 	"github.com/ziuus/goroute/pkg/mcp"
+	"github.com/ziuus/goroute/pkg/mitm"
 	"github.com/ziuus/goroute/pkg/pool"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
@@ -49,6 +50,7 @@ type Server struct {
 	limiter         *quota.Limiter
 	cache           *cache.Cache
 	tunnelMgr       *tunnel.Manager
+	tunnelServer    *mitm.TunnelServer
 	keyMgr          *keys.Manager
 	mcpServer       *mcp.Server
 	enableDashboard bool
@@ -83,6 +85,10 @@ func NewServer(r *router.Router, limiter *quota.Limiter, enableDashboard bool) *
 		cfgPath:         cfgPath,
 		startTime:       time.Now(),
 		mux:             chi.NewRouter(),
+	}
+
+	if ts, err := mitm.NewTunnelServer("127.0.0.1:8128"); err == nil {
+		s.tunnelServer = ts
 	}
 
 	s.setupRoutes()
@@ -138,6 +144,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/resilience/reset", s.handleResilienceReset)
 	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
 	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
+	s.mux.Get("/api/usage/ledger", s.handleUsageLedger)
 	s.mux.Get("/api/keys", s.handleListKeys)
 	s.mux.Post("/api/keys", s.handleCreateKey)
 	s.mux.Delete("/api/keys/{id}", s.handleRevokeKey)
@@ -187,7 +194,19 @@ func (s *Server) setupRoutes() {
 }
 
 func (s *Server) Handler() http.Handler {
-	return s.mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodConnect && s.tunnelServer != nil {
+			s.tunnelServer.HandleConnect(w, r)
+			return
+		}
+		s.mux.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) handleUsageLedger(w http.ResponseWriter, r *http.Request) {
+	summary := quota.GlobalLedger.Summary()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {

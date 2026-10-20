@@ -152,14 +152,28 @@ func (m *Manager) SetAffinity(sessionKey, providerID, accountID string) {
 
 // InvalidateAffinity breaks affinity when account returns 429/401/403
 func (m *Manager) InvalidateAffinity(sessionKey, providerID string) {
+	m.EvictAffinity(sessionKey, providerID, "")
+}
+
+// EvictAffinity evicts a session pin ONLY when it points to accountID (or if accountID is empty).
+// Matches OmniRoute parity (#6219: evictSessionAccountAffinityForConnection) so failovers
+// do not remain pinned to an exhausted or rate-limited account.
+func (m *Manager) EvictAffinity(sessionKey, providerID, accountID string) bool {
 	if sessionKey == "" || providerID == "" {
-		return
+		return false
 	}
 	key := providerID + ":" + sessionKey
 
 	m.mu.Lock()
-	delete(m.sessions, key)
-	m.mu.Unlock()
+	defer m.mu.Unlock()
+
+	if rec, exists := m.sessions[key]; exists {
+		if accountID == "" || rec.AccountID == accountID {
+			delete(m.sessions, key)
+			return true
+		}
+	}
+	return false
 }
 
 type SessionRecord struct {

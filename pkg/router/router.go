@@ -14,6 +14,7 @@ import (
 
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/resilience"
+	"github.com/ziuus/goroute/pkg/translator"
 )
 
 type Target struct {
@@ -407,9 +408,10 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			continue
 		}
 
-		// Clone request with target model
+		// Clone request with target model and sanitize parameters for provider/model
 		targetReq := *req
 		targetReq.Model = target.Model
+		translator.SanitizeChatRequest(prov.ID(), prov.Type(), &targetReq)
 
 		start := time.Now()
 		body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
@@ -465,6 +467,7 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 		if prov, ok := r.providers[provID]; ok {
 			targetReq := *req
 			targetReq.Model = modelName
+			translator.SanitizeChatRequest(prov.ID(), prov.Type(), &targetReq)
 			start := time.Now()
 			body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
 			if err == nil && statusCode >= 200 && statusCode < 400 {
@@ -479,8 +482,10 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 	var lastStatus int
 	for _, p := range r.providers {
 		if p.IsHealthy() {
+			targetReq := *req
+			translator.SanitizeChatRequest(p.ID(), p.Type(), &targetReq)
 			start := time.Now()
-			body, isStream, statusCode, err := p.ChatCompletion(ctx, req)
+			body, isStream, statusCode, err := p.ChatCompletion(ctx, &targetReq)
 			if err == nil && statusCode >= 200 && statusCode < 400 {
 				r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
 				return body, isStream, statusCode, nil
