@@ -177,6 +177,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/webhooks", s.handleListWebhooks)
 	s.mux.Post("/api/webhooks", s.handleCreateWebhook)
 	s.mux.Delete("/api/webhooks/{id}", s.handleDeleteWebhook)
+	s.mux.Get("/api/batches", s.handleListBatches)
+	s.mux.Post("/api/batches", s.handleCreateBatch)
+	s.mux.Get("/api/compliance/audit-log", s.handleAuditLog)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -809,6 +812,87 @@ func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+func (s *Server) handleListBatches(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+
+	store := storage.GetEnterpriseStore()
+	batches, err := store.ListBatches(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if batches == nil {
+		batches = []storage.BatchRecord{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"batches": batches,
+	})
+}
+
+func (s *Server) handleCreateBatch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Endpoint      string `json:"endpoint"`
+		InputFileID   string `json:"input_file_id"`
+		TotalRequests int    `json:"total_requests"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Endpoint == "" {
+		http.Error(w, "endpoint and input_file_id are required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetEnterpriseStore()
+	b, err := store.CreateBatch(body.Endpoint, body.InputFileID, body.TotalRequests)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	_ = store.RecordAudit(storage.AuditLogRecord{
+		Action:       "batch.created",
+		Actor:        "api",
+		Target:       b.ID,
+		ResourceType: "batch",
+		Status:       "success",
+		IPAddress:    r.RemoteAddr,
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(b)
+}
+
+func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	offset := 0
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+	if oStr := r.URL.Query().Get("offset"); oStr != "" {
+		fmt.Sscanf(oStr, "%d", &offset)
+	}
+
+	store := storage.GetEnterpriseStore()
+	logs, total, err := store.QueryAuditLogs(limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if logs == nil {
+		logs = []storage.AuditLogRecord{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Total-Count", fmt.Sprintf("%d", total))
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(logs)
 }
 
 func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
