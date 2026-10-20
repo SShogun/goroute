@@ -212,6 +212,9 @@ func NewServeCmd() *cobra.Command {
 
 			srv := proxy.NewServer(r, limiter, !noDashboard)
 			srv.SetConfigPaths(cfgPath, defaultStore)
+			if err := srv.Reload(); err != nil {
+				fmt.Printf("⚠️ Initial configuration load warning: %v\n", err)
+			}
 
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, syscall.SIGHUP)

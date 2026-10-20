@@ -116,6 +116,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/reload", s.handleReload)
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)
+	s.mux.Post("/api/providers/{id}/accounts", s.handleAddAccount)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
@@ -921,6 +922,132 @@ func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "deleted": id})
 }
 
+func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		AccountID    string `json:"account_id"`
+		ID           string `json:"id"`
+		Type         string `json:"type"`
+		APIKey       string `json:"api_key"`
+		RefreshToken string `json:"refresh_token"`
+		Email        string `json:"email"`
+		ProjectID    string `json:"project_id"`
+		ProfileARN   string `json:"profile_arn"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	accID := req.AccountID
+	if accID == "" {
+		accID = req.ID
+	}
+	if accID == "" {
+		http.Error(w, "account_id is required", http.StatusBadRequest)
+		return
+	}
+
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == id {
+			found = true
+			if len(cfg.Providers[i].Accounts) == 0 && (cfg.Providers[i].APIKey != "" || cfg.Providers[i].RefreshToken != "") {
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+					ID:           p.ID + "-primary",
+					APIKey:       p.APIKey,
+					RefreshToken: p.RefreshToken,
+					ProfileARN:   p.ProfileARN,
+				})
+			}
+			updated := false
+			for j, a := range cfg.Providers[i].Accounts {
+				if a.ID == accID {
+					if req.APIKey != "" {
+						cfg.Providers[i].Accounts[j].APIKey = req.APIKey
+					}
+					if req.RefreshToken != "" {
+						cfg.Providers[i].Accounts[j].RefreshToken = req.RefreshToken
+					}
+					if req.Email != "" {
+						cfg.Providers[i].Accounts[j].Email = req.Email
+					}
+					if req.ProjectID != "" {
+						cfg.Providers[i].Accounts[j].ProjectID = req.ProjectID
+					}
+					if req.ProfileARN != "" {
+						cfg.Providers[i].Accounts[j].ProfileARN = req.ProfileARN
+					}
+					updated = true
+					break
+				}
+			}
+			if !updated {
+				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+					ID:           accID,
+					APIKey:       req.APIKey,
+					RefreshToken: req.RefreshToken,
+					Email:        req.Email,
+					ProjectID:    req.ProjectID,
+					ProfileARN:   req.ProfileARN,
+				})
+			}
+			break
+		}
+	}
+
+	if !found {
+		pType := req.Type
+		if pType == "" {
+			pType = id
+		}
+		newProv := config.ProviderConfig{
+			ID:   id,
+			Type: pType,
+			Accounts: []config.AccountConfig{
+				{
+					ID:           accID,
+					APIKey:       req.APIKey,
+					RefreshToken: req.RefreshToken,
+					Email:        req.Email,
+					ProjectID:    req.ProjectID,
+					ProfileARN:   req.ProfileARN,
+				},
+			},
+		}
+		cfg.Providers = append(cfg.Providers, newProv)
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, "save config failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	pool.GlobalPool.RegisterAccount(id, accID, 1.0)
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"provider":   id,
+		"account_id": accID,
+		"message":    fmt.Sprintf("Account %s added to provider %s pool successfully", accID, id),
+	})
+}
+
 func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	accId := chi.URLParam(r, "accId")
@@ -954,6 +1081,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	pool.GlobalPool.RemoveAccount(id, accId)
 	_ = s.Reload()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "deleted_account": accId})
@@ -1152,10 +1280,12 @@ func (s *Server) Reload() error {
 			for _, a := range pCfg.Accounts {
 				if a.APIKey != "" {
 					keys = append(keys, a.APIKey)
+					pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
 				}
 			}
 			if pCfg.APIKey != "" {
 				keys = append(keys, pCfg.APIKey)
+				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID+"-primary", 1.0)
 			}
 			prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
 			s.router.RegisterProvider(prov)
@@ -1175,6 +1305,7 @@ func (s *Server) Reload() error {
 					ExpiresAt:    a.ExpiresAt,
 					ProjectID:    a.ProjectID,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
 			}
 			prov := antigravity.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1191,6 +1322,7 @@ func (s *Server) Reload() error {
 					RefreshToken: refToken,
 					ProfileARN:   a.ProfileARN,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
 			}
 			if len(accounts) == 0 && pCfg.RefreshToken != "" {
 				accounts = append(accounts, &kiro.Account{
@@ -1198,6 +1330,7 @@ func (s *Server) Reload() error {
 					RefreshToken: pCfg.RefreshToken,
 					ProfileARN:   pCfg.ProfileARN,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1216,12 +1349,14 @@ func (s *Server) Reload() error {
 					AccountID:    a.AccountID,
 					ExpiresAt:    a.ExpiresAt,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
 			}
 			if len(accounts) == 0 && pCfg.RefreshToken != "" {
 				accounts = append(accounts, &codex.Account{
 					ID:           pCfg.ID,
 					RefreshToken: pCfg.RefreshToken,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := codex.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1237,12 +1372,14 @@ func (s *Server) Reload() error {
 					GitHubToken: token,
 					User:        a.Email,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
 			}
 			if len(accounts) == 0 && pCfg.APIKey != "" {
 				accounts = append(accounts, &copilot.Account{
 					ID:          pCfg.ID,
 					GitHubToken: pCfg.APIKey,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := copilot.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1256,6 +1393,7 @@ func (s *Server) Reload() error {
 					RefreshToken: a.RefreshToken,
 					ExpiresAt:    a.ExpiresAt,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
 			}
 			if len(accounts) == 0 && (pCfg.APIKey != "" || pCfg.RefreshToken != "") {
 				accounts = append(accounts, &cursor.Account{
@@ -1263,6 +1401,7 @@ func (s *Server) Reload() error {
 					AccessToken:  pCfg.APIKey,
 					RefreshToken: pCfg.RefreshToken,
 				})
+				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := cursor.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)

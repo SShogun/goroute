@@ -128,7 +128,8 @@ func NewChatCmd() *cobra.Command {
 				model = "gemini-flash"
 			}
 			fmt.Printf("💬 Interactive GoRoute Terminal Chat (Model: %s)\n", model)
-			fmt.Println("   Type your message and press Enter. Type 'exit' or 'quit' to end.\n")
+			fmt.Println("   Type your message and press Enter. Type 'exit' or 'quit' to end.")
+			fmt.Println()
 
 			scanner := bufio.NewScanner(os.Stdin)
 			var history []map[string]string
@@ -204,7 +205,7 @@ func NewChatCmd() *cobra.Command {
 					}
 				}
 				resp.Body.Close()
-				fmt.Println("\n")
+				fmt.Println()
 				history = append(history, map[string]string{"role": "assistant", "content": fullAssistantReply.String()})
 			}
 			return nil

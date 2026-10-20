@@ -212,6 +212,26 @@ func (p *AccountPool) ListUsage() []*AccountUsage {
 	return list
 }
 
+func (p *AccountPool) RemoveAccount(accID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	delete(p.accounts, accID)
+}
+
+func (m *PoolManager) RegisterAccount(provID, accID string, weight float64) {
+	p := m.GetOrCreatePool(provID, "balanced")
+	p.RegisterAccount(accID, weight)
+}
+
+func (m *PoolManager) RemoveAccount(provID, accID string) {
+	m.mu.Lock()
+	p, exists := m.pools[provID]
+	m.mu.Unlock()
+	if exists {
+		p.RemoveAccount(accID)
+	}
+}
+
 func (m *PoolManager) ListAllPools() map[string][]*AccountUsage {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
