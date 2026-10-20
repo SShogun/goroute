@@ -158,6 +158,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/settings/proxies", s.handleListProxies)
 	s.mux.Post("/api/settings/proxies", s.handleCreateProxy)
 	s.mux.Delete("/api/settings/proxies/{id}", s.handleDeleteProxy)
+	s.mux.Get("/api/settings/thinking-budget", s.handleGetThinkingBudget)
+	s.mux.Put("/api/settings/thinking-budget", s.handlePutThinkingBudget)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -472,6 +474,28 @@ func (s *Server) handleDeleteProxy(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+func (s *Server) handleGetThinkingBudget(w http.ResponseWriter, r *http.Request) {
+	cfg := storage.GetThinkingBudgetConfig()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handlePutThinkingBudget(w http.ResponseWriter, r *http.Request) {
+	var body storage.ThinkingBudgetConfig
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.SetThinkingBudgetConfig(db, body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(body)
 }
 
 func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
