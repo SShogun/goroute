@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -16,27 +17,40 @@ import (
 )
 
 type Target struct {
-	ProviderID string
-	Model      string
+	ProviderID   string  `json:"provider_id"`
+	Model        string  `json:"model"`
+	QuotaPercent float64 `json:"quota_percent,omitempty"`
 }
 
 type Combo struct {
-	Name     string
-	Strategy string // "failover", "round_robin"
-	Targets  []Target
+	Name     string   `json:"name"`
+	Strategy string   `json:"strategy"` // "failover", "round_robin", "lowest_latency", "quota_weighted"
+	Targets  []Target `json:"targets"`
 	counter  uint64
+}
+
+type TargetMetrics struct {
+	EWMALatencyMs float64   `json:"ewma_latency_ms"`
+	SampleCount   int64     `json:"sample_count"`
+	LastLatencyMs int64     `json:"last_latency_ms"`
+	LastSuccessAt time.Time `json:"last_success_at"`
+	QuotaPercent  float64   `json:"quota_percent"`
 }
 
 type Router struct {
 	mu        sync.RWMutex
 	providers map[string]providers.Provider
 	combos    map[string]*Combo
+
+	metricsMu sync.RWMutex
+	metrics   map[string]*TargetMetrics
 }
 
 func NewRouter() *Router {
 	return &Router{
 		providers: make(map[string]providers.Provider),
 		combos:    make(map[string]*Combo),
+		metrics:   make(map[string]*TargetMetrics),
 	}
 }
 
@@ -48,19 +62,29 @@ func (r *Router) RegisterProvider(p providers.Provider) {
 
 func (r *Router) RegisterCombo(name, strategy string, targets []Target) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.combos[name] = &Combo{
 		Name:     name,
 		Strategy: strategy,
 		Targets:  targets,
 	}
+	r.mu.Unlock()
+
+	for _, t := range targets {
+		if t.QuotaPercent > 0 {
+			r.SetTargetQuota(t.ProviderID, t.Model, t.QuotaPercent)
+		}
+	}
 }
 
 func (r *Router) Clear() {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.providers = make(map[string]providers.Provider)
 	r.combos = make(map[string]*Combo)
+	r.mu.Unlock()
+
+	r.metricsMu.Lock()
+	r.metrics = make(map[string]*TargetMetrics)
+	r.metricsMu.Unlock()
 }
 
 func (r *Router) GetProvider(id string) (providers.Provider, bool) {
@@ -68,6 +92,84 @@ func (r *Router) GetProvider(id string) (providers.Provider, bool) {
 	defer r.mu.RUnlock()
 	p, ok := r.providers[id]
 	return p, ok
+}
+
+func (r *Router) GetCombos() map[string]*Combo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	res := make(map[string]*Combo, len(r.combos))
+	for k, v := range r.combos {
+		res[k] = v
+	}
+	return res
+}
+
+func targetKey(providerID, model string) string {
+	return providerID + "/" + model
+}
+
+func (r *Router) RecordTargetLatency(providerID, model string, latencyMs int64) {
+	key := targetKey(providerID, model)
+	r.metricsMu.Lock()
+	defer r.metricsMu.Unlock()
+
+	m, ok := r.metrics[key]
+	if !ok {
+		m = &TargetMetrics{
+			QuotaPercent: 100.0,
+		}
+		r.metrics[key] = m
+	}
+
+	const alpha = 0.25
+	if m.SampleCount == 0 {
+		m.EWMALatencyMs = float64(latencyMs)
+	} else {
+		m.EWMALatencyMs = alpha*float64(latencyMs) + (1.0-alpha)*m.EWMALatencyMs
+	}
+	m.SampleCount++
+	m.LastLatencyMs = latencyMs
+	m.LastSuccessAt = time.Now()
+}
+
+func (r *Router) SetTargetQuota(providerID, model string, percent float64) {
+	key := targetKey(providerID, model)
+	r.metricsMu.Lock()
+	defer r.metricsMu.Unlock()
+
+	m, ok := r.metrics[key]
+	if !ok {
+		m = &TargetMetrics{
+			QuotaPercent: percent,
+		}
+		r.metrics[key] = m
+		return
+	}
+	m.QuotaPercent = percent
+}
+
+func (r *Router) GetTargetMetrics(providerID, model string) TargetMetrics {
+	key := targetKey(providerID, model)
+	r.metricsMu.RLock()
+	defer r.metricsMu.RUnlock()
+
+	if m, ok := r.metrics[key]; ok {
+		return *m
+	}
+	return TargetMetrics{
+		QuotaPercent: 100.0,
+	}
+}
+
+func (r *Router) GetAllMetrics() map[string]TargetMetrics {
+	r.metricsMu.RLock()
+	defer r.metricsMu.RUnlock()
+
+	res := make(map[string]TargetMetrics, len(r.metrics))
+	for k, v := range r.metrics {
+		res[k] = *v
+	}
+	return res
 }
 
 func (r *Router) ResolveTarget(model string) (Target, bool) {
@@ -128,6 +230,61 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 	return models, nil
 }
 
+// orderTargets reorders combo targets according to strategy
+func (r *Router) orderTargets(combo *Combo) []Target {
+	targets := make([]Target, len(combo.Targets))
+	copy(targets, combo.Targets)
+
+	switch combo.Strategy {
+	case "round_robin":
+		if len(targets) > 1 {
+			offset := atomic.AddUint64(&combo.counter, 1) % uint64(len(targets))
+			rotated := make([]Target, len(targets))
+			for i := range targets {
+				rotated[i] = targets[(int(offset)+i)%len(targets)]
+			}
+			return rotated
+		}
+	case "lowest_latency":
+		// Sort targets by EWMA latency ascending
+		// Cold-start targets (0 samples) are given an exploratory benchmark 5.0ms
+		sort.SliceStable(targets, func(i, j int) bool {
+			mi := r.GetTargetMetrics(targets[i].ProviderID, targets[i].Model)
+			mj := r.GetTargetMetrics(targets[j].ProviderID, targets[j].Model)
+
+			latI := mi.EWMALatencyMs
+			if mi.SampleCount == 0 {
+				latI = 5.0 // exploration priority
+			}
+			latJ := mj.EWMALatencyMs
+			if mj.SampleCount == 0 {
+				latJ = 5.0
+			}
+			if latI != latJ {
+				return latI < latJ
+			}
+			return targets[i].ProviderID < targets[j].ProviderID
+		})
+	case "quota_weighted":
+		// Sort targets by QuotaPercent descending
+		// Targets with higher remaining quota percentage are tried first
+		sort.SliceStable(targets, func(i, j int) bool {
+			mi := r.GetTargetMetrics(targets[i].ProviderID, targets[i].Model)
+			mj := r.GetTargetMetrics(targets[j].ProviderID, targets[j].Model)
+
+			if mi.QuotaPercent != mj.QuotaPercent {
+				return mi.QuotaPercent > mj.QuotaPercent
+			}
+			// Secondary sort: lowest EWMA latency
+			return mi.EWMALatencyMs < mj.EWMALatencyMs
+		})
+	default:
+		// "failover" or unspecified: preserves sequential fallback
+	}
+
+	return targets
+}
+
 // Execute routes the request, executing automatic failover or load balancing
 func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
 	model := req.Model
@@ -186,16 +343,7 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 }
 
 func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
-	targets := combo.Targets
-	if combo.Strategy == "round_robin" && len(targets) > 1 {
-		offset := atomic.AddUint64(&combo.counter, 1) % uint64(len(targets))
-		// Rotate targets order
-		rotated := make([]Target, len(targets))
-		for i := range targets {
-			rotated[i] = targets[(int(offset)+i)%len(targets)]
-		}
-		targets = rotated
-	}
+	targets := r.orderTargets(combo)
 
 	var lastErr error
 	var lastStatus int
@@ -218,7 +366,10 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 		targetReq := *req
 		targetReq.Model = target.Model
 
+		start := time.Now()
 		body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
+		elapsedMs := time.Since(start).Milliseconds()
+
 		if err != nil {
 			log.Printf("[GoRoute] Failover: target %s/%s returned error: %v (status %d), cooling down...", target.ProviderID, target.Model, err, statusCode)
 			resilience.GlobalCooldown.MarkCooldown(target.ProviderID, target.Model, statusCode, err.Error(), 30*time.Second)
@@ -229,8 +380,9 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			continue
 		}
 
-		// If success (2xx or 3xx), return immediately
+		// If success (2xx or 3xx), record latency telemetry and return immediately
 		if statusCode >= 200 && statusCode < 400 {
+			r.RecordTargetLatency(target.ProviderID, target.Model, elapsedMs)
 			return body, isStream, statusCode, nil
 		}
 
@@ -268,14 +420,24 @@ func (r *Router) executeDirect(ctx context.Context, req *providers.ChatRequest) 
 		if prov, ok := r.providers[provID]; ok {
 			targetReq := *req
 			targetReq.Model = modelName
-			return prov.ChatCompletion(ctx, &targetReq)
+			start := time.Now()
+			body, isStream, statusCode, err := prov.ChatCompletion(ctx, &targetReq)
+			if err == nil && statusCode >= 200 && statusCode < 400 {
+				r.RecordTargetLatency(provID, modelName, time.Since(start).Milliseconds())
+			}
+			return body, isStream, statusCode, err
 		}
 	}
 
 	// Otherwise, send to first available provider
 	for _, p := range r.providers {
 		if p.IsHealthy() {
-			return p.ChatCompletion(ctx, req)
+			start := time.Now()
+			body, isStream, statusCode, err := p.ChatCompletion(ctx, req)
+			if err == nil && statusCode >= 200 && statusCode < 400 {
+				r.RecordTargetLatency(p.ID(), req.Model, time.Since(start).Milliseconds())
+			}
+			return body, isStream, statusCode, err
 		}
 	}
 

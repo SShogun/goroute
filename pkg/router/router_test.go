@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ziuus/goroute/pkg/providers"
 )
@@ -16,6 +18,7 @@ type mockProvider struct {
 	shouldFail bool
 	failCode   int
 	callCount  int
+	delay      time.Duration
 }
 
 func (m *mockProvider) ID() string   { return m.id }
@@ -26,6 +29,9 @@ func (m *mockProvider) IsHealthy() bool {
 
 func (m *mockProvider) ChatCompletion(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
 	m.callCount++
+	if m.delay > 0 {
+		time.Sleep(m.delay)
+	}
 	if m.shouldFail {
 		return io.NopCloser(bytes.NewReader([]byte("rate limited"))), false, m.failCode, nil
 	}
@@ -81,5 +87,114 @@ func TestRouterFailoverCascade(t *testing.T) {
 
 	if primary.callCount != 1 || backup.callCount != 1 {
 		t.Errorf("expected both providers called, primary=%d, backup=%d", primary.callCount, backup.callCount)
+	}
+}
+
+func TestRouterLowestLatencyStrategy(t *testing.T) {
+	fastProv := &mockProvider{id: "fast-prov"}
+	slowProv := &mockProvider{id: "slow-prov"}
+
+	r := NewRouter()
+	r.RegisterProvider(fastProv)
+	r.RegisterProvider(slowProv)
+
+	// Simulate latency telemetry: fast = 45ms, slow = 320ms
+	r.RecordTargetLatency("fast-prov", "gpt-4o", 45)
+	r.RecordTargetLatency("slow-prov", "gpt-4o", 320)
+
+	r.RegisterCombo("low-latency-combo", "lowest_latency", []Target{
+		{ProviderID: "slow-prov", Model: "gpt-4o"},
+		{ProviderID: "fast-prov", Model: "gpt-4o"},
+	})
+
+	req := &providers.ChatRequest{
+		Model: "low-latency-combo",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	body, _, status, err := r.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer body.Close()
+
+	if status != http.StatusOK {
+		t.Errorf("expected status 200, got %d", status)
+	}
+
+	resp, _ := io.ReadAll(body)
+	if !strings.Contains(string(resp), "success from fast-prov") {
+		t.Errorf("expected fast-prov to be chosen first due to lowest latency, got: %s", string(resp))
+	}
+
+	if fastProv.callCount != 1 || slowProv.callCount != 0 {
+		t.Errorf("expected only fast-prov called, fast=%d, slow=%d", fastProv.callCount, slowProv.callCount)
+	}
+}
+
+func TestRouterQuotaWeightedStrategy(t *testing.T) {
+	depletedProv := &mockProvider{id: "depleted-prov"}
+	highQuotaProv := &mockProvider{id: "high-quota-prov"}
+
+	r := NewRouter()
+	r.RegisterProvider(depletedProv)
+	r.RegisterProvider(highQuotaProv)
+
+	r.RegisterCombo("quota-combo", "quota_weighted", []Target{
+		{ProviderID: "depleted-prov", Model: "claude-3-5-sonnet", QuotaPercent: 5.0},
+		{ProviderID: "high-quota-prov", Model: "claude-3-5-sonnet", QuotaPercent: 95.0},
+	})
+
+	req := &providers.ChatRequest{
+		Model: "quota-combo",
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "test"},
+		},
+	}
+
+	body, _, status, err := r.Execute(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer body.Close()
+
+	if status != http.StatusOK {
+		t.Errorf("expected status 200, got %d", status)
+	}
+
+	resp, _ := io.ReadAll(body)
+	if !strings.Contains(string(resp), "success from high-quota-prov") {
+		t.Errorf("expected high-quota-prov to be selected first, got: %s", string(resp))
+	}
+
+	if highQuotaProv.callCount != 1 || depletedProv.callCount != 0 {
+		t.Errorf("expected high-quota-prov called first, high=%d, depleted=%d", highQuotaProv.callCount, depletedProv.callCount)
+	}
+}
+
+func TestRouterEWMAAccuracy(t *testing.T) {
+	r := NewRouter()
+
+	// Initial sample: 100ms -> EWMA = 100
+	r.RecordTargetLatency("provA", "model1", 100)
+	m1 := r.GetTargetMetrics("provA", "model1")
+	if m1.EWMALatencyMs != 100.0 || m1.SampleCount != 1 {
+		t.Fatalf("expected initial EWMA 100.0, got %f", m1.EWMALatencyMs)
+	}
+
+	// Second sample: 200ms -> EWMA = 0.25*200 + 0.75*100 = 50 + 75 = 125
+	r.RecordTargetLatency("provA", "model1", 200)
+	m2 := r.GetTargetMetrics("provA", "model1")
+	if math.Abs(m2.EWMALatencyMs-125.0) > 0.001 || m2.SampleCount != 2 {
+		t.Fatalf("expected EWMA 125.0, got %f", m2.EWMALatencyMs)
+	}
+
+	// Quota setter check
+	r.SetTargetQuota("provA", "model1", 72.5)
+	m3 := r.GetTargetMetrics("provA", "model1")
+	if m3.QuotaPercent != 72.5 {
+		t.Fatalf("expected QuotaPercent 72.5, got %f", m3.QuotaPercent)
 	}
 }

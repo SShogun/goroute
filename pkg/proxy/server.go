@@ -122,6 +122,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/keys", s.handleCreateKey)
 	s.mux.Delete("/api/keys/{id}", s.handleRevokeKey)
 	s.mux.Post("/api/compression/compress", s.handleCompressPrompt)
+	s.mux.Get("/api/router/stats", s.handleRouterStats)
+	s.mux.Post("/api/router/quota", s.handleSetRouterQuota)
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
@@ -1205,8 +1207,9 @@ func (s *Server) Reload() error {
 		var targets []router.Target
 		for _, t := range combo.Targets {
 			targets = append(targets, router.Target{
-				ProviderID: t.ProviderID,
-				Model:      t.Model,
+				ProviderID:   t.ProviderID,
+				Model:        t.Model,
+				QuotaPercent: t.QuotaPercent,
 			})
 		}
 		s.router.RegisterCombo(combo.Name, combo.Strategy, targets)
@@ -1538,5 +1541,41 @@ func (s *Server) handleCompressPrompt(w http.ResponseWriter, r *http.Request) {
 		"stats":      stats,
 	})
 }
+
+func (s *Server) handleRouterStats(w http.ResponseWriter, r *http.Request) {
+	metrics := s.router.GetAllMetrics()
+	combos := s.router.GetCombos()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"metrics": metrics,
+		"combos":  combos,
+	})
+}
+
+func (s *Server) handleSetRouterQuota(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ProviderID   string  `json:"provider_id"`
+		Model        string  `json:"model"`
+		QuotaPercent float64 `json:"quota_percent"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if payload.ProviderID == "" || payload.Model == "" {
+		http.Error(w, "provider_id and model are required", http.StatusBadRequest)
+		return
+	}
+	s.router.SetTargetQuota(payload.ProviderID, payload.Model, payload.QuotaPercent)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":        "ok",
+		"provider_id":   payload.ProviderID,
+		"model":         payload.Model,
+		"quota_percent": payload.QuotaPercent,
+	})
+}
+
 
 

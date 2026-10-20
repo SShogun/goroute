@@ -40,8 +40,9 @@ type ProviderConfig struct {
 }
 
 type ComboTarget struct {
-	ProviderID string `yaml:"provider_id" json:"provider_id"`
-	Model      string `yaml:"model" json:"model"`
+	ProviderID   string  `yaml:"provider_id" json:"provider_id"`
+	Model        string  `yaml:"model" json:"model"`
+	QuotaPercent float64 `yaml:"quota_percent,omitempty" json:"quota_percent,omitempty"`
 }
 
 type ComboConfig struct {
