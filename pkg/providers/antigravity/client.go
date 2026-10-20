@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ziuus/goroute/pkg/affinity"
+	"github.com/ziuus/goroute/pkg/pool"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/rtk"
 )
@@ -59,6 +60,23 @@ func (p *Provider) NextAccount(pinnedID string) (*Account, error) {
 			}
 		}
 	}
+
+	// Fair-Share Token Leveling Pool
+	var candidateIDs []string
+	for _, a := range p.accounts {
+		candidateIDs = append(candidateIDs, a.ID)
+	}
+
+	pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+	bestID := pl.SelectBestAccount(candidateIDs)
+	if bestID != "" {
+		for _, a := range p.accounts {
+			if a.ID == bestID {
+				return a, nil
+			}
+		}
+	}
+
 	next := atomic.AddUint64(&p.idx, 1)
 	return p.accounts[next%uint64(len(p.accounts))], nil
 }
@@ -514,6 +532,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			if sessionKey != "" {
 				affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
 			}
+			// Record token usage in pool
+			pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+			pl.RecordUsage(acc.ID, 120)
+
 			if req.Stream {
 				return TranslateGeminiSSEToOpenAI(resp.Body, req.Model), true, resp.StatusCode, nil
 			}
@@ -535,6 +557,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// If 402/429 (quota), 403 (unlicensed/permission), 404 (not found on account), or 401, try next account
 		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
 			affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
+			pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+			pl.SetCooldown(acc.ID, 10*time.Minute)
 			if lastBody != nil {
 				lastBody.Close()
 			}

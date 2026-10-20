@@ -25,6 +25,7 @@ import (
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/keys"
 	"github.com/ziuus/goroute/pkg/mcp"
+	"github.com/ziuus/goroute/pkg/pool"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/providers/antigravity"
 	"github.com/ziuus/goroute/pkg/providers/codex"
@@ -146,6 +147,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/acp/spawn", s.handleSpawnAcpSession)
 	s.mux.Delete("/api/acp/sessions/{id}", s.handleKillAcpSession)
 	s.mux.Get("/api/tokens/health", s.handleListTokensHealth)
+	s.mux.Get("/api/pool/usage", s.handleListPoolUsage)
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
@@ -2074,6 +2076,15 @@ func (s *Server) handleListTokensHealth(w http.ResponseWriter, r *http.Request) 
 		"status": "ok",
 		"count":  len(healthList),
 		"health": healthList,
+	})
+}
+
+func (s *Server) handleListPoolUsage(w http.ResponseWriter, r *http.Request) {
+	pools := pool.GlobalPool.ListAllPools()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"pools":  pools,
 	})
 }
 

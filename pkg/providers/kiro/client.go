@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ziuus/goroute/pkg/affinity"
+	"github.com/ziuus/goroute/pkg/pool"
 	"github.com/ziuus/goroute/pkg/providers"
 	"github.com/ziuus/goroute/pkg/rtk"
 )
@@ -160,6 +161,23 @@ func (p *Provider) nextAccount(pinnedID string) *Account {
 			}
 		}
 	}
+
+	// Use Fair-Share Token Leveling Pool
+	var candidateIDs []string
+	for _, a := range p.accounts {
+		candidateIDs = append(candidateIDs, a.ID)
+	}
+
+	pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+	bestID := pl.SelectBestAccount(candidateIDs)
+	if bestID != "" {
+		for _, a := range p.accounts {
+			if a.ID == bestID {
+				return a
+			}
+		}
+	}
+
 	acc := p.accounts[p.counter%uint64(len(p.accounts))]
 	p.counter++
 	return acc
@@ -543,6 +561,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
 				log.Printf("[kiro] Account %s returned %d (%s), failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
 				affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
+				pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+				pl.SetCooldown(acc.ID, 5*time.Minute)
 				continue
 			}
 			return nil, false, resp.StatusCode, lastErr
@@ -551,6 +571,10 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		if sessionKey != "" {
 			affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
 		}
+
+		// Record token / request consumption in Fair-Share Pool
+		pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+		pl.RecordUsage(acc.ID, 100)
 
 		pr, pw := io.Pipe()
 
