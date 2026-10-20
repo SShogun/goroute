@@ -6,9 +6,11 @@ import (
 )
 
 type ChatMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
-	Name    string      `json:"name,omitempty"`
+	Role       string        `json:"role"`
+	Content    interface{}   `json:"content"`
+	Name       string        `json:"name,omitempty"`
+	ToolCalls  []interface{} `json:"tool_calls,omitempty"`
+	ToolCallID string        `json:"tool_call_id,omitempty"`
 }
 
 type ChatRequest struct {

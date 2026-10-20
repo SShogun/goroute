@@ -322,13 +322,86 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		toolUseNames := make(map[string]string)
 		for _, msg := range req.Messages {
 			role := msg.Role
+			var parts []geminiPart
+
 			if role == "assistant" {
 				role = "model"
-			} else if role == "system" {
+				if msg.Content != nil {
+					parts = append(parts, parseGeminiParts(msg.Content, toolUseNames)...)
+				}
+				// Handle OpenAI tool_calls on assistant message
+				for _, tc := range msg.ToolCalls {
+					if tcMap, ok := tc.(map[string]interface{}); ok {
+						id, _ := tcMap["id"].(string)
+						fn, _ := tcMap["function"].(map[string]interface{})
+						name := ""
+						argsMap := make(map[string]interface{})
+						if fn != nil {
+							name, _ = fn["name"].(string)
+							if argsStr, ok := fn["arguments"].(string); ok {
+								json.Unmarshal([]byte(argsStr), &argsMap)
+							} else if m, ok := fn["arguments"].(map[string]interface{}); ok {
+								argsMap = m
+							}
+						}
+						if id == "" {
+							id = fmt.Sprintf("call_%d", time.Now().UnixNano())
+						}
+						if name != "" {
+							toolUseNames[id] = name
+						}
+						sig := GetThoughtSignature(id)
+						if sig == "" {
+							sig = "skip_thought_signature_validator"
+						}
+						parts = append(parts, geminiPart{
+							ThoughtSignature: sig,
+							FunctionCall: &geminiFunctionCall{
+								ID:   id,
+								Name: name,
+								Args: argsMap,
+							},
+						})
+					}
+				}
+			} else if role == "tool" || role == "function" {
 				role = "user"
+				name := ""
+				if msg.ToolCallID != "" {
+					name = toolUseNames[msg.ToolCallID]
+				}
+				if name == "" && msg.Name != "" {
+					name = msg.Name
+				}
+				if name == "" {
+					name = "tool"
+				}
+				var respMap map[string]interface{}
+				if str, ok := msg.Content.(string); ok {
+					if err := json.Unmarshal([]byte(str), &respMap); err != nil {
+						respMap = map[string]interface{}{"result": str}
+					}
+				} else if m, ok := msg.Content.(map[string]interface{}); ok {
+					respMap = m
+				} else {
+					respMap = map[string]interface{}{"result": msg.Content}
+				}
+				parts = append(parts, geminiPart{
+					FunctionResponse: &geminiFunctionResponse{
+						ID:       msg.ToolCallID,
+						Name:     name,
+						Response: respMap,
+					},
+				})
+			} else {
+				if role == "system" {
+					role = "user"
+				}
+				if msg.Content != nil {
+					parts = append(parts, parseGeminiParts(msg.Content, toolUseNames)...)
+				}
 			}
 
-			parts := parseGeminiParts(msg.Content, toolUseNames)
 			if len(parts) == 0 {
 				continue
 			}
