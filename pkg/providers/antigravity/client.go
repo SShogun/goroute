@@ -358,8 +358,8 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			upstreamModel = "claude-sonnet-4-6"
 		case "claude-3-opus", "claude-opus", "claude-opus-4-6", "claude-opus-4-6-thinking":
 			upstreamModel = "claude-opus-4-6-thinking"
-		case "gemini-2.5-pro", "gemini-pro", "gemini-pro-agent":
-			upstreamModel = "gemini-pro-agent"
+		case "gemini-3.1-pro", "gemini-3.1-pro-high", "gemini-3-pro-high", "gemini-3-pro", "gemini-2.5-pro", "gemini-pro", "gemini-pro-agent":
+			upstreamModel = "gemini-3.1-pro-high"
 		case "gemini-2.5-flash", "gemini-flash", "gemini-flash-3-8", "gemini-3.8-flash", "gemini-3.8-flash-high":
 			upstreamModel = "gemini-3.8-flash-high"
 		case "gemini-2.5-flash-lite", "gemini-flash-lite", "gemini-3.1-flash-lite":
@@ -604,6 +604,7 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 		{ID: "claude-sonnet-4-6", Object: "model", OwnedBy: "antigravity"},
 		{ID: "claude-opus-4-6", Object: "model", OwnedBy: "antigravity"},
 		{ID: "claude-opus-4-6-thinking", Object: "model", OwnedBy: "antigravity"},
+		{ID: "gemini-3.1-pro", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-2.5-pro", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-2.5-flash", Object: "model", OwnedBy: "antigravity"},
 		{ID: "gemini-flash-3-8", Object: "model", OwnedBy: "antigravity"},
