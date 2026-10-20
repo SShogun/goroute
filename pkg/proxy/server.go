@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/ziuus/goroute/pkg/acp"
 	"github.com/ziuus/goroute/pkg/affinity"
 	"github.com/ziuus/goroute/pkg/cache"
 	"github.com/ziuus/goroute/pkg/catalog"
@@ -139,6 +140,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/rtk/filters", s.handleListRTKFilters)
 	s.mux.Post("/api/rtk/test", s.handleTestRTKFilter)
 	s.mux.Get("/api/affinity/sessions", s.handleListAffinitySessions)
+	s.mux.Get("/api/acp/sessions", s.handleListAcpSessions)
+	s.mux.Post("/api/acp/spawn", s.handleSpawnAcpSession)
+	s.mux.Delete("/api/acp/sessions/{id}", s.handleKillAcpSession)
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
@@ -2003,6 +2007,63 @@ func (s *Server) handleListAffinitySessions(w http.ResponseWriter, r *http.Reque
 		"sessions": sessions,
 	})
 }
+
+func (s *Server) handleListAcpSessions(w http.ResponseWriter, r *http.Request) {
+	sessions := acp.GlobalManager.ListSessions()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":   "ok",
+		"count":    len(sessions),
+		"sessions": sessions,
+	})
+}
+
+func (s *Server) handleSpawnAcpSession(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		AgentID string            `json:"agent_id"`
+		Binary  string            `json:"binary"`
+		Args    []string          `json:"args"`
+		Env     map[string]string `json:"env"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if payload.AgentID == "" || payload.Binary == "" {
+		http.Error(w, "agent_id and binary are required", http.StatusBadRequest)
+		return
+	}
+
+	session, err := acp.GlobalManager.Spawn(payload.AgentID, payload.Binary, payload.Args, payload.Env)
+	if err != nil {
+		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"session": session,
+	})
+}
+
+func (s *Server) handleKillAcpSession(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "session id required", http.StatusBadRequest)
+		return
+	}
+	if err := acp.GlobalManager.KillSession(id); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"killed": id,
+	})
+}
+
 
 
 

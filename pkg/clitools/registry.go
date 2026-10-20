@@ -141,6 +141,51 @@ var Registry = map[string]CliTool{
 		DocsURL:        "https://github.com/QwenLM/Qwen",
 		SettingsFile:   "~/.qwen/config.json",
 	},
+	"droid": {
+		ID:             "droid",
+		Name:           "Droid (Factory)",
+		Category:       "code",
+		Description:    "Factory Droid CLI agent with custom model routing",
+		DefaultCommand: "droid",
+		DocsURL:        "https://factory.ai",
+		SettingsFile:   "~/.factory/settings.json",
+	},
+	"kilo": {
+		ID:             "kilo",
+		Name:           "Kilo Code",
+		Category:       "code",
+		Description:    "Kilo terminal agent with GoRoute proxy backend",
+		DefaultCommand: "kilocode",
+		DocsURL:        "https://kilo.ai",
+		SettingsFile:   "~/.local/share/kilo/auth.json",
+	},
+	"devin": {
+		ID:             "devin",
+		Name:           "Devin CLI",
+		Category:       "autonomous",
+		Description:    "Cognition Devin terminal agent with custom endpoint",
+		DefaultCommand: "devin",
+		DocsURL:        "https://devin.ai",
+		SettingsFile:   "~/.config/devin/config.json",
+	},
+	"grok-build": {
+		ID:             "grok-build",
+		Name:           "Grok Build",
+		Category:       "code",
+		Description:    "xAI Grok Build terminal developer CLI",
+		DefaultCommand: "grok-build",
+		DocsURL:        "https://x.ai",
+		SettingsFile:   "~/.config/grok-build/config.json",
+	},
+	"windsurf": {
+		ID:             "windsurf",
+		Name:           "Windsurf",
+		Category:       "code",
+		Description:    "Codeium Windsurf IDE with custom model routing via GoRoute",
+		DefaultCommand: "windsurf",
+		DocsURL:        "https://codeium.com/windsurf",
+		SettingsFile:   "~/.codeium/windsurf/settings.json",
+	},
 }
 
 func ListTools() []CliTool {
@@ -207,6 +252,18 @@ func ConfigureTool(id string) (string, error) {
 		return "Configured Aider (~/.aider.conf.yml)", setupAider(home)
 	case "continue":
 		return "Configured Continue (~/.continue/config.json)", setupContinue(home)
+	case "qwen":
+		return "Configured Qwen Code (~/.qwen/config.json)", setupQwen(home)
+	case "droid":
+		return "Configured Droid (~/.factory/settings.json)", setupDroid(home)
+	case "kilo":
+		return "Configured Kilo Code (~/.local/share/kilo/auth.json)", setupKilo(home)
+	case "devin":
+		return "Configured Devin (~/.config/devin/config.json)", setupDevin(home)
+	case "grok-build":
+		return "Configured Grok Build (~/.config/grok-build/config.json)", setupGrokBuild(home)
+	case "windsurf":
+		return "Configured Windsurf (~/.codeium/windsurf/settings.json)", setupWindsurf(home)
 	default:
 		return "", fmt.Errorf("agent %s not supported for automated configuration", id)
 	}
@@ -398,3 +455,77 @@ func setupContinue(home string) error {
 	data, _ := json.MarshalIndent(cfg, "", "  ")
 	return os.WriteFile(cfgFile, data, 0644)
 }
+
+func setupQwen(home string) error {
+	dir := filepath.Join(home, ".qwen")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "apiBase": "http://127.0.0.1:8128/v1",
+  "apiKey": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupDroid(home string) error {
+	dir := filepath.Join(home, ".factory")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "settings.json")
+	content := `{
+  "customEndpoint": "http://127.0.0.1:8128/v1",
+  "apiKey": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupKilo(home string) error {
+	dir := filepath.Join(home, ".local", "share", "kilo")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "auth.json")
+	content := `{
+  "api_endpoint": "http://127.0.0.1:8128/v1",
+  "token": "goroute",
+  "default_model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupDevin(home string) error {
+	dir := filepath.Join(home, ".config", "devin")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "endpoint": "http://127.0.0.1:8128/v1",
+  "auth_token": "goroute"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupGrokBuild(home string) error {
+	dir := filepath.Join(home, ".config", "grok-build")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "default": "goroute",
+  "model": {
+    "base_url": "http://127.0.0.1:8128/v1",
+    "api_backend": "chat_completions",
+    "api_key": "goroute"
+  }
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupWindsurf(home string) error {
+	dir := filepath.Join(home, ".codeium", "windsurf")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "settings.json")
+	content := `{
+  "custom_openai_endpoint": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
