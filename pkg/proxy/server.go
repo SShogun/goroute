@@ -39,6 +39,7 @@ import (
 	"github.com/ziuus/goroute/pkg/resilience"
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/rtk"
+	"github.com/ziuus/goroute/pkg/storage"
 	"github.com/ziuus/goroute/pkg/store"
 	"github.com/ziuus/goroute/pkg/tokens"
 	"github.com/ziuus/goroute/pkg/tunnel"
@@ -145,6 +146,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/usage/quota", s.handleUsageQuota)
 	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
 	s.mux.Get("/api/usage/ledger", s.handleUsageLedger)
+	s.mux.Get("/api/settings", s.handleGetSettings)
+	s.mux.Patch("/api/settings", s.handlePatchSettings)
 	s.mux.Get("/api/keys", s.handleListKeys)
 	s.mux.Post("/api/keys", s.handleCreateKey)
 	s.mux.Delete("/api/keys/{id}", s.handleRevokeKey)
@@ -207,6 +210,40 @@ func (s *Server) handleUsageLedger(w http.ResponseWriter, r *http.Request) {
 	summary := quota.GlobalLedger.Summary()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(summary)
+}
+
+func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetSettingsStore()
+	settings, err := store.LoadSettings()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(settings)
+}
+
+func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
+	var payload map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetSettingsStore()
+	for k, v := range payload {
+		_ = store.UpdateKey(k, v)
+	}
+
+	settings, err := store.LoadSettings()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(settings)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
