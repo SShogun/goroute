@@ -169,6 +169,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/fallback/chains", s.handleGetFallbackChains)
 	s.mux.Post("/api/fallback/chains", s.handlePostFallbackChain)
 	s.mux.Delete("/api/fallback/chains", s.handleDeleteFallbackChain)
+	s.mux.Get("/api/token-health", s.handleTokenHealth)
+	s.mux.Get("/api/quota/groups", s.handleListQuotaGroups)
+	s.mux.Post("/api/quota/groups", s.handleCreateQuotaGroup)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -618,6 +621,84 @@ func (s *Server) handleDeleteFallbackChain(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "removed": removed})
+}
+
+func (s *Server) handleTokenHealth(w http.ResponseWriter, r *http.Request) {
+	// Aggregate OAuth account statuses from active providers in router
+	total := 0
+	healthy := 0
+	errored := 0
+
+	provs := s.router.GetAllProviders()
+	for _, p := range provs {
+		total++
+		if p.IsHealthy() {
+			healthy++
+		} else {
+			errored++
+		}
+	}
+
+	status := "healthy"
+	if errored > 0 {
+		status = "error"
+	} else if healthy < total {
+		status = "warning"
+	}
+
+	now := time.Now().UTC()
+	summary := storage.TokenHealthSummary{
+		Total:       total,
+		Healthy:     healthy,
+		Errored:     errored,
+		Warning:     total - healthy - errored,
+		LastCheckAt: &now,
+		Status:      status,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(summary)
+}
+
+func (s *Server) handleListQuotaGroups(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetQuotaGroupStore()
+	groups, err := store.ListGroups()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if groups == nil {
+		groups = []storage.QuotaGroup{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"groups": groups,
+		"count":  len(groups),
+	})
+}
+
+func (s *Server) handleCreateQuotaGroup(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetQuotaGroupStore()
+	g, err := store.CreateGroup(body.Name)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"group": g})
 }
 
 func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
