@@ -13,7 +13,9 @@ function getTarget() {
   const arch = process.arch;
 
   let osName = platform;
-  if (platform === 'win32') osName = 'windows';
+  if (platform === 'win32') osName = 'Windows';
+  else if (platform === 'darwin') osName = 'Darwin';
+  else if (platform === 'linux') osName = 'Linux';
 
   let archName = arch;
   if (arch === 'x64') archName = 'x86_64';
