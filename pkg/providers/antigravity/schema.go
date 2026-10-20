@@ -173,17 +173,26 @@ func phase1ConvertConstAndEnums(obj interface{}) {
 			if v["type"] == "integer" || v["type"] == "number" {
 				delete(v, "enum")
 			} else {
-				strEnums := make([]interface{}, len(enumList))
-				for i, e := range enumList {
-					if s, ok := e.(string); ok {
-						strEnums[i] = s
+				validEnums := make([]interface{}, 0, len(enumList))
+				for _, e := range enumList {
+					var s string
+					if strVal, ok := e.(string); ok {
+						s = strVal
 					} else {
-						strEnums[i] = strings.Trim(string(mustMarshal(e)), "\"")
+						s = strings.Trim(string(mustMarshal(e)), "\"")
+					}
+					s = strings.TrimSpace(s)
+					if s != "" {
+						validEnums = append(validEnums, s)
 					}
 				}
-				v["enum"] = strEnums
-				if v["type"] == nil {
-					v["type"] = "string"
+				if len(validEnums) > 0 {
+					v["enum"] = validEnums
+					if v["type"] == nil {
+						v["type"] = "string"
+					}
+				} else {
+					delete(v, "enum")
 				}
 			}
 		}
