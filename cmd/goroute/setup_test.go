@@ -31,6 +31,8 @@ func TestAgentSetups(t *testing.T) {
 		filepath.Join(tempHome, ".config", "goose", "config.yaml"),
 		filepath.Join(tempHome, ".qwen", "settings.json"),
 		filepath.Join(tempHome, ".roo", "settings-import.json"),
+		filepath.Join(tempHome, ".hermes", "config.yaml"),
+		filepath.Join(tempHome, ".openclaw", "openclaw.json"),
 	}
 
 	for _, file := range expectedFiles {

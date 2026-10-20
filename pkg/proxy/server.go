@@ -476,6 +476,18 @@ func (s *Server) handleAPIStatus(w http.ResponseWriter, r *http.Request) {
 			"configured": fileExists(filepath.Join(home, ".5dive", "config.json")),
 			"cmd":        "goroute setup 5dive",
 		},
+		"hermes": map[string]interface{}{
+			"name":       "Hermes Agent",
+			"desc":       "Nous Research Hermes tool-calling agent (~/.hermes/config.yaml)",
+			"configured": fileExists(filepath.Join(home, ".hermes", "config.yaml")),
+			"cmd":        "goroute setup hermes",
+		},
+		"openclaw": map[string]interface{}{
+			"name":       "OpenClaw",
+			"desc":       "Autonomous multi-channel gateway & subagent fleet (~/.openclaw/openclaw.json)",
+			"configured": fileExists(filepath.Join(home, ".openclaw", "openclaw.json")),
+			"cmd":        "goroute setup openclaw",
+		},
 	}
 
 	// Calculate sanitized provider accounts

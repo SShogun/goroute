@@ -73,6 +73,14 @@ var agentConfigurators = map[string]struct {
 		Desc: "5dive Agent Fleet (auth profile setup)",
 		Run:  setup5dive,
 	},
+	"hermes": {
+		Desc: "Hermes Agent CLI (~/.hermes/config.yaml)",
+		Run:  setupHermes,
+	},
+	"openclaw": {
+		Desc: "OpenClaw Autonomous Gateway (~/.openclaw/openclaw.json)",
+		Run:  setupOpenClaw,
+	},
 }
 
 func NewSetupCmd() *cobra.Command {
@@ -594,3 +602,106 @@ func setup5dive(home string) error {
 	fmt.Println("       --model=claude-3-7-sonnet")
 	return nil
 }
+
+func setupHermes(home string) error {
+	dir := filepath.Join(home, ".hermes")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	cfgFile := filepath.Join(dir, "config.yaml")
+	content := ""
+	if b, err := os.ReadFile(cfgFile); err == nil {
+		content = string(b)
+	}
+
+	gorouteBlock := "providers:\n  goroute:\n    base_url: http://127.0.0.1:8128/v1\n    api_key: goroute\n    default_model: gemini-flash\n"
+	if strings.Contains(content, "providers:") {
+		if strings.Contains(content, "omniroute:") {
+			content = strings.Replace(content, "http://localhost:20128/v1", "http://127.0.0.1:8128/v1", 1)
+		}
+		if !strings.Contains(content, "goroute:") {
+			content = strings.Replace(content, "providers:", "providers:\n  goroute:\n    base_url: http://127.0.0.1:8128/v1\n    api_key: goroute\n    default_model: gemini-flash", 1)
+		}
+	} else {
+		content = gorouteBlock + content
+	}
+
+	if err := os.WriteFile(cfgFile, []byte(content), 0644); err != nil {
+		return err
+	}
+
+	fmt.Println("✅ Configured Hermes Agent!")
+	fmt.Printf("   Wrote provider configuration to: %s\n", cfgFile)
+	fmt.Println("   Base URL: http://127.0.0.1:8128/v1")
+	fmt.Println("   Launch with:")
+	fmt.Println("     hermes chat --provider goroute -m gemini-flash")
+	return nil
+}
+
+func setupOpenClaw(home string) error {
+	dir := filepath.Join(home, ".openclaw")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	cfgFile := filepath.Join(dir, "openclaw.json")
+	var root map[string]interface{}
+	if b, err := os.ReadFile(cfgFile); err == nil {
+		_ = json.Unmarshal(b, &root)
+	}
+	if root == nil {
+		root = make(map[string]interface{})
+	}
+
+	// 1. Clean invalid keys that cause schema validation failure
+	if meta, ok := root["meta"].(map[string]interface{}); ok {
+		delete(meta, "lastTouchedAt")
+	}
+	if gw, ok := root["gateway"].(map[string]interface{}); ok {
+		if ts, ok := gw["tailscale"].(map[string]interface{}); ok {
+			delete(ts, "resetOnExit")
+		}
+		if nodes, ok := gw["nodes"].(map[string]interface{}); ok {
+			delete(nodes, "denyCommands")
+		}
+	}
+
+	// 2. Configure agents defaults
+	agents, ok := root["agents"].(map[string]interface{})
+	if !ok {
+		agents = make(map[string]interface{})
+		root["agents"] = agents
+	}
+	defaults, ok := agents["defaults"].(map[string]interface{})
+	if !ok {
+		defaults = make(map[string]interface{})
+		agents["defaults"] = defaults
+	}
+	models, ok := defaults["models"].(map[string]interface{})
+	if !ok {
+		models = make(map[string]interface{})
+		defaults["models"] = models
+	}
+	models["goroute/gemini-flash"] = map[string]interface{}{}
+	models["goroute/claude-sonnet-ag"] = map[string]interface{}{}
+	defaults["model"] = map[string]interface{}{
+		"primary": "goroute/gemini-flash",
+	}
+
+	out, err := json.MarshalIndent(root, "", "    ")
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(cfgFile, out, 0644); err != nil {
+		return err
+	}
+
+	fmt.Println("✅ Configured OpenClaw Autonomous Gateway!")
+	fmt.Printf("   Cleaned and updated: %s\n", cfgFile)
+	fmt.Println("   Base URL: http://127.0.0.1:8128/v1")
+	fmt.Println("   Launch with:")
+	fmt.Println("     export OPENAI_BASE_URL=\"http://127.0.0.1:8128/v1\"")
+	fmt.Println("     export OPENAI_API_KEY=\"goroute\"")
+	fmt.Println("     openclaw agent --message \"hello\"")
+	return nil
+}
+
