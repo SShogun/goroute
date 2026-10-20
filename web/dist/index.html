@@ -1,1433 +1,1452 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GoRoute — Universal LLM Gateway Dashboard</title>
+  <title>GoRoute — Universal LLM Gateway (Go + Rust)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #0b0f19;
-      --card-bg: #111827;
-      --card-border: #1f293d;
-      --card-hover: #182235;
-      --accent: #38bdf8;
-      --accent-glow: rgba(56, 189, 248, 0.2);
+      --bg: #09090b;
+      --card-bg: #121215;
+      --card-hover: #18181b;
+      --border: #27272a;
+      --border-subtle: #1f1f23;
+      --text: #f4f4f5;
+      --text-muted: #a1a1aa;
+      --text-dim: #71717a;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.15);
       --success: #10b981;
-      --success-bg: rgba(16, 185, 129, 0.12);
+      --success-bg: rgba(16, 185, 129, 0.1);
       --warning: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.1);
       --danger: #ef4444;
-      --text: #f3f4f6;
-      --text-muted: #9ca3af;
-      --code-bg: #030712;
+      --danger-bg: rgba(239, 68, 68, 0.1);
+      --code-bg: #000000;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
       background-color: var(--bg);
       color: var(--text);
       min-height: 100vh;
       display: flex;
+      overflow-x: hidden;
+    }
+
+    /* Sidebar Navigation */
+    aside {
+      width: 270px;
+      min-width: 270px;
+      background: #000000;
+      border-right: 1px solid var(--border);
+      display: flex;
       flex-direction: column;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      z-index: 40;
+    }
+
+    .brand-section {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .brand-title {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .brand-badge {
+      font-size: 0.65rem;
+      font-family: 'Geist Mono', monospace;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      background: var(--accent-glow);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .nav-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .nav-group-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      padding: 0 0.75rem 0.35rem 0.75rem;
+    }
+
+    .nav-items {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.55rem 0.75rem;
+      border-radius: 6px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      cursor: pointer;
+      border: 1px solid transparent;
+    }
+    .nav-item:hover {
+      background: var(--card-bg);
+      color: var(--text);
+      border-color: var(--border-subtle);
+    }
+    .nav-item.active {
+      background: #18181b;
+      color: #fff;
+      font-weight: 600;
+      border-color: var(--border);
+    }
+    .nav-item svg {
+      width: 16px;
+      height: 16px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+
+    .sidebar-footer {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      background: #050507;
+    }
+    .memory-badge {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      font-family: 'Geist Mono', monospace;
+    }
+    .memory-val {
+      color: var(--success);
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .pulse-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--success);
+      box-shadow: 0 0 8px var(--success);
+    }
+
+    /* Main Content Area */
+    main {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow-y: auto;
     }
 
     header {
       padding: 1rem 2rem;
-      background: rgba(17, 24, 39, 0.85);
+      border-bottom: 1px solid var(--border);
+      background: rgba(9, 9, 11, 0.75);
       backdrop-filter: blur(12px);
-      border-bottom: 1px solid var(--card-border);
       display: flex;
-      justify-content: space-between;
       align-items: center;
+      justify-content: space-between;
       position: sticky;
       top: 0;
-      z-index: 50;
+      z-index: 30;
     }
-
-    .brand {
+    .header-breadcrumb {
+      font-size: 0.85rem;
+      color: var(--text-muted);
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-    }
-    .brand-logo {
-      font-size: 1.35rem;
-      font-weight: 800;
-      letter-spacing: -0.02em;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      gap: 0.35rem;
-    }
-    .brand-logo span { color: var(--accent); }
-
-    .header-pills {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-    .pill {
-      font-size: 0.75rem;
-      font-weight: 600;
-      padding: 0.35rem 0.75rem;
-      border-radius: 9999px;
-      display: inline-flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
-    .pill-green {
-      background: var(--success-bg);
-      color: var(--success);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-    }
-    .pill-blue {
-      background: rgba(56, 189, 248, 0.12);
-      color: var(--accent);
-      border: 1px solid rgba(56, 189, 248, 0.3);
-    }
-    .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: currentColor;
-      box-shadow: 0 0 8px currentColor;
-    }
-
-    .header-actions {
-      display: flex;
       gap: 0.5rem;
     }
-    .btn {
-      font-family: inherit;
-      font-size: 0.82rem;
-      font-weight: 600;
-      padding: 0.45rem 0.9rem;
-      border-radius: 8px;
-      border: 1px solid var(--card-border);
-      background: #1f2937;
+    .header-breadcrumb span {
       color: var(--text);
-      cursor: pointer;
-      display: inline-flex;
+      font-weight: 600;
+    }
+    .header-actions {
+      display: flex;
       align-items: center;
-      gap: 0.4rem;
-      transition: all 0.15s ease;
-    }
-    .btn:hover {
-      background: #374151;
-      border-color: #4b5563;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: #030712;
-      border-color: var(--accent);
-    }
-    .btn-primary:hover {
-      background: #7dd3fc;
-      border-color: #7dd3fc;
-      box-shadow: 0 0 16px var(--accent-glow);
+      gap: 0.75rem;
     }
 
-    main {
-      flex: 1;
-      max-width: 1280px;
-      margin: 0 auto;
+    .content-area {
       padding: 2rem;
+      max-width: 1400px;
       width: 100%;
-    }
-
-    .banner {
-      background: linear-gradient(135deg, rgba(30, 41, 59, 0.6) 0%, rgba(17, 24, 39, 0.8) 100%);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
-      padding: 1.5rem 1.75rem;
-      margin-bottom: 2rem;
+      margin: 0 auto;
       display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
-      align-items: center;
-      gap: 1.25rem;
-    }
-    .banner h1 {
-      font-size: 1.35rem;
-      font-weight: 700;
-      margin-bottom: 0.35rem;
-    }
-    .banner p {
-      color: var(--text-muted);
-      font-size: 0.9rem;
+      flex-direction: column;
+      gap: 2rem;
     }
 
-    .endpoints-box {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-    .endpoint-item {
-      background: var(--code-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 0.5rem 0.85rem;
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-    }
-    .endpoint-label {
-      font-size: 0.72rem;
-      font-weight: 700;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-    .endpoint-url {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.82rem;
-      color: var(--accent);
-    }
-    .copy-btn {
-      background: transparent;
-      border: none;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 0.8rem;
-      padding: 2px 4px;
-      border-radius: 4px;
-    }
-    .copy-btn:hover {
-      color: #fff;
-      background: rgba(255,255,255,0.1);
-    }
-
-    .grid-layout {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 1.5rem;
-    }
-    .col-6 { grid-column: span 6; }
-    .col-12 { grid-column: span 12; }
-    @media (max-width: 900px) {
-      .col-6 { grid-column: span 12; }
-    }
-
+    /* Vercel Cards */
     .card {
       background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
       padding: 1.5rem;
       display: flex;
       flex-direction: column;
+      gap: 1.25rem;
+      position: relative;
     }
     .card-header {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      margin-bottom: 1.25rem;
+      justify-content: space-between;
     }
     .card-title {
       font-size: 1.05rem;
-      font-weight: 700;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #fff;
     }
     .card-subtitle {
-      font-size: 0.82rem;
+      font-size: 0.8rem;
       color: var(--text-muted);
-      margin-top: 0.15rem;
+      margin-top: 0.2rem;
     }
 
-    /* Provider & Accounts Cards */
-    .provider-card {
-      background: #0d131f;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      margin-bottom: 0.75rem;
-      overflow: hidden;
-      transition: border-color 0.15s ease;
-    }
-    .provider-card:hover {
-      border-color: #2e3d57;
-    }
-    .provider-card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.75rem 0.9rem;
-      background: rgba(255, 255, 255, 0.02);
-    }
-    .provider-accounts-list {
-      border-top: 1px solid rgba(255, 255, 255, 0.05);
-      background: rgba(0, 0, 0, 0.15);
-      padding: 0.4rem 0.75rem 0.5rem 0.75rem;
-    }
-    .account-subrow {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.4rem 0.5rem;
-      margin: 0.25rem 0;
-      border-radius: 6px;
-      background: rgba(255, 255, 255, 0.02);
-      border: 1px solid rgba(255, 255, 255, 0.04);
-    }
-    .account-subrow:hover {
-      background: rgba(255, 255, 255, 0.04);
-    }
-    .account-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0.75rem 0.9rem;
-      background: #0d131f;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      margin-bottom: 0.6rem;
-      transition: border-color 0.15s ease;
-    }
-    .account-row:hover {
-      border-color: #2e3d57;
-    }
-    .account-info {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-    .account-avatar {
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: #1e293b;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.85rem;
-      font-weight: 700;
-      color: var(--accent);
-      border: 1px solid var(--card-border);
-    }
-    .account-email {
-      font-size: 0.88rem;
-      font-weight: 600;
-    }
-    .account-meta {
-      font-size: 0.72rem;
-      color: var(--text-muted);
-      font-family: 'JetBrains Mono', monospace;
-    }
-
-    /* Agent Connect Cards */
-    .agent-grid {
+    /* Grid Layouts */
+    .grid-4 {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 0.85rem;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
     }
-    .agent-box {
-      background: #0d131f;
-      border: 1px solid var(--card-border);
-      border-radius: 10px;
-      padding: 1rem;
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .stat-card {
+      background: #0e0e11;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
       display: flex;
       flex-direction: column;
-      justify-content: space-between;
-      gap: 0.75rem;
+      gap: 0.4rem;
     }
-    .agent-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    .agent-name {
-      font-weight: 700;
-      font-size: 0.95rem;
-    }
-    .agent-code {
-      background: var(--code-bg);
-      border: 1px solid #1e293b;
-      padding: 0.4rem 0.6rem;
-      border-radius: 6px;
-      font-family: 'JetBrains Mono', monospace;
+    .stat-label {
       font-size: 0.75rem;
-      color: #cbd5e1;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      cursor: pointer;
-    }
-    .agent-code:hover {
-      border-color: var(--accent);
-    }
-
-    /* Combos Table */
-    .combo-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.85rem;
-    }
-    .combo-table th {
-      text-align: left;
-      padding: 0.65rem 0.75rem;
-      color: var(--text-muted);
-      font-weight: 600;
-      font-size: 0.75rem;
-      border-bottom: 1px solid var(--card-border);
+      font-weight: 500;
+      color: var(--text-dim);
       text-transform: uppercase;
       letter-spacing: 0.05em;
     }
-    .combo-table td {
-      padding: 0.75rem;
-      border-bottom: 1px solid rgba(31, 41, 61, 0.5);
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      font-family: 'Geist Mono', monospace;
+      color: #fff;
     }
-    .badge-model {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.78rem;
-      background: #1e293b;
-      color: #93c5fd;
-      padding: 0.2rem 0.5rem;
-      border-radius: 6px;
-      border: 1px solid rgba(147, 197, 253, 0.2);
+    .stat-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
     }
 
-    /* Playground */
-    .playground-form {
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      padding: 0.5rem 0.9rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      text-decoration: none;
+      border: 1px solid transparent;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+      font-weight: 600;
+    }
+    .btn-primary:hover {
+      background: #e4e4e7;
+    }
+    .btn-outline {
+      background: transparent;
+      border-color: var(--border);
+      color: var(--text);
+    }
+    .btn-outline:hover {
+      background: #18181b;
+      border-color: #3f3f46;
+    }
+    .btn-sm {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.75rem;
+    }
+    .btn-success {
+      background: var(--success-bg);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #34d399;
+    }
+    .btn-success:hover {
+      background: rgba(16, 185, 129, 0.2);
+    }
+    .btn-danger {
+      background: var(--danger-bg);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.7rem;
+      font-family: 'Geist Mono', monospace;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+    .badge-success {
+      background: var(--success-bg);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .badge-warning {
+      background: var(--warning-bg);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .badge-muted {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    .badge-accent {
+      background: var(--accent-glow);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    /* Tables */
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.82rem;
+    }
+    th {
+      padding: 0.75rem 1rem;
+      background: #0e0e11;
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.7rem;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border-subtle);
+      color: var(--text);
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    /* Agents Card Grid */
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.25rem;
+    }
+    .agent-card {
+      background: #0e0e11;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
       display: flex;
       flex-direction: column;
+      gap: 0.85rem;
+      transition: all 0.2s ease;
+    }
+    .agent-card:hover {
+      border-color: #3f3f46;
+      background: #121216;
+    }
+    .agent-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+    .agent-info {
+      display: flex;
+      align-items: center;
       gap: 0.75rem;
     }
-    .select-input, .text-input {
-      background: var(--code-bg);
-      border: 1px solid var(--card-border);
-      color: var(--text);
-      font-family: inherit;
-      font-size: 0.85rem;
-      padding: 0.6rem 0.85rem;
-      border-radius: 8px;
-      outline: none;
+    .agent-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      background: #18181b;
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.1rem;
+      flex-shrink: 0;
     }
-    .select-input:focus, .text-input:focus {
-      border-color: var(--accent);
+    .agent-name {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #fff;
     }
-    .playground-output {
-      background: var(--code-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 1rem;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.82rem;
-      min-height: 120px;
-      max-height: 240px;
-      overflow-y: auto;
-      white-space: pre-wrap;
-      color: #e2e8f0;
+    .agent-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.4;
+      flex: 1;
+    }
+    .agent-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border-subtle);
+      font-size: 0.75rem;
     }
 
     /* Modal */
-    .modal-overlay {
+    .modal-backdrop {
       position: fixed;
       inset: 0;
       background: rgba(0, 0, 0, 0.75);
       backdrop-filter: blur(4px);
+      z-index: 100;
       display: none;
       align-items: center;
       justify-content: center;
-      z-index: 100;
       padding: 1rem;
     }
-    .modal-overlay.open {
+    .modal-backdrop.active {
       display: flex;
     }
-    .modal-content {
-      background: var(--card-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 14px;
+    .modal-box {
+      background: #121215;
+      border: 1px solid var(--border);
+      border-radius: 10px;
       width: 100%;
-      max-width: 540px;
-      padding: 1.75rem;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    }
-    .modal-title {
-      font-size: 1.2rem;
-      font-weight: 700;
-      margin-bottom: 0.5rem;
-    }
-    .modal-body {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      line-height: 1.5;
-    }
-    .modal-body p { margin-bottom: 0.75rem; }
-    .command-box {
-      background: var(--code-bg);
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      padding: 0.75rem 1rem;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      color: var(--accent);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin: 1rem 0;
-    }
-    .catalog-filters {
-      display: flex;
-      gap: 0.35rem;
-      overflow-x: auto;
-      padding-bottom: 0.35rem;
-    }
-    .catalog-filter-btn {
-      font-size: 0.72rem;
-      padding: 0.25rem 0.55rem;
-      border-radius: 6px;
-      border: 1px solid var(--card-border);
-      background: #111827;
-      color: var(--text-muted);
-      cursor: pointer;
-      white-space: nowrap;
-      transition: all 0.15s ease;
-    }
-    .catalog-filter-btn.active, .catalog-filter-btn:hover {
-      background: #1e293b;
-      color: #fff;
-      border-color: var(--accent);
-    }
-    .catalog-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-      gap: 0.45rem;
-      max-height: 190px;
-      overflow-y: auto;
-      padding: 0.45rem;
-      border: 1px solid var(--card-border);
-      border-radius: 8px;
-      background: #030712;
-    }
-    .catalog-card {
-      border: 1px solid #1f293d;
-      border-radius: 6px;
-      padding: 0.45rem;
-      background: #0d131f;
-      cursor: pointer;
+      max-width: 520px;
+      padding: 1.5rem;
       display: flex;
       flex-direction: column;
-      gap: 0.2rem;
-      transition: all 0.15s ease;
+      gap: 1.25rem;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.8);
     }
-    .catalog-card:hover, .catalog-card.selected {
-      border-color: var(--accent);
-      background: #1e293b;
-      box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
-    }
-    .catalog-card-header {
+    .form-group {
       display: flex;
-      align-items: center;
-      gap: 0.35rem;
+      flex-direction: column;
+      gap: 0.4rem;
     }
-    .catalog-badge {
-      width: 18px;
-      height: 18px;
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 0.65rem;
-      font-weight: 700;
-      flex-shrink: 0;
-    }
-    .catalog-card-title {
-      font-size: 0.74rem;
-      font-weight: 700;
-      color: #fff;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .catalog-card-cat {
-      font-size: 0.62rem;
+    .form-label {
+      font-size: 0.75rem;
+      font-weight: 600;
       color: var(--text-muted);
       text-transform: uppercase;
-      letter-spacing: 0.03em;
+      letter-spacing: 0.04em;
     }
-    .model-tag {
-      font-size: 0.68rem;
-      font-family: 'JetBrains Mono', monospace;
-      padding: 0.15rem 0.45rem;
-      background: #111827;
-      border: 1px solid #1f293d;
-      border-radius: 4px;
-      color: #93c5fd;
+    .form-input, .form-select, .form-textarea {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.6rem 0.8rem;
+      color: #fff;
+      font-family: inherit;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--accent);
     }
 
-    /* Toast */
+    /* Toast Notification */
     .toast {
       position: fixed;
       bottom: 2rem;
       right: 2rem;
-      background: #1e293b;
-      border: 1px solid var(--accent);
-      color: #fff;
+      background: #18181b;
+      border: 1px solid var(--border);
+      border-radius: 6px;
       padding: 0.75rem 1.25rem;
-      border-radius: 8px;
       font-size: 0.85rem;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-      display: none;
-      z-index: 200;
-      animation: fadeIn 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+    /* SVG Topology Node Graph */
+    .topology-container {
+      background: #000000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      height: 380px;
+      position: relative;
+      overflow: hidden;
+    }
+    svg.topology-svg {
+      width: 100%;
+      height: 100%;
+    }
+    .topo-node {
+      cursor: pointer;
+      transition: transform 0.2s;
+    }
+    .topo-node:hover {
+      filter: brightness(1.2);
+    }
+    .topo-link {
+      stroke: #27272a;
+      stroke-width: 1.5;
+      stroke-dasharray: 4;
+      animation: dash 30s linear infinite;
+    }
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -1000;
+      }
+    }
+
+    /* View Switcher */
+    .view-panel {
+      display: none;
+      flex-direction: column;
+      gap: 2rem;
+    }
+    .view-panel.active {
+      display: flex;
     }
   </style>
 </head>
 <body>
 
-  <header>
-    <div class="brand">
-      <div class="brand-logo">⚡ GoRoute <span>Control Center</span></div>
-      <div class="header-pills">
-        <span class="pill pill-green"><span class="dot"></span> Online (Port 8128)</span>
-        <span class="pill pill-blue" id="mem-pill">RAM: ~12.8 MB</span>
+  <!-- Sidebar -->
+  <aside>
+    <div class="brand-section">
+      <div class="brand-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </svg>
+        GoRoute
       </div>
+      <span class="brand-badge">Go + Rust</span>
     </div>
-    <div class="header-actions">
-      <button class="btn" onclick="reloadConfig()">🔄 Reload Config</button>
-      <button class="btn btn-primary" onclick="openAddProviderModal()">+ Add Provider / Key</button>
-    </div>
-  </header>
 
-  <main>
-    <div class="banner">
+    <div class="nav-scroll">
       <div>
-        <h1>Unified Multi-Agent Gateway</h1>
-        <p>Zero-overhead proxy with native Anthropic &amp; OpenAI streaming, smart failover, and multi-provider pool.</p>
-      </div>
-      <div class="endpoints-box">
-        <div class="endpoint-item">
-          <span class="endpoint-label">OpenAI Endpoint</span>
-          <span class="endpoint-url" id="ep-openai">http://127.0.0.1:8128/v1</span>
-          <button class="copy-btn" onclick="copyText('http://127.0.0.1:8128/v1')">📋</button>
+        <div class="nav-group-title">Overview</div>
+        <div class="nav-items">
+          <a class="nav-item active" onclick="switchView('dashboard')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+            Dashboard
+          </a>
+          <a class="nav-item" onclick="switchView('topology')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Topology Graph
+          </a>
         </div>
-        <div class="endpoint-item">
-          <span class="endpoint-label">Anthropic Endpoint</span>
-          <span class="endpoint-url" id="ep-anthropic">http://127.0.0.1:8128/v1/messages</span>
-          <button class="copy-btn" onclick="copyText('http://127.0.0.1:8128/v1/messages')">📋</button>
+      </div>
+
+      <div>
+        <div class="nav-group-title">Agent Tools</div>
+        <div class="nav-items">
+          <a class="nav-item" onclick="switchView('cli-agents')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/></svg>
+            CLI Agents
+          </a>
+          <a class="nav-item" onclick="switchView('combos')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            Combos Studio
+          </a>
+        </div>
+      </div>
+
+      <div>
+        <div class="nav-group-title">Routing & Context</div>
+        <div class="nav-items">
+          <a class="nav-item" onclick="switchView('providers')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            Providers & Catalog
+          </a>
+          <a class="nav-item" onclick="switchView('compression')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            Caveman Compression
+          </a>
+          <a class="nav-item" onclick="switchView('traffic')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Traffic Inspector
+          </a>
+          <a class="nav-item" onclick="switchView('keys')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            API Virtual Keys
+          </a>
         </div>
       </div>
     </div>
 
-    <div class="grid-layout">
-      <!-- Connected Providers & Accounts -->
-      <div class="card col-6">
-        <div class="card-header">
-          <div>
-            <div class="card-title">🔐 Connected Providers &amp; Accounts</div>
-            <div class="card-subtitle">Active API keys, AWS CodeWhisperer/Kiro, and Google Antigravity pool</div>
+    <div class="sidebar-footer">
+      <div class="memory-badge">
+        <span>Memory Usage</span>
+        <span class="memory-val" id="sb-memory"><span class="pulse-dot"></span> 1.5 MB</span>
+      </div>
+      <div class="memory-badge">
+        <span>Uptime</span>
+        <span style="color: var(--text-muted);" id="sb-uptime">--</span>
+      </div>
+      <div style="font-size: 0.65rem; color: var(--text-dim); text-align: center;">
+        34x lighter than Node.js (0.1% RAM)
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main View -->
+  <main>
+    <header>
+      <div class="header-breadcrumb">
+        Dashboard <span id="view-breadcrumb">/ Overview</span>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-outline btn-sm" onclick="refreshCurrentView()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">
+          + New Combo
+        </button>
+      </div>
+    </header>
+
+    <div class="content-area">
+
+      <!-- VIEW: DASHBOARD (HOME) -->
+      <div id="view-dashboard" class="view-panel active">
+        <!-- 4 Stats -->
+        <div class="grid-4">
+          <div class="stat-card">
+            <span class="stat-label">Gateway Endpoint</span>
+            <span class="stat-value" style="font-size: 1.3rem; color: #60a5fa;">:8128/v1</span>
+            <span class="stat-sub">OpenAI + Anthropic protocol</span>
           </div>
-          <button class="btn" onclick="openAddProviderModal()">+ Add</button>
+          <div class="stat-card">
+            <span class="stat-label">Active Providers</span>
+            <span class="stat-value" id="stat-providers">5</span>
+            <span class="stat-sub">Antigravity, Kiro, Codex, etc.</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">Configured Combos</span>
+            <span class="stat-value" id="stat-combos">5</span>
+            <span class="stat-sub">Pure single-provider chains</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-label">RAM Footprint</span>
+            <span class="stat-value" style="color: #34d399;" id="stat-ram">1.5 MB</span>
+            <span class="stat-sub">Compiled native Go binary</span>
+          </div>
         </div>
-        <div id="accounts-container" style="max-height: 480px; overflow-y: auto; padding-right: 0.25rem;">
-          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading providers...</div>
+
+        <!-- Topology Preview & Live Stream -->
+        <div class="grid-2">
+          <!-- Topology Card -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Provider & Combo Topology</div>
+                <div class="card-subtitle">Real-time model cluster connection graph</div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="switchView('topology')">Full View →</button>
+            </div>
+            <div class="topology-container" id="dash-topology-svg">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+
+          <!-- Live Requests Card -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <div class="card-title">Recent Request Stream</div>
+                <div class="card-subtitle">Live stream from incoming agents</div>
+              </div>
+              <span class="badge badge-success"><span class="pulse-dot"></span> Live SSE</span>
+            </div>
+            <div class="table-container" style="max-height: 380px; overflow-y: auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Model</th>
+                    <th>Tokens</th>
+                    <th>Latency</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="dash-requests-tbody">
+                  <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Connecting to real-time event stream...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
-      <!-- Agent Quick-Connect -->
-      <div class="card col-6">
-        <div class="card-header">
-          <div>
-            <div class="card-title">🤖 Coding Agent Connections (14 Supported)</div>
-            <div class="card-subtitle">1-Click auto-configure or manual setup for CLI agents and IDEs</div>
+      <!-- VIEW: TOPOLOGY (FULL) -->
+      <div id="view-topology" class="view-panel">
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Interactive Topology Map</div>
+              <div class="card-subtitle">Live status of GoRoute gateway, connected provider accounts, and failover combos</div>
+            </div>
           </div>
-          <button class="btn btn-primary" onclick="triggerAgentSetup('all')">⚡ Setup All Agents</button>
+          <div class="topology-container" style="height: 600px;" id="full-topology-svg"></div>
         </div>
-        <div class="agent-grid" id="agents-grid" style="max-height: 480px; overflow-y: auto; padding-right: 0.25rem;">
-          <div style="color: var(--text-muted); font-size: 0.85rem;">Loading agents...</div>
-        </div>
-      <!-- Combos & Routing -->
-      <div class="card col-6">
-        <div class="card-header">
-          <div>
-            <div class="card-title">🔀 Active Model Combos &amp; Aliases</div>
-            <div class="card-subtitle">Failover chains and model aliases in ~/.goroute/config.yaml</div>
-          </div>
-        </div>
-        <table class="combo-table">
-          <thead>
-            <tr>
-              <th>Alias / Combo</th>
-              <th>Target Model</th>
-              <th>Strategy</th>
-            </tr>
-          </thead>
-          <tbody id="combos-tbody">
-            <tr><td colspan="3" style="color:var(--text-muted)">Loading combos...</td></tr>
-          </tbody>
-        </table>
       </div>
 
-      <!-- Live Playground -->
-      <div class="card col-6">
+      <!-- VIEW: CLI AGENTS -->
+      <div id="view-cli-agents" class="view-panel">
         <div class="card-header">
           <div>
-            <div class="card-title">⚡ Live Playground</div>
-            <div class="card-subtitle">Test any model directly through GoRoute</div>
+            <div class="card-title" style="font-size: 1.3rem;">CLI Agents Hub</div>
+            <div class="card-subtitle">One-click auto-configuration and runtime diagnostics for terminal AI tools</div>
           </div>
-        </div>
-        <div class="playground-form">
           <div style="display: flex; gap: 0.5rem;">
-            <select class="select-input" id="playground-model" style="flex: 1;">
-              <option value="gemini-flash">gemini-flash (Gemini 2.5 Flash)</option>
-              <option value="claude-ag">claude-ag (Claude 3.7 Sonnet)</option>
-              <option value="claude">claude (Claude 3.7 Sonnet)</option>
-              <option value="gemini-flash-lite">gemini-flash-lite (Gemini 3.1 Flash Lite)</option>
-              <option value="gpt">gpt (GPT-OSS 120B)</option>
-            </select>
-            <button class="btn btn-primary" id="playground-btn" onclick="runPlayground()">Run Prompt</button>
+            <button class="btn btn-outline btn-sm" onclick="loadCliAgents()">Detect Agents</button>
+            <button class="btn btn-primary btn-sm" onclick="configureAllAgents()">Configure All (1-Click)</button>
           </div>
-          <input type="text" class="text-input" id="playground-prompt" value="Explain quantum computing in 1 sentence." placeholder="Enter your prompt here...">
-          <div class="playground-output" id="playground-output">// Response will stream here...</div>
+        </div>
+
+        <div class="agents-grid" id="agents-cards-container">
+          <!-- Rendered via JS -->
         </div>
       </div>
+
+      <!-- VIEW: COMBOS STUDIO -->
+      <div id="view-combos" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Combos Studio</div>
+            <div class="card-subtitle">Build, customize, and reorder multi-provider failover chains with zero YAML editing</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">+ Create Combo</button>
+        </div>
+
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Combo Name</th>
+                  <th>Strategy</th>
+                  <th>Targets / Failover Order</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="combos-tbody">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: PROVIDERS -->
+      <div id="view-providers" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Connected Providers</div>
+            <div class="card-subtitle">Live health and authentication status across upstream AI providers</div>
+          </div>
+        </div>
+
+        <div class="grid-4" id="providers-cards-container">
+          <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- VIEW: COMPRESSION CONTEXT -->
+      <div id="view-compression" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Caveman Prompt Compression</div>
+            <div class="card-subtitle">OmniRoute-style linguistic token reduction and context window pruning</div>
+          </div>
+        </div>
+
+        <div class="grid-2">
+          <div class="card">
+            <div class="card-title">Prompt Compressor Playground</div>
+            <div class="form-group">
+              <label class="form-label">Intensity Level</label>
+              <div style="display: flex; gap: 1rem;">
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer;">
+                  <input type="radio" name="comp-intensity" value="lite"> Lite (Polite framing removal)
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer;">
+                  <input type="radio" name="comp-intensity" value="full" checked> Full (Hedging condensing)
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; cursor: pointer;">
+                  <input type="radio" name="comp-intensity" value="ultra"> Ultra (Connective reduction)
+                </label>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Input Text / Code</label>
+              <textarea class="form-textarea" id="comp-input" rows="8" placeholder="Paste verbose prompt or code with explanations here..."></textarea>
+            </div>
+            <button class="btn btn-primary" onclick="testCompression()">Compress Prompt →</button>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Compression Output & Stats</div>
+            <div class="grid-4" style="grid-template-columns: repeat(2, 1fr);">
+              <div class="stat-card">
+                <span class="stat-label">Characters Saved</span>
+                <span class="stat-value" id="comp-chars-saved">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">% Saved</span>
+                <span class="stat-value" style="color: #34d399;" id="comp-pct-saved">0%</span>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Compressed Output</label>
+              <textarea class="form-textarea" id="comp-output" rows="8" readonly placeholder="Compressed result appears here..."></textarea>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-dim);" id="comp-techniques">Techniques: none</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: TRAFFIC INSPECTOR -->
+      <div id="view-traffic" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Traffic Inspector</div>
+            <div class="card-subtitle">Real-time log stream of all completions, latency benchmarks, and response codes</div>
+          </div>
+          <span class="badge badge-success"><span class="pulse-dot"></span> Streaming</span>
+        </div>
+
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Timestamp</th>
+                  <th>Model Requested</th>
+                  <th>Provider Target</th>
+                  <th>Tokens</th>
+                  <th>Latency</th>
+                  <th>HTTP Status</th>
+                </tr>
+              </thead>
+              <tbody id="traffic-full-tbody">
+                <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 2rem;">Awaiting requests...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: KEYS -->
+      <div id="view-keys" class="view-panel">
+        <div class="card-header">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Virtual API Keys</div>
+            <div class="card-subtitle">Scoped keys for agent tools with model-level restrictions and quota limits</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="openNewKeyModal()">+ Create Virtual Key</button>
+        </div>
+
+        <div class="card">
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Key ID</th>
+                  <th>Name / Owner</th>
+                  <th>Allowed Models</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="keys-tbody">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </div>
   </main>
 
-  <!-- Modal for Adding Provider / Account -->
-  <div class="modal-overlay" id="provider-modal">
-    <div class="modal-content" style="max-width: 760px; max-height: 90vh; display: flex; flex-direction: column;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
-        <div>
-          <div class="modal-title" style="margin-bottom: 0.2rem;">Connect Provider or Account</div>
-          <div style="font-size: 0.8rem; color: var(--text-muted);">Choose from 50+ verified presets or configure custom OpenAI/Anthropic endpoints</div>
-        </div>
-        <button class="btn" onclick="closeAddProviderModal()" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;">✕</button>
+  <!-- MODAL: NEW COMBO -->
+  <div class="modal-backdrop" id="modal-combo">
+    <div class="modal-box">
+      <div class="card-title">Create or Edit Combo</div>
+      <div class="form-group">
+        <label class="form-label">Combo Name (e.g. claude-sonnet-fast)</label>
+        <input class="form-input" id="modal-combo-name" placeholder="my-combo-name">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Strategy</label>
+        <select class="form-select" id="modal-combo-strategy">
+          <option value="failover">failover (Try target 1, fallback to target 2 on failure)</option>
+          <option value="round-robin">round-robin (Rotate equally across targets)</option>
+          <option value="load-balance">load-balance (Dynamic latency-based)</option>
+        </select>
       </div>
 
-      <div class="modal-body" style="overflow-y: auto; flex: 1; padding-right: 0.25rem;">
-        <!-- Search and Category Filters -->
-        <div style="margin-bottom: 0.75rem;">
-          <input type="text" id="catalog-search" class="text-input" placeholder="🔍 Search 50+ providers (OpenAI, Anthropic, Gemini, Groq, DeepSeek, Ollama, Kiro, Antigravity...)" style="width: 100%; margin-bottom: 0.5rem;" oninput="filterCatalog()">
-          <div class="catalog-filters" id="catalog-filters">
-            <button class="catalog-filter-btn active" onclick="setCatalogFilter('all', this)">All (50+)</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('frontier', this)">Frontier Labs</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('inference', this)">Ultra-Fast LPUs</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('gateway', this)">Gateways</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('asia', this)">Asia / Open Weights</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('local', this)">Local Engines</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('oauth', this)">OAuth / Free Pools</button>
-            <button class="catalog-filter-btn" onclick="setCatalogFilter('custom', this)">+ Custom Endpoint</button>
-          </div>
+      <div class="form-group">
+        <label class="form-label">Primary Target</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select class="form-select" id="modal-target-1-prov" style="flex: 1;">
+            <option value="antigravity">Antigravity</option>
+            <option value="kiro">Kiro</option>
+            <option value="codex">Codex</option>
+            <option value="agentrouter">AgentRouter</option>
+            <option value="copilot">Copilot</option>
+          </select>
+          <input class="form-input" id="modal-target-1-model" placeholder="Model (e.g. claude-sonnet-4.5)" style="flex: 1.5;">
         </div>
+      </div>
 
-        <!-- Catalog Grid -->
-        <div class="catalog-grid" id="catalog-grid">
-          <!-- Dynamically populated from /api/catalog -->
+      <div class="form-group">
+        <label class="form-label">Secondary Fallback Target (Optional)</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select class="form-select" id="modal-target-2-prov" style="flex: 1;">
+            <option value="">(None)</option>
+            <option value="antigravity">Antigravity</option>
+            <option value="kiro">Kiro</option>
+            <option value="codex">Codex</option>
+            <option value="agentrouter">AgentRouter</option>
+            <option value="copilot">Copilot</option>
+          </select>
+          <input class="form-input" id="modal-target-2-model" placeholder="Model (e.g. claude-haiku-4.5)" style="flex: 1.5;">
         </div>
+      </div>
 
-        <!-- Selected Provider Setup Box -->
-        <div id="selected-provider-box" style="background: #090d16; border: 1px solid var(--card-border); border-radius: 10px; padding: 1rem; margin-top: 0.75rem;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
-            <div style="display: flex; gap: 0.75rem; align-items: center;">
-              <div id="sel-prov-avatar" class="account-avatar" style="width: 36px; height: 36px; font-size: 1rem; font-weight: 700;">O</div>
-              <div>
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  <span id="sel-prov-name" style="font-weight: 700; font-size: 1rem; color: #fff;">OpenAI</span>
-                  <span id="sel-prov-cat" class="pill pill-blue" style="font-size: 0.65rem; padding: 0.15rem 0.5rem;">Frontier</span>
-                </div>
-                <div id="sel-prov-desc" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">Official OpenAI GPT-4o, o1, o3-mini models</div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Models hint tags -->
-          <div id="sel-prov-models" style="display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.85rem;"></div>
-
-          <!-- Dynamic Form Inputs -->
-          <div id="form-inputs-container">
-            <!-- Common Fields -->
-            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 0.5rem; margin-bottom: 0.75rem;">
-              <div>
-                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Provider ID</label>
-                <input type="text" id="add-prov-id" class="text-input" style="width: 100%; font-family: monospace; font-size: 0.8rem;" value="openai">
-              </div>
-              <div>
-                <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">Base URL Endpoint</label>
-                <input type="text" id="add-prov-url" class="text-input" style="width: 100%; font-family: monospace; font-size: 0.8rem;" value="https://api.openai.com/v1">
-              </div>
-            </div>
-
-            <!-- API Key Input -->
-            <div id="input-group-apikey" style="margin-bottom: 0.75rem;">
-              <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.2rem;">API Key / Bearer Token</label>
-              <input type="password" id="add-prov-key" class="text-input" placeholder="sk-..." style="width: 100%;">
-            </div>
-
-            <!-- Local Engine Notice -->
-            <div id="input-group-local" style="display: none; margin-bottom: 0.75rem; padding: 0.6rem 0.85rem; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 8px;">
-              <span style="color: var(--success); font-weight: 600; font-size: 0.82rem;">✨ Zero-Config Local Engine:</span>
-              <span style="color: var(--text-muted); font-size: 0.8rem;"> No API key required. GoRoute connects directly to your local runner.</span>
-            </div>
-
-            <!-- Kiro OAuth Inputs -->
-            <div id="input-group-kiro" style="display: none; margin-bottom: 0.75rem;">
-              <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem;">
-                <button type="button" class="btn btn-primary" onclick="autoImportKiro()" style="flex: 1;">⚡ 1-Click Auto-Import from local Kiro</button>
-              </div>
-              <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.25rem;">Or paste AWS Builder ID Refresh Token:</div>
-              <textarea id="add-kiro-token" class="text-input" placeholder="aorAAAAAG..." style="width: 100%; height: 50px; font-family: monospace; font-size: 0.75rem; margin-bottom: 0.5rem;"></textarea>
-              <input type="text" id="add-kiro-arn" class="text-input" placeholder="Profile ARN (Optional)" value="arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK" style="width: 100%; font-size: 0.75rem;">
-            </div>
-
-            <!-- Antigravity OAuth Notice -->
-            <div id="input-group-oauth" style="display: none; margin-bottom: 0.75rem;">
-              <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 0.5rem;">Google Antigravity accounts are securely authenticated into your local encrypted vault via PKCE OAuth:</p>
-              <div class="command-box" style="margin: 0.5rem 0;">
-                <span>goroute auth login antigravity</span>
-                <button class="copy-btn" onclick="copyText('goroute auth login antigravity')">📋</button>
-              </div>
-            </div>
-
-            <button class="btn btn-primary" id="save-prov-btn" style="width: 100%; padding: 0.6rem; font-size: 0.9rem;" onclick="submitActiveProvider()">
-              Connect Provider
-            </button>
-          </div>
-        </div>
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
+        <button class="btn btn-outline" onclick="closeModal('modal-combo')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitCombo()">Save Combo</button>
       </div>
     </div>
   </div>
 
-  <div class="toast" id="toast"></div>
+  <!-- Toast -->
+  <div class="toast" id="toast">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+    <span id="toast-msg">Operation successful</span>
+  </div>
 
+  <!-- Interactive JavaScript Application -->
   <script>
+    let currentView = 'dashboard';
+    let sseSource = null;
+
     function showToast(msg) {
       const t = document.getElementById('toast');
-      t.innerText = msg;
-      t.style.display = 'block';
-      setTimeout(() => { t.style.display = 'none'; }, 3000);
+      document.getElementById('toast-msg').textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3500);
     }
 
-    function copyText(txt) {
-      navigator.clipboard.writeText(txt).then(() => {
-        showToast('Copied: ' + txt);
-      });
+    function switchView(view) {
+      currentView = view;
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+      document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
+      
+      const targetPanel = document.getElementById(`view-${view}`);
+      if (targetPanel) targetPanel.classList.add('active');
+
+      const clickedNav = Array.from(document.querySelectorAll('.nav-item')).find(n => n.getAttribute('onclick')?.includes(view));
+      if (clickedNav) clickedNav.classList.add('active');
+
+      document.getElementById('view-breadcrumb').textContent = `/ ${view.charAt(0).toUpperCase() + view.slice(1)}`;
+
+      refreshCurrentView();
     }
 
-    let catalogData = [];
-    let activeCatalogFilter = 'all';
-    let selectedPreset = null;
+    function refreshCurrentView() {
+      if (currentView === 'dashboard') {
+        loadStats();
+        loadTopology('dash-topology-svg');
+      } else if (currentView === 'topology') {
+        loadTopology('full-topology-svg');
+      } else if (currentView === 'cli-agents') {
+        loadCliAgents();
+      } else if (currentView === 'combos') {
+        loadCombos();
+      } else if (currentView === 'providers') {
+        loadProviders();
+      } else if (currentView === 'keys') {
+        loadKeys();
+      }
+    }
 
-    async function loadCatalog() {
+    // Load Overview Stats
+    async function loadStats() {
       try {
-        const res = await fetch('/api/catalog');
-        const d = await res.json();
-        if (d.data && d.data.length > 0) {
-          catalogData = d.data;
-          renderCatalog();
-          if (!selectedPreset) {
-            selectPreset(catalogData[0]);
+        const [topoRes, combosRes] = await Promise.all([
+          fetch('/api/topology').then(r => r.json()),
+          fetch('/api/combos').then(r => r.json())
+        ]);
+        
+        if (topoRes.nodes) {
+          const gw = topoRes.nodes.find(n => n.id === 'goroute');
+          if (gw && gw.details) {
+            document.getElementById('sb-memory').innerHTML = `<span class="pulse-dot"></span> ${gw.details.memory}`;
+            document.getElementById('stat-ram').textContent = gw.details.memory;
+            document.getElementById('sb-uptime').textContent = gw.details.uptime;
           }
+          const provs = topoRes.nodes.filter(n => n.type === 'provider');
+          document.getElementById('stat-providers').textContent = provs.length;
+        }
+
+        if (combosRes.combos) {
+          document.getElementById('stat-combos').textContent = combosRes.combos.length;
         }
       } catch (e) {
-        console.error("Failed to load catalog:", e);
+        console.error('loadStats error:', e);
       }
     }
 
-    function openAddProviderModal() {
-      document.getElementById('provider-modal').classList.add('open');
-      if (catalogData.length === 0) {
-        loadCatalog();
-      }
-    }
-    function closeAddProviderModal() {
-      document.getElementById('provider-modal').classList.remove('open');
-    }
+    // Render Topology Graph (Pure SVG)
+    async function loadTopology(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      try {
+        const res = await fetch('/api/topology').then(r => r.json());
+        if (!res.nodes) return;
 
-    function setCatalogFilter(cat, btn) {
-      activeCatalogFilter = cat;
-      document.querySelectorAll('.catalog-filter-btn').forEach(b => b.classList.remove('active'));
-      if (btn) btn.classList.add('active');
-      filterCatalog();
-    }
+        const w = container.clientWidth || 500;
+        const h = container.clientHeight || 350;
+        const cx = w / 2;
+        const cy = h / 2;
 
-    function filterCatalog() {
-      const q = document.getElementById('catalog-search').value.toLowerCase().trim();
-      if (activeCatalogFilter === 'custom') {
-        renderCustomOption();
-        return;
-      }
-      const filtered = catalogData.filter(item => {
-        const matchesCat = activeCatalogFilter === 'all' || item.category === activeCatalogFilter;
-        const matchesQuery = !q || item.name.toLowerCase().includes(q) || item.id.toLowerCase().includes(q) || item.description.toLowerCase().includes(q);
-        return matchesCat && matchesQuery;
-      });
-      renderCatalog(filtered);
-    }
+        const providers = res.nodes.filter(n => n.type === 'provider');
+        const combos = res.nodes.filter(n => n.type === 'combo');
 
-    function renderCatalog(items = null) {
-      const list = items !== null ? items : catalogData;
-      const grid = document.getElementById('catalog-grid');
-      grid.innerHTML = '';
+        let svgHtml = `<svg class="topology-svg" viewBox="0 0 ${w} ${h}">`;
 
-      if (list.length === 0) {
-        grid.innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem; padding:1rem; text-align:center; grid-column:1/-1;">No matching presets found. Try another search or click "+ Custom Endpoint".</div>';
-        return;
-      }
-
-      list.forEach(p => {
-        let badgeBg = 'rgba(56, 189, 248, 0.15)';
-        let badgeColor = '#38bdf8';
-        if (p.category === 'frontier') { badgeBg = 'rgba(56, 189, 248, 0.15)'; badgeColor = '#38bdf8'; }
-        else if (p.category === 'inference') { badgeBg = 'rgba(245, 158, 11, 0.15)'; badgeColor = '#f59e0b'; }
-        else if (p.category === 'gateway') { badgeBg = 'rgba(168, 85, 247, 0.15)'; badgeColor = '#c084fc'; }
-        else if (p.category === 'asia') { badgeBg = 'rgba(236, 72, 153, 0.15)'; badgeColor = '#f472b6'; }
-        else if (p.category === 'local') { badgeBg = 'rgba(16, 185, 129, 0.15)'; badgeColor = '#34d399'; }
-        else if (p.category === 'oauth') { badgeBg = 'rgba(251, 146, 60, 0.15)'; badgeColor = '#fb923c'; }
-
-        const initial = p.name.charAt(0).toUpperCase();
-        const card = document.createElement('div');
-        const isSel = selectedPreset && selectedPreset.id === p.id;
-        card.className = `catalog-card ${isSel ? 'selected' : ''}`;
-        card.onclick = () => selectPreset(p);
-        card.innerHTML = `
-          <div class="catalog-card-header">
-            <div class="catalog-badge" style="background:${badgeBg}; color:${badgeColor};">${initial}</div>
-            <div class="catalog-card-title">${p.name}</div>
-          </div>
-          <div class="catalog-card-cat">${p.category}</div>
+        // Center Gateway
+        svgHtml += `
+          <g class="topo-node" transform="translate(${cx}, ${cy})">
+            <circle r="36" fill="#18181b" stroke="#3b82f6" stroke-width="2.5"/>
+            <text text-anchor="middle" dy="-5" fill="#fff" font-size="11" font-weight="700">GoRoute</text>
+            <text text-anchor="middle" dy="12" fill="#34d399" font-size="9" font-family="Geist Mono">1.5 MB RAM</text>
+          </g>
         `;
-        grid.appendChild(card);
-      });
-    }
 
-    function renderCustomOption() {
-      selectPreset({
-        id: "custom-provider",
-        name: "Custom OpenAI/Anthropic Endpoint",
-        type: "openai",
-        category: "custom",
-        base_url: "https://your-custom-endpoint.com/v1",
-        auth_type: "apikey",
-        description: "Connect any self-hosted proxy, gateway, or private inference server.",
-        models: ["custom-model-1", "custom-model-2"]
-      });
-      document.getElementById('catalog-grid').innerHTML = '<div style="color:var(--text-muted); font-size:0.78rem; padding:1rem; text-align:center; grid-column:1/-1;">Custom provider selected. Configure the fields below.</div>';
-    }
+        // Providers on Right Arc
+        providers.forEach((p, idx) => {
+          const angle = -Math.PI / 2 + (idx * Math.PI) / (providers.length > 1 ? providers.length - 1 : 1);
+          const radius = Math.min(w, h) * 0.38;
+          const px = cx + Math.cos(angle) * radius;
+          const py = cy + Math.sin(angle) * (radius * 0.85);
 
-    function selectPreset(p) {
-      selectedPreset = p;
-      document.querySelectorAll('.catalog-card').forEach(c => c.classList.remove('selected'));
-      const cards = document.querySelectorAll('.catalog-card');
-      cards.forEach(c => {
-        if (c.innerText.includes(p.name)) c.classList.add('selected');
-      });
+          const isCooldown = p.status === 'cooldown';
+          const stroke = isCooldown ? '#f59e0b' : '#10b981';
 
-      document.getElementById('sel-prov-name').innerText = p.name;
-      document.getElementById('sel-prov-desc').innerText = p.description;
-      document.getElementById('sel-prov-cat').innerText = p.category ? p.category.toUpperCase() : 'CUSTOM';
-      document.getElementById('sel-prov-avatar').innerText = p.name.charAt(0).toUpperCase();
-
-      const mBox = document.getElementById('sel-prov-models');
-      mBox.innerHTML = '';
-      if (p.models && p.models.length > 0) {
-        p.models.forEach(m => {
-          const span = document.createElement('span');
-          span.className = 'model-tag';
-          span.innerText = m;
-          mBox.appendChild(span);
+          svgHtml += `<line class="topo-link" x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="${stroke}"/>`;
+          svgHtml += `
+            <g class="topo-node" transform="translate(${px}, ${py})">
+              <rect x="-45" y="-18" width="90" height="36" rx="6" fill="#121215" stroke="${stroke}" stroke-width="1.5"/>
+              <text text-anchor="middle" dy="-2" fill="#fff" font-size="10" font-weight="600">${p.label}</text>
+              <text text-anchor="middle" dy="11" fill="#71717a" font-size="8">${p.details?.accounts || 1} accts</text>
+            </g>
+          `;
         });
-      }
 
-      document.getElementById('add-prov-id').value = p.id;
-      document.getElementById('add-prov-url').value = p.base_url;
+        // Combos on Left Arc
+        combos.slice(0, 5).forEach((c, idx) => {
+          const angle = Math.PI / 2 + (idx * Math.PI) / (combos.length > 1 ? combos.length - 1 : 1);
+          const radius = Math.min(w, h) * 0.38;
+          const px = cx + Math.cos(angle) * radius;
+          const py = cy + Math.sin(angle) * (radius * 0.85);
 
-      const grpApiKey = document.getElementById('input-group-apikey');
-      const grpLocal = document.getElementById('input-group-local');
-      const grpKiro = document.getElementById('input-group-kiro');
-      const grpOAuth = document.getElementById('input-group-oauth');
-
-      grpApiKey.style.display = 'none';
-      grpLocal.style.display = 'none';
-      grpKiro.style.display = 'none';
-      grpOAuth.style.display = 'none';
-
-      if (p.auth_type === 'refresh_token' || p.id === 'kiro') {
-        grpKiro.style.display = 'block';
-        document.getElementById('save-prov-btn').innerText = `Connect ${p.name}`;
-      } else if (p.auth_type === 'oauth' || p.id === 'antigravity') {
-        grpOAuth.style.display = 'block';
-        document.getElementById('save-prov-btn').innerText = `Close (Authenticate in Terminal)`;
-      } else if (p.auth_type === 'none' || p.category === 'local') {
-        grpLocal.style.display = 'block';
-        document.getElementById('save-prov-btn').innerText = `Connect ${p.name} (No Key Required)`;
-      } else {
-        grpApiKey.style.display = 'block';
-        let keyPlaceholder = 'sk-...';
-        if (p.id.includes('anthropic')) keyPlaceholder = 'sk-ant-api03-...';
-        else if (p.id.includes('gemini')) keyPlaceholder = 'AIzaSy...';
-        else if (p.id.includes('groq')) keyPlaceholder = 'gsk_...';
-        else if (p.id.includes('deepseek')) keyPlaceholder = 'sk-...';
-        else if (p.id.includes('openrouter')) keyPlaceholder = 'sk-or-v1-...';
-        document.getElementById('add-prov-key').placeholder = keyPlaceholder;
-        document.getElementById('save-prov-btn').innerText = `Connect ${p.name}`;
-      }
-    }
-
-    async function autoImportKiro() {
-      showToast('Importing Kiro credentials from local database...');
-      try {
-        const res = await fetch('/api/providers/import-kiro', { method: 'POST' });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast('Kiro credentials imported & active!');
-          closeAddProviderModal();
-          loadStatus();
-        } else {
-          showToast('Import error: ' + (d.error || 'Failed'));
-        }
-      } catch (e) {
-        showToast('Auto-import failed: ' + e.message);
-      }
-    }
-
-    async function autoImportCodex() {
-      showToast('Importing OpenAI Codex credentials from ~/.codex/auth.json...');
-      try {
-        const res = await fetch('/api/providers/import-codex', { method: 'POST' });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast('Codex credentials imported & active!');
-          loadStatus();
-        } else {
-          showToast('Import error: ' + (d.error || 'Failed'));
-        }
-      } catch (e) {
-        showToast('Auto-import failed: ' + e.message);
-      }
-    }
-
-    async function autoImportCopilot() {
-      showToast('Importing GitHub Copilot credentials from ~/.config/github-copilot...');
-      try {
-        const res = await fetch('/api/providers/import-copilot', { method: 'POST' });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast('GitHub Copilot credentials imported & active!');
-          loadStatus();
-        } else {
-          showToast('Import error: ' + (d.error || 'Failed'));
-        }
-      } catch (e) {
-        showToast('Auto-import failed: ' + e.message);
-      }
-    }
-
-    async function submitActiveProvider() {
-      if (!selectedPreset) return;
-      if (selectedPreset.auth_type === 'oauth' && selectedPreset.id === 'antigravity') {
-        closeAddProviderModal();
-        return;
-      }
-      if (selectedPreset.auth_type === 'refresh_token' || selectedPreset.id === 'kiro') {
-        const token = document.getElementById('add-kiro-token').value.trim();
-        const arn = document.getElementById('add-kiro-arn').value.trim();
-        const provId = document.getElementById('add-prov-id').value.trim() || 'kiro';
-        if (!token) {
-          showToast('Please enter Refresh Token or click Auto-Import');
-          return;
-        }
-        try {
-          const res = await fetch('/api/providers/add', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: provId, type: 'kiro', refresh_token: token, profile_arn: arn })
-          });
-          const d = await res.json();
-          if (d.status === 'ok') {
-            showToast(`Kiro account connected!`);
-            closeAddProviderModal();
-            loadStatus();
-          } else {
-            showToast('Error: ' + (d.error || 'Failed'));
-          }
-        } catch (e) {
-          showToast('Failed: ' + e.message);
-        }
-        return;
-      }
-
-      // OpenAI or Local compatible
-      const id = document.getElementById('add-prov-id').value.trim();
-      const url = document.getElementById('add-prov-url').value.trim();
-      const key = document.getElementById('add-prov-key').value.trim();
-      if (!id || !url) {
-        showToast('Provider ID and Base URL required');
-        return;
-      }
-      try {
-        const res = await fetch('/api/providers/add', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, base_url: url, api_key: key, type: 'openai' })
+          svgHtml += `<line class="topo-link" x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="#3b82f6"/>`;
+          svgHtml += `
+            <g class="topo-node" transform="translate(${px}, ${py})">
+              <rect x="-55" y="-18" width="110" height="36" rx="6" fill="#121215" stroke="#3b82f6" stroke-width="1.5"/>
+              <text text-anchor="middle" dy="-2" fill="#fff" font-size="9" font-weight="600">${c.label.slice(0, 15)}</text>
+              <text text-anchor="middle" dy="11" fill="#60a5fa" font-size="8">combo chain</text>
+            </g>
+          `;
         });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast(`Provider "${id}" connected!`);
-          closeAddProviderModal();
-          loadStatus();
-        } else {
-          showToast('Error: ' + (d.error || 'Failed'));
-        }
+
+        svgHtml += `</svg>`;
+        container.innerHTML = svgHtml;
       } catch (e) {
-        showToast('Failed: ' + e.message);
+        console.error('loadTopology error:', e);
       }
     }
 
-    async function triggerAgentSetup(agent) {
-      showToast(`Configuring ${agent}...`);
+    // Load CLI Agents
+    async function loadCliAgents() {
+      const container = document.getElementById('agents-cards-container');
       try {
-        const res = await fetch('/api/agents/setup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ agent })
-        });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast(`Success! ${agent} configured.`);
-          loadStatus();
-        } else {
-          showToast(`Setup error: ${d.error || 'failed'}`);
-        }
-      } catch (e) {
-        showToast(`Setup failed: ${e.message}`);
-      }
-    }
+        const res = await fetch('/api/cli-agents').then(r => r.json());
+        if (!res.tools) return;
 
-    async function reloadConfig() {
-      showToast('Reloading configuration...');
-      try {
-        const res = await fetch('/api/reload', { method: 'POST' });
-        const data = await res.json();
-        if (data.status === 'ok') {
-          showToast('Configuration reloaded successfully');
-          loadStatus();
-        } else {
-          showToast('Reload failed: ' + (data.error || 'Unknown error'));
-        }
-      } catch (e) {
-        showToast('Failed to trigger reload: ' + e.message);
-      }
-    }
-
-    async function loadStatus() {
-      try {
-        const res = await fetch('/api/status');
-        const data = await res.json();
-
-        // Update memory
-        if (data.memory_mb) {
-          document.getElementById('mem-pill').innerText = `RAM: ~${data.memory_mb.toFixed(1)} MB`;
-        }
-
-        // Render providers & accounts
-        const accountsContainer = document.getElementById('accounts-container');
-        accountsContainer.innerHTML = '';
-        let totalProviders = 0;
-
-        if (data.providers && data.providers.length > 0) {
-          data.providers.forEach(p => {
-            totalProviders++;
-            let initial = p.id.charAt(0).toUpperCase();
-            let bg = 'rgba(148, 163, 184, 0.15)';
-            let col = '#94a3b8';
-            if (p.type === 'kiro') {
-              initial = 'K';
-              bg = 'rgba(251, 146, 60, 0.15)';
-              col = '#fb923c';
-            } else if (p.type === 'antigravity') {
-              initial = 'G';
-              bg = 'rgba(96, 165, 250, 0.15)';
-              col = '#60a5fa';
-            } else if (p.type === 'codex') {
-              initial = 'C';
-              bg = 'rgba(168, 85, 247, 0.15)';
-              col = '#c084fc';
-            } else if (p.type === 'copilot') {
-              initial = '🐙';
-              bg = 'rgba(129, 140, 248, 0.15)';
-              col = '#818cf8';
-            } else if (p.type === 'openai') {
-              initial = 'O';
-              bg = 'rgba(74, 222, 128, 0.15)';
-              col = '#4ade80';
-            }
-
-            const card = document.createElement('div');
-            card.className = 'provider-card';
-
-            const hasAccounts = p.accounts && p.accounts.length > 0;
-            const subtitle = p.base_url || (p.type === 'kiro' ? 'AWS CodeWhisperer OIDC pool' : p.type === 'antigravity' ? 'Google Cloud Code Assist pool' : p.type === 'codex' ? 'OpenAI Codex / ChatGPT OAuth pool' : p.type === 'copilot' ? 'GitHub Copilot OAuth pool' : 'Direct upstream');
-
-            card.innerHTML = `
-              <div class="provider-card-header">
-                <div style="display: flex; align-items: center; gap: 0.75rem;">
-                  <div class="account-avatar" style="background:${bg}; color:${col}; font-weight:700;">${initial}</div>
+        container.innerHTML = res.tools.map(t => {
+          const detectedBadge = t.detected 
+            ? `<span class="badge badge-success">✓ Detected</span>`
+            : `<span class="badge badge-muted">Not detected</span>`;
+          const configBadge = t.configured
+            ? `<span class="badge badge-success">✓ Configured</span>`
+            : `<span class="badge badge-warning">Not configured</span>`;
+          
+          return `
+            <div class="agent-card">
+              <div class="agent-top">
+                <div class="agent-info">
+                  <div class="agent-icon">${getAgentEmoji(t.id)}</div>
                   <div>
-                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                      <span style="font-weight: 700; font-size: 0.95rem;">${p.id}</span>
-                      <span class="pill pill-blue" style="font-size: 0.7rem; padding: 0.1rem 0.45rem;">${p.type}</span>
-                      <span class="pill pill-green" style="font-size: 0.7rem; padding: 0.1rem 0.45rem;">
-                        ${hasAccounts ? p.accounts.length + ' account' + (p.accounts.length > 1 ? 's' : '') : 'Active'}
-                      </span>
-                    </div>
-                    <div style="font-size: 0.74rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; margin-top: 2px;">
-                      ${subtitle}
-                    </div>
+                    <div class="agent-name">${t.name}</div>
+                    <div style="font-size: 0.7rem; color: var(--text-dim);">${t.version || t.default_command}</div>
                   </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 0.4rem;">
-                  ${p.type === 'kiro' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportKiro()" title="Auto-import from CLI">📥 Import</button>` : p.type === 'codex' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportCodex()" title="Auto-import from CLI">📥 Import</button>` : p.type === 'copilot' ? `<button class="btn btn-secondary" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="autoImportCopilot()" title="Auto-import from CLI">📥 Import</button>` : ''}
-                  <button class="btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem;" onclick="testProvider('${p.id}', this)" title="Test connection">⚡ Test</button>
-                  <button class="btn" style="padding: 0.22rem 0.55rem; font-size: 0.74rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteProvider('${p.id}')" title="Delete Provider">🗑</button>
+                <div style="display: flex; gap: 0.3rem; flex-direction: column; align-items: flex-end;">
+                  ${detectedBadge}
+                  ${configBadge}
                 </div>
               </div>
-              ${hasAccounts ? `
-                <div class="provider-accounts-list">
-                  ${p.accounts.map(a => `
-                    <div class="account-subrow">
-                      <div style="display: flex; align-items: center; gap: 0.6rem; min-width: 0;">
-                        <span style="color: var(--text-muted); font-size: 0.8rem;">↳</span>
-                        <div style="min-width: 0;">
-                          <div style="font-size: 0.82rem; font-weight: 600; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${a.email || a.id}</div>
-                          <div style="font-size: 0.68rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">ID: ${a.id} ${a.project_id ? '• ' + a.project_id : ''}</div>
-                        </div>
-                      </div>
-                      <div style="display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0;">
-                        <span class="pill pill-green" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;"><span class="dot"></span> Active</span>
-                        <button class="btn" style="padding: 0.18rem 0.45rem; font-size: 0.72rem;" onclick="testAccount('${p.id}', '${a.id}', this)" title="Test account credentials">⚡ Test</button>
-                        <button class="btn" style="padding: 0.18rem 0.45rem; font-size: 0.72rem; color: #ef4444; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteAccount('${p.id}', '${a.id}')" title="Delete Account">🗑</button>
-                      </div>
-                    </div>
-                  `).join('')}
-                </div>
-              ` : ''}
-            `;
-            accountsContainer.appendChild(card);
-          });
-        }
-
-        if (totalProviders === 0) {
-          accountsContainer.innerHTML = `
-            <div style="color: var(--text-muted); font-size: 0.85rem; padding: 1rem 0; text-align: center;">
-              No providers connected. Click "+ Add Provider / Key" to add one.
+              <div class="agent-desc">${t.description}</div>
+              <div class="agent-footer">
+                <span style="color: var(--text-dim); font-family: 'Geist Mono'; font-size: 0.7rem;">${t.settings_file}</span>
+                <button class="btn btn-outline btn-sm" onclick="configureAgent('${t.id}')">Configure →</button>
+              </div>
             </div>
           `;
-        }
-
-        // Render all 14 agents
-        const agentsGrid = document.getElementById('agents-grid');
-        if (data.agents && agentsGrid) {
-          agentsGrid.innerHTML = '';
-          Object.keys(data.agents).forEach(k => {
-            const ag = data.agents[k];
-            const isConn = ag.configured;
-            const div = document.createElement('div');
-            div.className = 'agent-box';
-            div.innerHTML = `
-              <div class="agent-header">
-                <span class="agent-name">${ag.name || k}</span>
-                <span class="pill ${isConn ? 'pill-green' : 'pill-blue'}">${isConn ? 'Connected' : 'Available'}</span>
-              </div>
-              <div style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.3;">${ag.desc || ''}</div>
-              <div style="display: flex; gap: 0.4rem; align-items: center; margin-top: auto;">
-                <div class="agent-code" style="flex: 1;" onclick="copyText('${ag.cmd || 'goroute setup ' + k}')">
-                  <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${ag.cmd || 'goroute setup ' + k}</span>
-                  <span>📋</span>
-                </div>
-                <button class="btn" style="padding: 0.35rem 0.6rem; font-size: 0.72rem; white-space: nowrap;" onclick="triggerAgentSetup('${k}')">⚡ Setup</button>
-              </div>
-            `;
-            agentsGrid.appendChild(div);
-          });
-        }
-
-        // Render combos
-        const tbody = document.getElementById('combos-tbody');
-        tbody.innerHTML = '';
-        if (data.combos && data.combos.length > 0) {
-          data.combos.forEach(c => {
-            const tr = document.createElement('tr');
-            const name = c.name || c.Name || 'Combo';
-            const targets = c.targets || c.Targets || [];
-            const strategy = c.strategy || c.Strategy || 'priority';
-            const targetStr = targets.map(t => `${t.provider_id || t.ProviderID}/${t.model || t.Model}`).join(' ➔ ');
-            tr.innerHTML = `
-              <td><strong>${name}</strong></td>
-              <td><span class="badge-model">${targetStr}</span></td>
-              <td><span style="color:var(--text-muted)">${strategy}</span></td>
-            `;
-            tbody.appendChild(tr);
-          });
-        } else {
-          tbody.innerHTML = `<tr><td colspan="3" style="color:var(--text-muted)">Default provider direct routing active</td></tr>`;
-        }
-
-        // Update playground models dropdown
-        const modelSelect = document.getElementById('playground-model');
-        if (data.models && data.models.length > 0 && modelSelect.options.length <= 5) {
-          const currentVal = modelSelect.value;
-          modelSelect.innerHTML = '';
-          data.models.forEach(m => {
-            const opt = document.createElement('option');
-            opt.value = m.id;
-            opt.innerText = `${m.id} (${m.owned_by})`;
-            modelSelect.appendChild(opt);
-          });
-          if (currentVal) modelSelect.value = currentVal;
-        }
-
+        }).join('');
       } catch (e) {
-        console.error('Failed to load status:', e);
+        console.error('loadCliAgents error:', e);
       }
     }
 
-    async function runPlayground() {
-      const model = document.getElementById('playground-model').value;
-      const prompt = document.getElementById('playground-prompt').value;
-      const btn = document.getElementById('playground-btn');
-      const out = document.getElementById('playground-output');
+    function getAgentEmoji(id) {
+      const emojis = {
+        claude: '🟠',
+        codex: '🟢',
+        opencode: '💻',
+        openclaw: '🦀',
+        hermes: '⚡',
+        goose: '🪿',
+        prime: '🔮',
+        cursor: '🖱️',
+        cline: '🤖',
+        roo: '🦘',
+        aider: '🛠️',
+        continue: '▶️',
+        qwen: '🌐'
+      };
+      return emojis[id] || '⚙️';
+    }
 
-      if (!prompt.trim()) return;
+    async function configureAgent(id) {
+      try {
+        const res = await fetch(`/api/cli-agents/${id}/configure`, { method: 'POST' }).then(r => r.json());
+        if (res.status === 'ok') {
+          showToast(`✅ ${res.message}`);
+          loadCliAgents();
+        } else {
+          showToast(`❌ Error: ${res.error}`);
+        }
+      } catch (e) {
+        showToast(`❌ Configuration failed: ${e.message}`);
+      }
+    }
 
-      btn.disabled = true;
-      btn.innerText = 'Testing...';
-      out.innerText = `Connecting to GoRoute via model: ${model}...\n`;
+    async function configureAllAgents() {
+      const agents = ['claude', 'codex', 'opencode', 'openclaw', 'hermes', 'goose'];
+      for (const a of agents) {
+        await configureAgent(a);
+      }
+      showToast('🎉 All standard agents configured to GoRoute!');
+    }
+
+    // Load Combos
+    async function loadCombos() {
+      const tbody = document.getElementById('combos-tbody');
+      try {
+        const res = await fetch('/api/combos').then(r => r.json());
+        if (!res.combos) return;
+
+        tbody.innerHTML = res.combos.map(c => `
+          <tr>
+            <td style="font-family: 'Geist Mono'; font-weight: 600; color: #fff;">${c.name}</td>
+            <td><span class="badge badge-accent">${c.strategy}</span></td>
+            <td>
+              <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+                ${c.targets.map(t => `<span class="badge badge-muted">${t.provider_id}/${t.model}</span>`).join('')}
+              </div>
+            </td>
+            <td>
+              <button class="btn btn-danger btn-sm" onclick="deleteCombo('${c.name}')">Delete</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (e) {
+        console.error('loadCombos error:', e);
+      }
+    }
+
+    function openNewComboModal() {
+      document.getElementById('modal-combo').classList.add('active');
+    }
+    function closeModal(id) {
+      document.getElementById(id).classList.remove('active');
+    }
+
+    async function submitCombo() {
+      const name = document.getElementById('modal-combo-name').value.trim();
+      const strategy = document.getElementById('modal-combo-strategy').value;
+      const p1 = document.getElementById('modal-target-1-prov').value;
+      const m1 = document.getElementById('modal-target-1-model').value.trim();
+      const p2 = document.getElementById('modal-target-2-prov').value;
+      const m2 = document.getElementById('modal-target-2-model').value.trim();
+
+      if (!name || !m1) {
+        alert('Please fill out combo name and at least primary target model');
+        return;
+      }
+
+      const targets = [{ provider_id: p1, model: m1 }];
+      if (p2 && m2) {
+        targets.push({ provider_id: p2, model: m2 });
+      }
 
       try {
-        const startTime = performance.now();
-        const res = await fetch('/v1/chat/completions', {
+        const res = await fetch('/api/combos', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: model,
-            messages: [{ role: 'user', content: prompt }],
-            max_tokens: 150
-          })
-        });
+          body: JSON.stringify({ name, strategy, targets })
+        }).then(r => r.json());
 
-        const data = await res.json();
-        const duration = ((performance.now() - startTime) / 1000).toFixed(2);
-
-        if (data.choices && data.choices[0] && data.choices[0].message) {
-          out.innerText = `[Completed in ${duration}s via ${data.model}]\n\n${data.choices[0].message.content}`;
-        } else if (data.error) {
-          out.innerText = `[Error ${res.status}]\n${JSON.stringify(data.error, null, 2)}`;
-        } else {
-          out.innerText = JSON.stringify(data, null, 2);
+        if (res.status === 'ok') {
+          showToast(`✅ Combo '${name}' saved successfully!`);
+          closeModal('modal-combo');
+          loadCombos();
+          loadStats();
         }
       } catch (e) {
-        out.innerText = `[Network Error]: ${e.message}`;
-      } finally {
-        btn.disabled = false;
-        btn.innerText = 'Run Prompt';
+        showToast(`❌ Error saving combo: ${e.message}`);
       }
     }
 
-    async function deleteAccount(provId, accId) {
-      if (!confirm(`Are you sure you want to remove account "${accId}" from ${provId}?`)) return;
+    async function deleteCombo(name) {
+      if (!confirm(`Delete combo '${name}'?`)) return;
       try {
-        const res = await fetch(`/api/providers/${provId}/accounts/${accId}`, { method: 'DELETE' });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast(`Account "${accId}" removed`);
-          loadStatus();
-        } else {
-          showToast('Failed to delete account');
-        }
+        await fetch(`/api/combos/${name}`, { method: 'DELETE' });
+        showToast(`🗑️ Combo '${name}' deleted.`);
+        loadCombos();
+        loadStats();
       } catch (e) {
-        showToast('Delete failed: ' + e.message);
+        showToast(`❌ Failed to delete combo: ${e.message}`);
       }
     }
 
-    async function deleteProvider(provId) {
-      if (!confirm(`Are you sure you want to disconnect provider "${provId}"?`)) return;
+    // Load Providers
+    async function loadProviders() {
+      const container = document.getElementById('providers-cards-container');
       try {
-        const res = await fetch(`/api/providers/${provId}`, { method: 'DELETE' });
-        const d = await res.json();
-        if (d.status === 'ok') {
-          showToast(`Provider "${provId}" disconnected`);
-          loadStatus();
-        } else {
-          showToast('Failed to delete provider');
-        }
+        const res = await fetch('/api/topology').then(r => r.json());
+        if (!res.nodes) return;
+
+        const provs = res.nodes.filter(n => n.type === 'provider');
+        container.innerHTML = provs.map(p => `
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">${p.label}</div>
+              <span class="badge ${p.status === 'active' ? 'badge-success' : 'badge-warning'}">${p.status}</span>
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-muted);">
+              Type: <strong style="color: #fff;">${p.details?.type}</strong><br>
+              Accounts: <strong style="color: #fff;">${p.details?.accounts || 1} active</strong>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="testProvider('${p.id}')">Test Latency ⚡</button>
+          </div>
+        `).join('');
       } catch (e) {
-        showToast('Delete failed: ' + e.message);
+        console.error('loadProviders error:', e);
       }
     }
 
-    async function testProvider(provId, btn) {
-      const origText = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = 'Testing...';
+    async function testProvider(id) {
+      showToast(`Testing connection to ${id}...`);
       try {
-        const res = await fetch(`/api/providers/${provId}/test`, { method: 'POST' });
-        const d = await res.json();
-        if (d.valid) {
-          btn.innerHTML = `✓ ${d.latency_ms}ms`;
-          btn.style.borderColor = 'rgba(74, 222, 128, 0.4)';
-          btn.style.color = '#4ade80';
-          showToast(`Provider "${provId}" OK (${d.latency_ms}ms)`);
+        const start = performance.now();
+        const res = await fetch(`/api/providers/${id}/test`, { method: 'POST' }).then(r => r.json());
+        const latency = Math.round(performance.now() - start);
+        if (res.status === 'ok' || !res.error) {
+          showToast(`⚡ ${id} returned 200 OK (${latency}ms)`);
         } else {
-          btn.innerHTML = '✗ Failed';
-          btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-          btn.style.color = '#ef4444';
-          showToast(`Test failed: ${d.error || 'Connection refused'}`);
+          showToast(`⚠️ ${id}: ${res.error || 'Check accounts'}`);
         }
       } catch (e) {
-        btn.innerHTML = '✗ Error';
-        showToast('Test request error: ' + e.message);
-      } finally {
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.innerHTML = origText;
-          btn.style.borderColor = '';
-          btn.style.color = '';
-        }, 3500);
+        showToast(`❌ Test failed: ${e.message}`);
       }
     }
 
-    async function testAccount(provId, accId, btn) {
-      const origText = btn.innerHTML;
-      btn.disabled = true;
-      btn.innerHTML = 'Testing...';
+    // Caveman Compression Tester
+    async function testCompression() {
+      const input = document.getElementById('comp-input').value.trim();
+      const intensity = document.querySelector('input[name="comp-intensity"]:checked').value;
+      if (!input) return;
+
       try {
-        const res = await fetch(`/api/providers/${provId}/accounts/${accId}/test`, { method: 'POST' });
-        const d = await res.json();
-        if (d.valid) {
-          btn.innerHTML = `✓ ${d.latency_ms}ms`;
-          btn.style.borderColor = 'rgba(74, 222, 128, 0.4)';
-          btn.style.color = '#4ade80';
-          showToast(`Account "${accId}" active (${d.latency_ms}ms)`);
-        } else {
-          btn.innerHTML = '✗ Invalid';
-          btn.style.borderColor = 'rgba(239, 68, 68, 0.4)';
-          btn.style.color = '#ef4444';
-          showToast(`Account error: ${d.error || 'Invalid credentials'}`);
+        const res = await fetch('/api/compression/compress', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ input, intensity })
+        }).then(r => r.json());
+
+        if (res.compressed !== undefined) {
+          document.getElementById('comp-output').value = res.compressed;
+          document.getElementById('comp-chars-saved').textContent = res.stats.chars_saved;
+          document.getElementById('comp-pct-saved').textContent = `${res.stats.percent_saved.toFixed(1)}%`;
+          document.getElementById('comp-techniques').textContent = `Techniques applied: ${res.stats.techniques.join(', ') || 'none'}`;
         }
       } catch (e) {
-        btn.innerHTML = '✗ Error';
-        showToast('Test error: ' + e.message);
-      } finally {
-        setTimeout(() => {
-          btn.disabled = false;
-          btn.innerHTML = origText;
-          btn.style.borderColor = '';
-          btn.style.color = '';
-        }, 3500);
+        showToast(`❌ Compression error: ${e.message}`);
       }
     }
 
-    // Initialize
-    loadStatus();
-    setInterval(loadStatus, 10000);
+    // Live Request Stream (SSE)
+    function initSSEStream() {
+      if (sseSource) sseSource.close();
+      sseSource = new EventSource('/api/logs/stream');
+
+      sseSource.onmessage = (event) => {
+        try {
+          const log = JSON.parse(event.data);
+          appendRequestRow('dash-requests-tbody', log, 8);
+          appendRequestRow('traffic-full-tbody', log, 50);
+        } catch (e) {
+          console.error('SSE parse error:', e);
+        }
+      };
+
+      sseSource.onerror = () => {
+        setTimeout(initSSEStream, 5000);
+      };
+    }
+
+    function appendRequestRow(tbodyId, log, maxRows) {
+      const tbody = document.getElementById(tbodyId);
+      if (!tbody) return;
+
+      const row = document.createElement('tr');
+      const isErr = log.status_code >= 400 || log.error;
+      const statusBadge = isErr 
+        ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">${log.status_code || 'ERR'}</span>`
+        : `<span class="badge badge-success">${log.status_code || 200}</span>`;
+
+      if (tbodyId === 'dash-requests-tbody') {
+        row.innerHTML = `
+          <td style="font-family: 'Geist Mono'; font-weight: 600;">${log.model || 'unknown'}</td>
+          <td>${log.tokens || 12} tok</td>
+          <td style="color: var(--text-dim);">${log.duration_ms || 45}ms</td>
+          <td>${statusBadge}</td>
+        `;
+      } else {
+        row.innerHTML = `
+          <td style="font-family: 'Geist Mono'; color: var(--text-dim); font-size: 0.75rem;">${new Date(log.timestamp * 1000).toLocaleTimeString()}</td>
+          <td style="font-family: 'Geist Mono'; font-weight: 600;">${log.model || 'unknown'}</td>
+          <td><span class="badge badge-muted">${log.provider || 'router'}</span></td>
+          <td>${log.tokens || 12} tok</td>
+          <td>${log.duration_ms || 45}ms</td>
+          <td>${statusBadge}</td>
+        `;
+      }
+
+      if (tbody.children.length === 1 && tbody.children[0].textContent.includes('Connecting')) {
+        tbody.innerHTML = '';
+      }
+      tbody.prepend(row);
+
+      while (tbody.children.length > maxRows) {
+        tbody.removeChild(tbody.lastChild);
+      }
+    }
+
+    // Init
+    window.addEventListener('DOMContentLoaded', () => {
+      loadStats();
+      loadTopology('dash-topology-svg');
+      initSSEStream();
+    });
   </script>
 </body>
 </html>

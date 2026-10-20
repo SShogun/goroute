@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ziuus/goroute/pkg/cache"
 	"github.com/ziuus/goroute/pkg/catalog"
+	"github.com/ziuus/goroute/pkg/clitools"
 	"github.com/ziuus/goroute/pkg/compression"
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/keys"
@@ -127,6 +128,12 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/compression/compress", s.handleCompressPrompt)
 	s.mux.Get("/api/router/stats", s.handleRouterStats)
 	s.mux.Post("/api/router/quota", s.handleSetRouterQuota)
+	s.mux.Get("/api/cli-agents", s.handleListCliAgents)
+	s.mux.Post("/api/cli-agents/{id}/configure", s.handleConfigureCliAgent)
+	s.mux.Get("/api/topology", s.handleTopology)
+	s.mux.Get("/api/combos", s.handleListCombos)
+	s.mux.Post("/api/combos", s.handleSaveCombo)
+	s.mux.Delete("/api/combos/{name}", s.handleDeleteCombo)
 
 	// Built-in MCP Server
 	s.mux.Get("/sse", s.mcpServer.HandleSSE)
@@ -1572,13 +1579,23 @@ func (s *Server) handleRevokeKey(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCompressPrompt(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Text string `json:"text"`
+		Text      string `json:"text"`
+		Input     string `json:"input"`
+		Intensity string `json:"intensity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	compressed, stats := compression.CompressText(req.Text)
+	text := req.Text
+	if text == "" {
+		text = req.Input
+	}
+	intensity := req.Intensity
+	if intensity == "" {
+		intensity = "full"
+	}
+	compressed, stats := compression.CompressWithOptions(text, intensity)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":     "ok",
@@ -1699,6 +1716,250 @@ func consolidateSSEStream(body io.Reader, model string) ([]byte, error) {
 		},
 	}
 	return json.Marshal(res)
+}
+
+func (s *Server) handleListCliAgents(w http.ResponseWriter, r *http.Request) {
+	tools := clitools.ListTools()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"count":  len(tools),
+		"tools":  tools,
+	})
+}
+
+func (s *Server) handleConfigureCliAgent(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "agent id is required", http.StatusBadRequest)
+		return
+	}
+	msg, err := clitools.ConfigureTool(id)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": msg,
+	})
+}
+
+func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
+	home, _ := os.UserHomeDir()
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	memMB := fmt.Sprintf("%.1f MB", float64(m.Alloc)/(1024*1024))
+
+	type Node struct {
+		ID       string                 `json:"id"`
+		Label    string                 `json:"label"`
+		Type     string                 `json:"type"`   // "gateway", "provider", "combo"
+		Status   string                 `json:"status"` // "active", "cooldown", "warning"
+		Details  map[string]interface{} `json:"details,omitempty"`
+	}
+	type Link struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+		Status string `json:"status"`
+	}
+
+	nodes := []Node{
+		{
+			ID:     "goroute",
+			Label:  "GoRoute Gateway",
+			Type:   "gateway",
+			Status: "active",
+			Details: map[string]interface{}{
+				"port":   8128,
+				"memory": memMB,
+				"uptime": time.Since(s.startTime).Round(time.Second).String(),
+			},
+		},
+	}
+	var links []Link
+
+	cooldowns := resilience.GlobalCooldown.List()
+	cooldownMap := make(map[string]bool)
+	for _, cd := range cooldowns {
+		cooldownMap[cd.ProviderID] = true
+	}
+
+	for _, p := range cfg.Providers {
+		status := "active"
+		if cooldownMap[p.ID] {
+			status = "cooldown"
+		}
+		nodes = append(nodes, Node{
+			ID:     p.ID,
+			Label:  p.ID,
+			Type:   "provider",
+			Status: status,
+			Details: map[string]interface{}{
+				"type":     p.Type,
+				"accounts": len(p.Accounts),
+			},
+		})
+		links = append(links, Link{
+			Source: "goroute",
+			Target: p.ID,
+			Status: status,
+		})
+	}
+
+	for _, c := range cfg.Combos {
+		nodes = append(nodes, Node{
+			ID:     "combo-" + c.Name,
+			Label:  c.Name,
+			Type:   "combo",
+			Status: "active",
+			Details: map[string]interface{}{
+				"strategy": c.Strategy,
+				"targets":  len(c.Targets),
+			},
+		})
+		links = append(links, Link{
+			Source: "goroute",
+			Target: "combo-" + c.Name,
+			Status: "active",
+		})
+		for _, t := range c.Targets {
+			links = append(links, Link{
+				Source: "combo-" + c.Name,
+				Target: t.ProviderID,
+				Status: "active",
+			})
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"nodes":  nodes,
+		"links":  links,
+	})
+}
+
+func (s *Server) handleListCombos(w http.ResponseWriter, r *http.Request) {
+	home, _ := os.UserHomeDir()
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"combos": cfg.Combos,
+	})
+}
+
+func (s *Server) handleSaveCombo(w http.ResponseWriter, r *http.Request) {
+	var combo config.ComboConfig
+	if err := json.NewDecoder(r.Body).Decode(&combo); err != nil {
+		http.Error(w, "invalid combo payload: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if combo.Name == "" || len(combo.Targets) == 0 {
+		http.Error(w, "combo name and at least one target required", http.StatusBadRequest)
+		return
+	}
+	if combo.Strategy == "" {
+		combo.Strategy = "failover"
+	}
+
+	home, _ := os.UserHomeDir()
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	found := false
+	for i, c := range cfg.Combos {
+		if c.Name == combo.Name {
+			cfg.Combos[i] = combo
+			found = true
+			break
+		}
+	}
+	if !found {
+		cfg.Combos = append(cfg.Combos, combo)
+	}
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, "save config failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"combo":  combo,
+	})
+}
+
+func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		http.Error(w, "combo name required", http.StatusBadRequest)
+		return
+	}
+
+	home, _ := os.UserHomeDir()
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+
+	var newCombos []config.ComboConfig
+	for _, c := range cfg.Combos {
+		if c.Name != name {
+			newCombos = append(newCombos, c)
+		}
+	}
+	cfg.Combos = newCombos
+
+	if err := cfg.Save(cfgPath); err != nil {
+		http.Error(w, "save config failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"deleted": name,
+	})
 }
 
 
