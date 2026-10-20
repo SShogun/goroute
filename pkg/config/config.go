@@ -17,6 +17,7 @@ type ServerConfig struct {
 
 type AccountConfig struct {
 	ID           string    `yaml:"id" json:"id"`
+	Pool         string    `yaml:"pool,omitempty" json:"pool,omitempty"`
 	Email        string    `yaml:"email,omitempty" json:"email,omitempty"`
 	RefreshToken string    `yaml:"refresh_token,omitempty" json:"refresh_token,omitempty"`
 	AccessToken  string    `yaml:"access_token,omitempty" json:"access_token,omitempty"`
@@ -26,6 +27,7 @@ type AccountConfig struct {
 	APIKey       string    `yaml:"api_key,omitempty" json:"api_key,omitempty"`
 	AccountID    string    `yaml:"account_id,omitempty" json:"account_id,omitempty"`
 	Status       string    `yaml:"status,omitempty" json:"status,omitempty"`
+	Weight       float64   `yaml:"weight,omitempty" json:"weight,omitempty"`
 }
 
 type ProviderConfig struct {

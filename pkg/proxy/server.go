@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -259,7 +260,19 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	body, isStream, statusCode, err := s.router.Execute(r.Context(), &chatReq)
+	poolHeader := r.Header.Get("x-goroute-pool")
+	if poolHeader == "" {
+		poolHeader = r.Header.Get("x-pool")
+	}
+	if poolHeader == "" {
+		poolHeader = r.URL.Query().Get("pool")
+	}
+	ctx := r.Context()
+	if poolHeader != "" {
+		ctx = context.WithValue(ctx, "goroute-pool", poolHeader)
+	}
+
+	body, isStream, statusCode, err := s.router.Execute(ctx, &chatReq)
 	if err != nil {
 		log.Printf("[GoRoute] Execute error: %v (code %d)", err, statusCode)
 		if statusCode < 100 || statusCode > 599 {
@@ -929,14 +942,16 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		AccountID    string `json:"account_id"`
-		ID           string `json:"id"`
-		Type         string `json:"type"`
-		APIKey       string `json:"api_key"`
-		RefreshToken string `json:"refresh_token"`
-		Email        string `json:"email"`
-		ProjectID    string `json:"project_id"`
-		ProfileARN   string `json:"profile_arn"`
+		AccountID    string  `json:"account_id"`
+		ID           string  `json:"id"`
+		Pool         string  `json:"pool"`
+		Type         string  `json:"type"`
+		APIKey       string  `json:"api_key"`
+		RefreshToken string  `json:"refresh_token"`
+		Email        string  `json:"email"`
+		ProjectID    string  `json:"project_id"`
+		ProfileARN   string  `json:"profile_arn"`
+		Weight       float64 `json:"weight"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -949,6 +964,12 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 	if accID == "" {
 		http.Error(w, "account_id is required", http.StatusBadRequest)
 		return
+	}
+	if req.Pool == "" {
+		req.Pool = "pool1"
+	}
+	if req.Weight <= 0 {
+		req.Weight = 1.0
 	}
 
 	cfgPath := s.cfgPath
@@ -968,14 +989,19 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 			if len(cfg.Providers[i].Accounts) == 0 && (cfg.Providers[i].APIKey != "" || cfg.Providers[i].RefreshToken != "") {
 				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
 					ID:           p.ID + "-primary",
+					Pool:         "pool1",
 					APIKey:       p.APIKey,
 					RefreshToken: p.RefreshToken,
 					ProfileARN:   p.ProfileARN,
+					Weight:       1.0,
 				})
 			}
 			updated := false
 			for j, a := range cfg.Providers[i].Accounts {
 				if a.ID == accID {
+					if req.Pool != "" {
+						cfg.Providers[i].Accounts[j].Pool = req.Pool
+					}
 					if req.APIKey != "" {
 						cfg.Providers[i].Accounts[j].APIKey = req.APIKey
 					}
@@ -991,6 +1017,9 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 					if req.ProfileARN != "" {
 						cfg.Providers[i].Accounts[j].ProfileARN = req.ProfileARN
 					}
+					if req.Weight > 0 {
+						cfg.Providers[i].Accounts[j].Weight = req.Weight
+					}
 					updated = true
 					break
 				}
@@ -998,11 +1027,13 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 			if !updated {
 				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
 					ID:           accID,
+					Pool:         req.Pool,
 					APIKey:       req.APIKey,
 					RefreshToken: req.RefreshToken,
 					Email:        req.Email,
 					ProjectID:    req.ProjectID,
 					ProfileARN:   req.ProfileARN,
+					Weight:       req.Weight,
 				})
 			}
 			break
@@ -1020,11 +1051,13 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 			Accounts: []config.AccountConfig{
 				{
 					ID:           accID,
+					Pool:         req.Pool,
 					APIKey:       req.APIKey,
 					RefreshToken: req.RefreshToken,
 					Email:        req.Email,
 					ProjectID:    req.ProjectID,
 					ProfileARN:   req.ProfileARN,
+					Weight:       req.Weight,
 				},
 			},
 		}
@@ -1036,7 +1069,7 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pool.GlobalPool.RegisterAccount(id, accID, 1.0)
+	pool.GlobalPool.RegisterAccount(req.Pool, id, accID, req.Weight)
 	_ = s.Reload()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -1044,7 +1077,8 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 		"status":     "ok",
 		"provider":   id,
 		"account_id": accID,
-		"message":    fmt.Sprintf("Account %s added to provider %s pool successfully", accID, id),
+		"pool":       req.Pool,
+		"message":    fmt.Sprintf("Account %s added to pool %s successfully", accID, req.Pool),
 	})
 }
 
@@ -1280,12 +1314,20 @@ func (s *Server) Reload() error {
 			for _, a := range pCfg.Accounts {
 				if a.APIKey != "" {
 					keys = append(keys, a.APIKey)
-					pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
+					poolID := a.Pool
+					if poolID == "" {
+						poolID = "pool1"
+					}
+					weight := a.Weight
+					if weight <= 0 {
+						weight = 1.0
+					}
+					pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
 				}
 			}
 			if pCfg.APIKey != "" {
 				keys = append(keys, pCfg.APIKey)
-				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID+"-primary", 1.0)
+				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID+"-primary", 1.0)
 			}
 			prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
 			s.router.RegisterProvider(prov)
@@ -1297,15 +1339,24 @@ func (s *Server) Reload() error {
 					sec, _ := st.GetSecret(a.ID)
 					refToken = sec
 				}
+				poolID := a.Pool
+				if poolID == "" {
+					poolID = "pool1"
+				}
 				accounts = append(accounts, &antigravity.Account{
 					ID:           a.ID,
+					Pool:         poolID,
 					Email:        a.Email,
 					RefreshToken: refToken,
 					AccessToken:  a.AccessToken,
 					ExpiresAt:    a.ExpiresAt,
 					ProjectID:    a.ProjectID,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
+				weight := a.Weight
+				if weight <= 0 {
+					weight = 1.0
+				}
+				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
 			}
 			prov := antigravity.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1317,20 +1368,30 @@ func (s *Server) Reload() error {
 					sec, _ := st.GetSecret(a.ID)
 					refToken = sec
 				}
+				poolID := a.Pool
+				if poolID == "" {
+					poolID = "pool1"
+				}
 				accounts = append(accounts, &kiro.Account{
 					ID:           a.ID,
+					Pool:         poolID,
 					RefreshToken: refToken,
 					ProfileARN:   a.ProfileARN,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
+				weight := a.Weight
+				if weight <= 0 {
+					weight = 1.0
+				}
+				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
 			}
 			if len(accounts) == 0 && pCfg.RefreshToken != "" {
 				accounts = append(accounts, &kiro.Account{
 					ID:           pCfg.ID,
+					Pool:         "pool1",
 					RefreshToken: pCfg.RefreshToken,
 					ProfileARN:   pCfg.ProfileARN,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
+				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := kiro.NewProviderWithAccounts(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1342,21 +1403,31 @@ func (s *Server) Reload() error {
 					sec, _ := st.GetSecret(a.ID)
 					refToken = sec
 				}
+				poolID := a.Pool
+				if poolID == "" {
+					poolID = "pool1"
+				}
 				accounts = append(accounts, &codex.Account{
 					ID:           a.ID,
+					Pool:         poolID,
 					RefreshToken: refToken,
 					AccessToken:  a.AccessToken,
 					AccountID:    a.AccountID,
 					ExpiresAt:    a.ExpiresAt,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
+				weight := a.Weight
+				if weight <= 0 {
+					weight = 1.0
+				}
+				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
 			}
 			if len(accounts) == 0 && pCfg.RefreshToken != "" {
 				accounts = append(accounts, &codex.Account{
 					ID:           pCfg.ID,
+					Pool:         "pool1",
 					RefreshToken: pCfg.RefreshToken,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
+				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := codex.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
@@ -1367,41 +1438,61 @@ func (s *Server) Reload() error {
 				if token == "" {
 					token = a.AccessToken
 				}
+				poolID := a.Pool
+				if poolID == "" {
+					poolID = "pool1"
+				}
 				accounts = append(accounts, &copilot.Account{
 					ID:          a.ID,
+					Pool:        poolID,
 					GitHubToken: token,
 					User:        a.Email,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
+				weight := a.Weight
+				if weight <= 0 {
+					weight = 1.0
+				}
+				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
 			}
 			if len(accounts) == 0 && pCfg.APIKey != "" {
 				accounts = append(accounts, &copilot.Account{
 					ID:          pCfg.ID,
+					Pool:        "pool1",
 					GitHubToken: pCfg.APIKey,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
+				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := copilot.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)
 		case "cursor":
 			var accounts []*cursor.Account
 			for _, a := range pCfg.Accounts {
+				poolID := a.Pool
+				if poolID == "" {
+					poolID = "pool1"
+				}
 				accounts = append(accounts, &cursor.Account{
 					ID:           a.ID,
+					Pool:         poolID,
 					Email:        a.Email,
 					AccessToken:  a.AccessToken,
 					RefreshToken: a.RefreshToken,
 					ExpiresAt:    a.ExpiresAt,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, a.ID, 1.0)
+				weight := a.Weight
+				if weight <= 0 {
+					weight = 1.0
+				}
+				pool.GlobalPool.RegisterAccount(poolID, pCfg.ID, a.ID, weight)
 			}
 			if len(accounts) == 0 && (pCfg.APIKey != "" || pCfg.RefreshToken != "") {
 				accounts = append(accounts, &cursor.Account{
 					ID:           pCfg.ID,
+					Pool:         "pool1",
 					AccessToken:  pCfg.APIKey,
 					RefreshToken: pCfg.RefreshToken,
 				})
-				pool.GlobalPool.RegisterAccount(pCfg.ID, pCfg.ID, 1.0)
+				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID, 1.0)
 			}
 			prov := cursor.NewProvider(pCfg.ID, accounts)
 			s.router.RegisterProvider(prov)

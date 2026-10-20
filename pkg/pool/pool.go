@@ -8,6 +8,8 @@ import (
 
 type AccountUsage struct {
 	AccountID     string    `json:"account_id"`
+	PoolID        string    `json:"pool_id"`
+	ProviderID    string    `json:"provider_id"`
 	TotalTokens   int64     `json:"total_tokens"`
 	TotalRequests int64     `json:"total_requests"`
 	WindowTokens  int64     `json:"window_tokens"` // Tokens consumed in current rolling window
@@ -18,12 +20,12 @@ type AccountUsage struct {
 }
 
 type AccountPool struct {
-	mu            sync.RWMutex
-	providerID    string
-	mode          string // "balanced" (fair share), "round_robin", "priority"
-	accounts      map[string]*AccountUsage
-	windowSize    time.Duration
-	rrCounter     uint64
+	mu         sync.RWMutex
+	id         string
+	mode       string // "balanced" (fair share), "round_robin", "priority"
+	accounts   map[string]*AccountUsage
+	windowSize time.Duration
+	rrCounter  uint64
 }
 
 type PoolManager struct {
@@ -39,11 +41,11 @@ func NewPoolManager() *PoolManager {
 	}
 }
 
-func (m *PoolManager) GetOrCreatePool(providerID, mode string) *AccountPool {
+func (m *PoolManager) GetOrCreatePool(poolID, mode string) *AccountPool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	p, exists := m.pools[providerID]
+	p, exists := m.pools[poolID]
 	if exists {
 		if mode != "" && p.mode != mode {
 			p.mode = mode
@@ -56,30 +58,45 @@ func (m *PoolManager) GetOrCreatePool(providerID, mode string) *AccountPool {
 	}
 
 	p = &AccountPool{
-		providerID: providerID,
+		id:         poolID,
 		mode:       mode,
 		accounts:   make(map[string]*AccountUsage),
 		windowSize: 10 * time.Minute,
 	}
-	m.pools[providerID] = p
+	m.pools[poolID] = p
 	return p
 }
 
 func (p *AccountPool) RegisterAccount(accountID string, weight float64) {
+	p.RegisterAccountWithInfo(accountID, p.id, "", weight)
+}
+
+func (p *AccountPool) RegisterAccountWithInfo(accountID, poolID, providerID string, weight float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	if weight <= 0 {
 		weight = 1.0
 	}
+	if poolID == "" {
+		poolID = p.id
+	}
 
 	if acc, exists := p.accounts[accountID]; exists {
 		acc.Weight = weight
+		if poolID != "" {
+			acc.PoolID = poolID
+		}
+		if providerID != "" {
+			acc.ProviderID = providerID
+		}
 		return
 	}
 
 	p.accounts[accountID] = &AccountUsage{
 		AccountID:   accountID,
+		PoolID:      poolID,
+		ProviderID:  providerID,
 		Weight:      weight,
 		Status:      "active",
 		WindowStart: time.Now(),
@@ -201,9 +218,12 @@ func (p *AccountPool) ListUsage() []*AccountUsage {
 	for _, v := range p.accounts {
 		list = append(list, &AccountUsage{
 			AccountID:     v.AccountID,
+			PoolID:        v.PoolID,
+			ProviderID:    v.ProviderID,
 			TotalTokens:   v.TotalTokens,
 			TotalRequests: v.TotalRequests,
 			WindowTokens:  v.WindowTokens,
+			WindowStart:   v.WindowStart,
 			Weight:        v.Weight,
 			Status:        v.Status,
 			CooldownUntil: v.CooldownUntil,
@@ -218,17 +238,53 @@ func (p *AccountPool) RemoveAccount(accID string) {
 	delete(p.accounts, accID)
 }
 
-func (m *PoolManager) RegisterAccount(provID, accID string, weight float64) {
-	p := m.GetOrCreatePool(provID, "balanced")
-	p.RegisterAccount(accID, weight)
+func (m *PoolManager) RegisterAccount(poolID, provID, accID string, weight float64) {
+	if poolID == "" {
+		poolID = "pool1"
+	}
+	p := m.GetOrCreatePool(poolID, "balanced")
+	p.RegisterAccountWithInfo(accID, poolID, provID, weight)
 }
 
-func (m *PoolManager) RemoveAccount(provID, accID string) {
+func (m *PoolManager) RemoveAccount(poolID, accID string) {
 	m.mu.Lock()
-	p, exists := m.pools[provID]
-	m.mu.Unlock()
-	if exists {
+	defer m.mu.Unlock()
+	if poolID != "" {
+		if p, exists := m.pools[poolID]; exists {
+			p.RemoveAccount(accID)
+		}
+		return
+	}
+	for _, p := range m.pools {
 		p.RemoveAccount(accID)
+	}
+}
+
+func (m *PoolManager) RecordUsage(poolID, accID string, tokens int64) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if poolID != "" {
+		if p, exists := m.pools[poolID]; exists {
+			p.RecordUsage(accID, tokens)
+			return
+		}
+	}
+	for _, p := range m.pools {
+		p.RecordUsage(accID, tokens)
+	}
+}
+
+func (m *PoolManager) SetCooldown(poolID, accID string, duration time.Duration) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if poolID != "" {
+		if p, exists := m.pools[poolID]; exists {
+			p.SetCooldown(accID, duration)
+			return
+		}
+	}
+	for _, p := range m.pools {
+		p.SetCooldown(accID, duration)
 	}
 }
 
@@ -237,8 +293,11 @@ func (m *PoolManager) ListAllPools() map[string][]*AccountUsage {
 	defer m.mu.RUnlock()
 
 	res := make(map[string][]*AccountUsage)
-	for provID, p := range m.pools {
-		res[provID] = p.ListUsage()
+	// Ensure pool1 is always visible
+	res["pool1"] = []*AccountUsage{}
+
+	for poolID, p := range m.pools {
+		res[poolID] = p.ListUsage()
 	}
 	return res
 }

@@ -851,25 +851,9 @@
           <!-- Rendered via JS -->
         </div>
 
-        <div class="card" style="margin-top: 1.5rem;">
-          <div class="card-title" style="font-size: 1.1rem; margin-bottom: 0.5rem;">Live Fair-Share Account Pools</div>
-          <div class="table-container">
-            <table>
-              <thead>
-                <tr>
-                  <th>Provider</th>
-                  <th>Account ID</th>
-                  <th>Window Tokens (10m)</th>
-                  <th>Total Tokens</th>
-                  <th>Total Requests</th>
-                  <th>State</th>
-                  <th style="text-align: right;">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="pool-usage-tbody">
-                <tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">Loading account pools...</td></tr>
-              </tbody>
-            </table>
+        <div id="pools-cards-container" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
+          <div class="card">
+            <div style="text-align: center; color: var(--text-dim); padding: 1.5rem;">Loading token pools...</div>
           </div>
         </div>
       </div>
@@ -1192,9 +1176,22 @@
   <!-- MODAL: ADD ACCOUNT -->
   <div class="modal-backdrop" id="modal-add-account">
     <div class="modal-box">
-      <div class="card-title">Add Account to Fair-Share Pool</div>
+      <div class="card-title">Add Account to Token Pool</div>
       <div style="font-size: 0.8rem; color: var(--text-dim); margin-bottom: 1rem;">
-        Add secondary or teammate credentials. GoRoute dynamically balances token usage across all accounts.
+        Add secondary or teammate credentials. GoRoute dynamically balances token usage across all accounts in the pool.
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Target Token Pool</label>
+        <div style="display: flex; gap: 0.5rem;">
+          <select class="form-select" id="modal-acc-pool" onchange="toggleCustomPoolInput(this.value)" style="flex: 1;">
+            <option value="pool1">pool1 (Default Primary Pool)</option>
+            <option value="pool2">pool2 (Secondary / Backup Pool)</option>
+            <option value="pool3">pool3</option>
+            <option value="_custom">+ Create New Named Pool...</option>
+          </select>
+          <input class="form-input" id="modal-acc-pool-custom" placeholder="e.g. pool-fast, team-b" style="flex: 1; display: none;">
+        </div>
       </div>
 
       <div class="form-group">
@@ -1650,8 +1647,37 @@
       }
     }
 
-    function openAddAccountModal() {
+    function openAddAccountModal(targetPool) {
+      const select = document.getElementById('modal-acc-pool');
+      const customInput = document.getElementById('modal-acc-pool-custom');
+      if (targetPool) {
+        let found = false;
+        for (let opt of select.options) {
+          if (opt.value === targetPool) {
+            select.value = targetPool;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          select.value = '_custom';
+          customInput.style.display = 'block';
+          customInput.value = targetPool;
+        } else {
+          customInput.style.display = 'none';
+        }
+      }
       document.getElementById('modal-add-account').classList.add('active');
+    }
+
+    function toggleCustomPoolInput(val) {
+      const customInput = document.getElementById('modal-acc-pool-custom');
+      if (val === '_custom') {
+        customInput.style.display = 'block';
+        customInput.focus();
+      } else {
+        customInput.style.display = 'none';
+      }
     }
 
     function openImportModal() {
@@ -1659,6 +1685,10 @@
     }
 
     async function submitAddAccount() {
+      let pool = document.getElementById('modal-acc-pool').value;
+      if (pool === '_custom') {
+        pool = document.getElementById('modal-acc-pool-custom').value.trim() || 'pool1';
+      }
       const provider = document.getElementById('modal-acc-provider').value;
       const accountId = document.getElementById('modal-acc-id').value.trim();
       const secret = document.getElementById('modal-acc-secret').value.trim();
@@ -1672,6 +1702,7 @@
 
       const payload = {
         id: accountId,
+        pool: pool,
         email: email,
         type: provider
       };
@@ -1695,7 +1726,7 @@
         }).then(r => r.json());
 
         if (res.status === 'ok') {
-          showToast(`✅ Account '${accountId}' added to ${provider} pool!`);
+          showToast(`✅ Account '${accountId}' added to ${pool}!`);
           closeModal('modal-add-account');
           document.getElementById('modal-acc-id').value = '';
           document.getElementById('modal-acc-secret').value = '';
@@ -1761,41 +1792,85 @@
     }
 
     async function loadPoolUsage() {
-      const tbody = document.getElementById('pool-usage-tbody');
-      if (!tbody) return;
+      const container = document.getElementById('pools-cards-container');
+      if (!container) return;
       try {
         const res = await fetch('/api/pool/usage').then(r => r.json());
         if (!res.pools) return;
 
-        let rows = [];
-        for (const [provId, accounts] of Object.entries(res.pools)) {
-          for (const acc of accounts) {
+        const poolNames = Object.keys(res.pools).sort();
+        if (!poolNames.includes('pool1')) poolNames.unshift('pool1');
+        if (!poolNames.includes('pool2')) poolNames.push('pool2');
+
+        let html = '';
+        for (const poolName of poolNames) {
+          const accounts = res.pools[poolName] || [];
+          const poolWindowTokens = accounts.reduce((acc, a) => acc + (a.window_tokens || 0), 0);
+          const poolTotalTokens = accounts.reduce((acc, a) => acc + (a.total_tokens || 0), 0);
+          const activeCount = accounts.filter(a => a.status === 'active').length;
+
+          let rows = accounts.map(acc => {
             const isCooldown = acc.status === 'cooldown';
             const badge = isCooldown 
               ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">Cooldown</span>` 
               : `<span class="badge badge-success">Active</span>`;
-            rows.push(`
+            return `
               <tr>
-                <td><span class="badge badge-muted">${provId}</span></td>
+                <td><span class="badge badge-muted">${acc.provider_id || 'provider'}</span></td>
                 <td style="font-family: 'Geist Mono'; font-weight: 500;">${acc.account_id}</td>
                 <td style="font-family: 'Geist Mono'; color: #38bdf8;">${(acc.window_tokens || 0).toLocaleString()} tok</td>
                 <td style="font-family: 'Geist Mono';">${(acc.total_tokens || 0).toLocaleString()} tok</td>
                 <td style="font-family: 'Geist Mono';">${acc.total_requests || 0}</td>
                 <td>${badge}</td>
                 <td style="text-align: right;">
-                  <button class="btn btn-outline btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="testSingleAccount('${provId}', '${acc.account_id}')">⚡ Test</button>
-                  <button class="btn btn-outline btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; color: #f87171; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteAccount('${provId}', '${acc.account_id}')">✕</button>
+                  <button class="btn btn-outline btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;" onclick="testSingleAccount('${acc.provider_id}', '${acc.account_id}')">⚡ Test</button>
+                  <button class="btn btn-outline btn-sm" style="padding: 0.2rem 0.5rem; font-size: 0.75rem; color: #f87171; border-color: rgba(239, 68, 68, 0.3);" onclick="deleteAccount('${acc.provider_id}', '${acc.account_id}')">✕</button>
                 </td>
               </tr>
-            `);
+            `;
+          }).join('');
+
+          if (accounts.length === 0) {
+            rows = `<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No accounts in <b>${poolName}</b> yet. Click <i>+ Add to ${poolName}</i> to pool tokens.</td></tr>`;
           }
+
+          html += `
+            <div class="card">
+              <div class="card-header" style="margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.75rem;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <span style="font-size: 1.15rem; font-weight: 700; color: #fff; font-family: 'Geist Mono';">📦 ${poolName}</span>
+                  <span class="badge badge-success">Fair-Share Leveling</span>
+                  <span style="font-size: 0.8rem; color: var(--text-dim);">${activeCount}/${accounts.length} active</span>
+                </div>
+                <div style="display: flex; gap: 1rem; align-items: center;">
+                  <span style="font-size: 0.8rem; color: var(--text-muted);">Window Burn (10m): <strong style="color: #38bdf8; font-family: 'Geist Mono';">${poolWindowTokens.toLocaleString()} tok</strong></span>
+                  <span style="font-size: 0.8rem; color: var(--text-muted);">Lifetime: <strong style="color: #fff; font-family: 'Geist Mono';">${poolTotalTokens.toLocaleString()} tok</strong></span>
+                  <button class="btn btn-outline btn-sm" onclick="openAddAccountModal('${poolName}')">+ Add to ${poolName}</button>
+                </div>
+              </div>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Provider</th>
+                      <th>Account ID</th>
+                      <th>Window Tokens (10m)</th>
+                      <th>Total Tokens</th>
+                      <th>Requests</th>
+                      <th>State</th>
+                      <th style="text-align: right;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `;
         }
 
-        if (rows.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No pooled accounts yet. Click "+ Add Account" to pool teammate tokens.</td></tr>';
-        } else {
-          tbody.innerHTML = rows.join('');
-        }
+        container.innerHTML = html;
       } catch (e) {
         console.error('loadPoolUsage error:', e);
       }

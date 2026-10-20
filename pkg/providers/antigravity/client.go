@@ -49,7 +49,7 @@ func (p *Provider) IsHealthy() bool {
 	return len(p.accounts) > 0
 }
 
-func (p *Provider) NextAccount(pinnedID string) (*Account, error) {
+func (p *Provider) NextAccount(ctx context.Context, pinnedID string) (*Account, error) {
 	if len(p.accounts) == 0 {
 		return nil, fmt.Errorf("no accounts configured for provider %s", p.id)
 	}
@@ -61,16 +61,37 @@ func (p *Provider) NextAccount(pinnedID string) (*Account, error) {
 		}
 	}
 
-	// Fair-Share Token Leveling Pool
-	var candidateIDs []string
+	targetPool := "pool1"
+	if ctx != nil {
+		if pVal, ok := ctx.Value("goroute-pool").(string); ok && pVal != "" {
+			targetPool = pVal
+		}
+	}
+
+	var poolAccounts []*Account
 	for _, a := range p.accounts {
+		accPool := a.Pool
+		if accPool == "" {
+			accPool = "pool1"
+		}
+		if accPool == targetPool {
+			poolAccounts = append(poolAccounts, a)
+		}
+	}
+
+	if len(poolAccounts) == 0 {
+		poolAccounts = p.accounts
+	}
+
+	var candidateIDs []string
+	for _, a := range poolAccounts {
 		candidateIDs = append(candidateIDs, a.ID)
 	}
 
-	pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+	pl := pool.GlobalPool.GetOrCreatePool(targetPool, "balanced")
 	bestID := pl.SelectBestAccount(candidateIDs)
 	if bestID != "" {
-		for _, a := range p.accounts {
+		for _, a := range poolAccounts {
 			if a.ID == bestID {
 				return a, nil
 			}
@@ -78,7 +99,7 @@ func (p *Provider) NextAccount(pinnedID string) (*Account, error) {
 	}
 
 	next := atomic.AddUint64(&p.idx, 1)
-	return p.accounts[next%uint64(len(p.accounts))], nil
+	return poolAccounts[next%uint64(len(poolAccounts))], nil
 }
 
 func (p *Provider) TestAccount(ctx context.Context, accountID string) error {
@@ -312,9 +333,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		var acc *Account
 		var err error
 		if attempt == 0 && pinnedAcc != "" {
-			acc, err = p.NextAccount(pinnedAcc)
+			acc, err = p.NextAccount(ctx, pinnedAcc)
 		} else {
-			acc, err = p.NextAccount("")
+			acc, err = p.NextAccount(ctx, "")
 		}
 		if err != nil {
 			continue
@@ -533,8 +554,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				affinity.GlobalManager.SetAffinity(sessionKey, p.id, acc.ID)
 			}
 			// Record token usage in pool
-			pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
-			pl.RecordUsage(acc.ID, 120)
+			pool.GlobalPool.RecordUsage(acc.Pool, acc.ID, 120)
 
 			if req.Stream {
 				return TranslateGeminiSSEToOpenAI(resp.Body, req.Model), true, resp.StatusCode, nil
@@ -557,8 +577,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// If 402/429 (quota), 403 (unlicensed/permission), 404 (not found on account), or 401, try next account
 		if resp.StatusCode == http.StatusPaymentRequired || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusNotFound || resp.StatusCode >= 500 {
 			affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
-			pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
-			pl.SetCooldown(acc.ID, 10*time.Minute)
+			pool.GlobalPool.SetCooldown(acc.Pool, acc.ID, 10*time.Minute)
 			if lastBody != nil {
 				lastBody.Close()
 			}
@@ -597,7 +616,7 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 }
 
 func (p *Provider) Embeddings(ctx context.Context, req *providers.EmbeddingRequest) (*providers.EmbeddingResponse, error) {
-	acc, err := p.NextAccount("")
+	acc, err := p.NextAccount(ctx, "")
 	if err != nil {
 		return nil, err
 	}

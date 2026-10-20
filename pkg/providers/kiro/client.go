@@ -22,6 +22,7 @@ import (
 
 type Account struct {
 	ID           string
+	Pool         string
 	RefreshToken string
 	ProfileARN   string
 	accessToken  string
@@ -148,7 +149,7 @@ func (p *Provider) IsHealthy() bool {
 	return len(p.accounts) > 0
 }
 
-func (p *Provider) nextAccount(pinnedID string) *Account {
+func (p *Provider) nextAccount(ctx context.Context, pinnedID string) *Account {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.accounts) == 0 {
@@ -162,23 +163,43 @@ func (p *Provider) nextAccount(pinnedID string) *Account {
 		}
 	}
 
-	// Use Fair-Share Token Leveling Pool
-	var candidateIDs []string
+	targetPool := "pool1"
+	if ctx != nil {
+		if pVal, ok := ctx.Value("goroute-pool").(string); ok && pVal != "" {
+			targetPool = pVal
+		}
+	}
+
+	var poolAccounts []*Account
 	for _, a := range p.accounts {
+		accPool := a.Pool
+		if accPool == "" {
+			accPool = "pool1"
+		}
+		if accPool == targetPool {
+			poolAccounts = append(poolAccounts, a)
+		}
+	}
+	if len(poolAccounts) == 0 {
+		poolAccounts = p.accounts
+	}
+
+	var candidateIDs []string
+	for _, a := range poolAccounts {
 		candidateIDs = append(candidateIDs, a.ID)
 	}
 
-	pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
+	pl := pool.GlobalPool.GetOrCreatePool(targetPool, "balanced")
 	bestID := pl.SelectBestAccount(candidateIDs)
 	if bestID != "" {
-		for _, a := range p.accounts {
+		for _, a := range poolAccounts {
 			if a.ID == bestID {
 				return a
 			}
 		}
 	}
 
-	acc := p.accounts[p.counter%uint64(len(p.accounts))]
+	acc := poolAccounts[p.counter%uint64(len(poolAccounts))]
 	p.counter++
 	return acc
 }
@@ -495,9 +516,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 	for attempt := 0; attempt < accCount; attempt++ {
 		var acc *Account
 		if attempt == 0 && pinnedAcc != "" {
-			acc = p.nextAccount(pinnedAcc)
+			acc = p.nextAccount(ctx, pinnedAcc)
 		} else {
-			acc = p.nextAccount("")
+			acc = p.nextAccount(ctx, "")
 		}
 		if acc == nil {
 			break
@@ -561,8 +582,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
 				log.Printf("[kiro] Account %s returned %d (%s), failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
 				affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
-				pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
-				pl.SetCooldown(acc.ID, 5*time.Minute)
+				pool.GlobalPool.SetCooldown(acc.Pool, acc.ID, 5*time.Minute)
 				continue
 			}
 			return nil, false, resp.StatusCode, lastErr
@@ -573,8 +593,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 
 		// Record token / request consumption in Fair-Share Pool
-		pl := pool.GlobalPool.GetOrCreatePool(p.id, "balanced")
-		pl.RecordUsage(acc.ID, 100)
+		pool.GlobalPool.RecordUsage(acc.Pool, acc.ID, 100)
 
 		pr, pw := io.Pipe()
 

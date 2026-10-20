@@ -19,6 +19,7 @@ import (
 
 type Account struct {
 	ID           string    `json:"id"`
+	Pool         string    `json:"pool,omitempty"`
 	Email        string    `json:"email,omitempty"`
 	AccessToken  string    `json:"access_token"`
 	RefreshToken string    `json:"refresh_token,omitempty"`

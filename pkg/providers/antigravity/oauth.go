@@ -54,6 +54,7 @@ var Scopes = []string{
 
 type Account struct {
 	ID           string    `json:"id"`
+	Pool         string    `json:"pool,omitempty"`
 	Email        string    `json:"email"`
 	RefreshToken string    `json:"refresh_token"`
 	AccessToken  string    `json:"access_token"`

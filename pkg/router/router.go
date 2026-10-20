@@ -309,6 +309,17 @@ func (r *Router) Execute(ctx context.Context, req *providers.ChatRequest) (io.Re
 		model = strings.TrimPrefix(model, "goroute/")
 	}
 
+	if strings.HasPrefix(model, "pool1/") {
+		ctx = context.WithValue(ctx, "goroute-pool", "pool1")
+		model = strings.TrimPrefix(model, "pool1/")
+	} else if strings.HasPrefix(model, "pool2/") {
+		ctx = context.WithValue(ctx, "goroute-pool", "pool2")
+		model = strings.TrimPrefix(model, "pool2/")
+	} else if strings.HasPrefix(model, "pool3/") {
+		ctx = context.WithValue(ctx, "goroute-pool", "pool3")
+		model = strings.TrimPrefix(model, "pool3/")
+	}
+
 	if strings.HasPrefix(model, "agy/") {
 		model = "antigravity/" + strings.TrimPrefix(model, "agy/")
 	}

@@ -27,6 +27,7 @@ const (
 
 type Account struct {
 	ID           string
+	Pool         string
 	GitHubToken  string
 	CopilotToken string
 	ExpiresAt    time.Time

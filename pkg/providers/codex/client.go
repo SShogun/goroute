@@ -29,6 +29,7 @@ const (
 
 type Account struct {
 	ID           string
+	Pool         string
 	RefreshToken string
 	AccessToken  string
 	AccountID    string
