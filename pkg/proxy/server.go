@@ -174,6 +174,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/quota/groups", s.handleCreateQuotaGroup)
 	s.mux.Get("/api/quota/pools", s.handleListQuotaPools)
 	s.mux.Post("/api/quota/pools", s.handleCreateQuotaPool)
+	s.mux.Get("/api/webhooks", s.handleListWebhooks)
+	s.mux.Post("/api/webhooks", s.handleCreateWebhook)
+	s.mux.Delete("/api/webhooks/{id}", s.handleDeleteWebhook)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -745,6 +748,67 @@ func (s *Server) handleCreateQuotaPool(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{"pool": p})
+}
+
+func (s *Server) handleListWebhooks(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetWebhookStore()
+	hooks, err := store.ListWebhooks()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if hooks == nil {
+		hooks = []storage.WebhookSubscription{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"webhooks": hooks,
+		"total":    len(hooks),
+	})
+}
+
+func (s *Server) handleCreateWebhook(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		URL         string   `json:"url"`
+		Secret      string   `json:"secret"`
+		Description string   `json:"description"`
+		Kind        string   `json:"kind"`
+		Events      []string `json:"events"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.URL == "" {
+		http.Error(w, "valid url is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetWebhookStore()
+	wh, err := store.CreateWebhook(body.URL, body.Secret, body.Description, body.Kind, body.Events)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"webhook": wh})
+}
+
+func (s *Server) handleDeleteWebhook(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetWebhookStore()
+	if err := store.DeleteWebhook(id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
 
 func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
