@@ -155,6 +155,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Put("/api/settings/model-aliases", s.handlePutModelAliases)
 	s.mux.Post("/api/settings/model-aliases", s.handlePostModelAlias)
 	s.mux.Delete("/api/settings/model-aliases", s.handleDeleteModelAlias)
+	s.mux.Get("/api/settings/proxies", s.handleListProxies)
+	s.mux.Post("/api/settings/proxies", s.handleCreateProxy)
+	s.mux.Delete("/api/settings/proxies/{id}", s.handleDeleteProxy)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -407,6 +410,66 @@ func (s *Server) handleDeleteModelAlias(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+func (s *Server) handleListProxies(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetProxyStore()
+	items, err := store.ListProxies()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if items == nil {
+		items = []storage.ProxyRecord{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"items":         items,
+		"total":         len(items),
+		"socks5Enabled": true,
+	})
+}
+
+func (s *Server) handleCreateProxy(w http.ResponseWriter, r *http.Request) {
+	var body storage.ProxyRecord
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.ID == "" {
+		body.ID = fmt.Sprintf("prx_%d", time.Now().UnixNano())
+	}
+	if body.Status == "" {
+		body.Status = "active"
+	}
+
+	store := storage.GetProxyStore()
+	if err := store.CreateProxy(body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "id": body.ID})
+}
+
+func (s *Server) handleDeleteProxy(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "id is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetProxyStore()
+	if err := store.DeleteProxy(id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 }
