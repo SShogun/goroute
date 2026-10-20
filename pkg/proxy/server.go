@@ -151,6 +151,10 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/settings", s.handleGetSettings)
 	s.mux.Patch("/api/settings", s.handlePatchSettings)
 	s.mux.Post("/api/settings/purge-call-logs", s.handlePurgeCallLogs)
+	s.mux.Get("/api/settings/model-aliases", s.handleGetModelAliases)
+	s.mux.Put("/api/settings/model-aliases", s.handlePutModelAliases)
+	s.mux.Post("/api/settings/model-aliases", s.handlePostModelAlias)
+	s.mux.Delete("/api/settings/model-aliases", s.handleDeleteModelAlias)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -344,6 +348,69 @@ func (s *Server) handlePurgeCallLogs(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(result)
 }
 
+func (s *Server) handleGetModelAliases(w http.ResponseWriter, r *http.Request) {
+	snapshot := storage.GetModelAliasesSnapshot()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(snapshot)
+}
+
+func (s *Server) handlePutModelAliases(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Aliases map[string]string `json:"aliases"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.SetCustomAliases(db, body.Aliases); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "custom": body.Aliases})
+}
+
+func (s *Server) handlePostModelAlias(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if body.From == "" || body.To == "" {
+		http.Error(w, "from and to fields required", http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.AddCustomAlias(db, body.From, body.To); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+func (s *Server) handleDeleteModelAlias(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		From string `json:"from"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.RemoveCustomAlias(db, body.From); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
 func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
 	store := storage.GetCapabilityStore()
 	list, err := store.ListOverrides()
@@ -433,6 +500,8 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Apply model alias resolution (deprecated / custom alias rewriting)
+	chatReq.Model = storage.ResolveModelAlias(chatReq.Model)
 	log.Printf("[GoRoute] Incoming /v1/chat/completions model=%s stream=%v messages=%d", chatReq.Model, chatReq.Stream, len(chatReq.Messages))
 
 	// Validate virtual key if keys are registered
