@@ -160,6 +160,12 @@ func (s *Server) setupRoutes() {
 	s.mux.Delete("/api/settings/proxies/{id}", s.handleDeleteProxy)
 	s.mux.Get("/api/settings/thinking-budget", s.handleGetThinkingBudget)
 	s.mux.Put("/api/settings/thinking-budget", s.handlePutThinkingBudget)
+	s.mux.Get("/api/settings/system-prompt", s.handleGetSystemPrompt)
+	s.mux.Put("/api/settings/system-prompt", s.handlePutSystemPrompt)
+	s.mux.Get("/api/settings/ip-filter", s.handleGetIPFilter)
+	s.mux.Put("/api/settings/ip-filter", s.handlePutIPFilter)
+	s.mux.Get("/api/settings/cache-config", s.handleGetCacheConfig)
+	s.mux.Put("/api/settings/cache-config", s.handlePutCacheConfig)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -491,6 +497,72 @@ func (s *Server) handlePutThinkingBudget(w http.ResponseWriter, r *http.Request)
 	}
 	db := storage.GetDB()
 	if err := storage.SetThinkingBudgetConfig(db, body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(body)
+}
+
+func (s *Server) handleGetSystemPrompt(w http.ResponseWriter, r *http.Request) {
+	cfg := storage.GetSystemPromptConfig()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handlePutSystemPrompt(w http.ResponseWriter, r *http.Request) {
+	var body storage.SystemPromptConfig
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.SetSystemPromptConfig(db, body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(body)
+}
+
+func (s *Server) handleGetIPFilter(w http.ResponseWriter, r *http.Request) {
+	cfg := storage.GetIPFilterConfig()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handlePutIPFilter(w http.ResponseWriter, r *http.Request) {
+	var body storage.IPFilterConfig
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.SetIPFilterConfig(db, body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(body)
+}
+
+func (s *Server) handleGetCacheConfig(w http.ResponseWriter, r *http.Request) {
+	cfg := storage.GetCacheConfig()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handlePutCacheConfig(w http.ResponseWriter, r *http.Request) {
+	var body storage.CacheConfig
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	db := storage.GetDB()
+	if err := storage.SetCacheConfig(db, body); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
