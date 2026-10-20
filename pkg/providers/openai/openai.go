@@ -52,7 +52,11 @@ func NewProviderWithKeys(id, baseURL string, apiKeys []string, headers map[strin
 		apiKeys: apiKeys,
 		headers: headers,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 300 * time.Second,
+				IdleConnTimeout:       120 * time.Second,
+			},
+			Timeout: 0,
 		},
 	}
 }

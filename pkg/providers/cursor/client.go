@@ -100,9 +100,15 @@ type Provider struct {
 
 func NewProvider(id string, accounts []*Account) *Provider {
 	return &Provider{
-		id:         id,
-		accounts:   accounts,
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		id:       id,
+		accounts: accounts,
+		httpClient: &http.Client{
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 300 * time.Second,
+				IdleConnTimeout:       120 * time.Second,
+			},
+			Timeout: 0,
+		},
 	}
 }
 

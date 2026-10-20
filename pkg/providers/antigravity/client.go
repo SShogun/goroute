@@ -32,7 +32,11 @@ func NewProvider(id string, accounts []*Account) *Provider {
 		accounts: accounts,
 		baseURL:  CloudCodeAPIBaseURL,
 		client: &http.Client{
-			Timeout: 120 * time.Second,
+			Transport: &http.Transport{
+				ResponseHeaderTimeout: 300 * time.Second,
+				IdleConnTimeout:       120 * time.Second,
+			},
+			Timeout: 0,
 		},
 	}
 }
