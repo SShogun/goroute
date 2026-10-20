@@ -357,6 +357,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 							if resContent == "" {
 								resContent = "(no output)"
 							}
+							if len(resContent) > 12000 {
+								resContent = resContent[:12000] + "\n... [truncated by GoRoute to fit model context limit]"
+							}
 							toolResults = append(toolResults, kiroToolResult{
 								ToolUseId: toolUseId,
 								Status:    status,
@@ -445,8 +448,16 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		History:         history,
 	}
 
+	// Pre-emptively prune payload if it exceeds 160KB to avoid CONTENT_LENGTH_EXCEEDS_THRESHOLD
+	initialBytes, _ := json.Marshal(convState)
+	if len(initialBytes) > 160000 {
+		log.Printf("[kiro] Pre-emptively pruning large conversation state (%d bytes > 160KB)", len(initialBytes))
+		pruneKiroConversationState(&convState, 150000)
+	}
+
 	var lastErr error
 	var lastStatusCode int
+	thresholdRetries := 0
 
 	for attempt := 0; attempt < accCount; attempt++ {
 		acc := p.nextAccount()
@@ -498,6 +509,17 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			resp.Body.Close()
 			lastErr = fmt.Errorf("kiro upstream error %d: %s", resp.StatusCode, string(raw))
 			lastStatusCode = resp.StatusCode
+
+			// Auto-recovery for AWS CodeWhisperer CONTENT_LENGTH_EXCEEDS_THRESHOLD
+			if resp.StatusCode == 400 && strings.Contains(string(raw), "CONTENT_LENGTH_EXCEEDS_THRESHOLD") && thresholdRetries < 3 {
+				thresholdRetries++
+				targetBytes := 120000 / thresholdRetries
+				log.Printf("[kiro] CONTENT_LENGTH_EXCEEDS_THRESHOLD detected (attempt %d/3). Pruning context window to %d bytes and retrying...", thresholdRetries, targetBytes)
+				pruneKiroConversationState(&convState, targetBytes)
+				attempt-- // Retry without consuming account attempt
+				continue
+			}
+
 			if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
 				log.Printf("[kiro] Account %s returned %d (%s), failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
 				continue
@@ -700,4 +722,53 @@ func (p *Provider) Models(ctx context.Context) ([]providers.ModelInfo, error) {
 		{ID: "qwen3-coder-next", Object: "model", OwnedBy: "kiro"},
 		{ID: "gpt-5.6-luna", Object: "model", OwnedBy: "kiro"},
 	}, nil
+}
+
+// pruneKiroConversationState dynamically compresses and sliding-windows conversation history to prevent AWS CodeWhisperer CONTENT_LENGTH_EXCEEDS_THRESHOLD
+func pruneKiroConversationState(state *kiroConversationState, maxBytes int) {
+	if state == nil {
+		return
+	}
+
+	// 1. Truncate tool results in history turns to compact size
+	for i := range state.History {
+		turn := &state.History[i]
+		if turn.UserInputMessage != nil && turn.UserInputMessage.UserInputMessageContext != nil {
+			for j := range turn.UserInputMessage.UserInputMessageContext.ToolResults {
+				tr := &turn.UserInputMessage.UserInputMessageContext.ToolResults[j]
+				for k := range tr.Content {
+					if len(tr.Content[k].Text) > 2048 {
+						tr.Content[k].Text = tr.Content[k].Text[:2048] + "\n... [truncated by GoRoute context pruner]"
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Truncate current message tool results if excessively huge
+	if state.CurrentMessage.UserInputMessage.UserInputMessageContext != nil {
+		for j := range state.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults {
+			tr := &state.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults[j]
+			for k := range tr.Content {
+				if len(tr.Content[k].Text) > 8192 {
+					tr.Content[k].Text = tr.Content[k].Text[:8192] + "\n... [truncated by GoRoute context pruner]"
+				}
+			}
+		}
+	}
+
+	// 3. Sliding window on history turns: keep first turn (instructions/system context) and latest turns
+	for len(state.History) > 1 {
+		b, err := json.Marshal(state)
+		if err == nil && len(b) <= maxBytes {
+			break
+		}
+		// Drop the oldest turn after the initial context
+		if len(state.History) > 2 {
+			state.History = append(state.History[:1], state.History[2:]...)
+		} else {
+			state.History = state.History[1:]
+			break
+		}
+	}
 }
