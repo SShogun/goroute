@@ -9,33 +9,36 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #09090b;
-      --card-bg: #121215;
-      --card-hover: #18181b;
-      --border: #27272a;
-      --border-subtle: #1f1f23;
-      --text: #f4f4f5;
-      --text-muted: #a1a1aa;
-      --text-dim: #71717a;
-      --accent: #3b82f6;
-      --accent-glow: rgba(59, 130, 246, 0.15);
+      --bg: #000000;
+      --card-bg: #000000;
+      --card-hover: #080808;
+      --border: #1f1f1f;
+      --border-subtle: #141414;
+      --border-hover: #333333;
+      --text: #ededed;
+      --text-muted: #888888;
+      --text-dim: #555555;
+      --accent: #ffffff;
+      --accent-glow: rgba(255, 255, 255, 0.08);
       --success: #10b981;
       --success-bg: rgba(16, 185, 129, 0.1);
       --warning: #f59e0b;
       --warning-bg: rgba(245, 158, 11, 0.1);
       --danger: #ef4444;
       --danger-bg: rgba(239, 68, 68, 0.1);
-      --code-bg: #000000;
+      --code-bg: #050505;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: 'Geist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: var(--bg);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     /* Sidebar Navigation */
@@ -173,6 +176,7 @@
       flex-direction: column;
       height: 100vh;
       overflow-y: auto;
+      overflow-x: hidden;
     }
 
     header {
@@ -371,30 +375,34 @@
     /* Tables */
     .table-container {
       width: 100%;
-      overflow-x: auto;
+      overflow-x: hidden;
       border: 1px solid var(--border);
       border-radius: 8px;
     }
     table {
       width: 100%;
+      table-layout: fixed;
       border-collapse: collapse;
       text-align: left;
       font-size: 0.82rem;
     }
     th {
-      padding: 0.75rem 1rem;
-      background: #0e0e11;
+      padding: 0.6rem 0.65rem;
+      background: #0a0a0a;
       color: var(--text-dim);
       font-weight: 600;
       text-transform: uppercase;
-      font-size: 0.7rem;
+      font-size: 0.68rem;
       letter-spacing: 0.05em;
       border-bottom: 1px solid var(--border);
     }
     td {
-      padding: 0.75rem 1rem;
+      padding: 0.55rem 0.65rem;
       border-bottom: 1px solid var(--border-subtle);
       color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     tr:last-child td {
       border-bottom: none;
@@ -643,6 +651,308 @@
       font-family: 'Geist Mono', monospace;
     }
 
+    /* Vercel Action Bar & Toolbar */
+    .vercel-action-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+    .search-box {
+      position: relative;
+      display: flex;
+      align-items: center;
+      background: #000000;
+      border: 1px solid #222222;
+      border-radius: 6px;
+      padding: 0.45rem 0.75rem;
+      width: 340px;
+      transition: border-color 0.15s ease;
+    }
+    .search-box:focus-within {
+      border-color: #555555;
+    }
+    .search-icon {
+      color: #666;
+      margin-right: 0.5rem;
+      flex-shrink: 0;
+    }
+    .search-input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #ededed;
+      font-size: 0.85rem;
+      width: 100%;
+      font-family: inherit;
+    }
+    .kbd {
+      font-size: 0.68rem;
+      font-family: 'Geist Mono', monospace;
+      background: #141414;
+      color: #777;
+      border: 1px solid #262626;
+      border-radius: 4px;
+      padding: 1px 6px;
+      margin-left: 0.4rem;
+      user-select: none;
+    }
+    .filter-pills {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .pill {
+      background: transparent;
+      border: 1px solid #222222;
+      color: #888888;
+      border-radius: 6px;
+      padding: 0.35rem 0.7rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-family: inherit;
+    }
+    .pill:hover {
+      color: #ededed;
+      border-color: #383838;
+      background: #0a0a0a;
+    }
+    .pill.active {
+      background: #18181b;
+      color: #ffffff;
+      border-color: #3f3f46;
+      font-weight: 600;
+    }
+    .action-buttons {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    /* Vercel 2-Column Split Layout */
+    .vercel-layout {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      width: 100%;
+    }
+    @media (max-width: 1100px) {
+      .vercel-layout {
+        flex-direction: column;
+      }
+      .vercel-side-col {
+        width: 100% !important;
+      }
+    }
+    .vercel-side-col {
+      width: 340px;
+      min-width: 310px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+    .vercel-main-col {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* Vercel Notice Banner */
+    .vercel-banner {
+      background: #080808;
+      border: 1px solid #222222;
+      border-radius: 8px;
+      padding: 0.9rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      transition: border-color 0.15s ease;
+    }
+    .vercel-banner:hover {
+      border-color: #333333;
+    }
+
+    /* Vercel Meters */
+    .meter-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      margin-top: 0.35rem;
+    }
+    .meter-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+    }
+    .meter-label {
+      color: #888888;
+    }
+    .meter-val {
+      color: #ededed;
+      font-weight: 500;
+      font-family: 'Geist Mono', monospace;
+    }
+    .meter-bar {
+      width: 100%;
+      height: 4px;
+      background: #181818;
+      border-radius: 9999px;
+      overflow: hidden;
+    }
+    .meter-fill {
+      height: 100%;
+      background: #10b981;
+      border-radius: 9999px;
+      transition: width 0.4s ease;
+    }
+
+    /* Project Cards Grid */
+    .section-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.25rem;
+    }
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+      gap: 1rem;
+    }
+    .project-card {
+      background: #000000;
+      border: 1px solid #1f1f1f;
+      border-radius: 8px;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .project-card:hover {
+      border-color: #383838;
+      background: #080808;
+    }
+    .project-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .project-card-identity {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .project-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      background: #141414;
+      border: 1px solid #242424;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .project-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #ededed;
+      letter-spacing: -0.01em;
+    }
+    .project-endpoint {
+      font-size: 0.78rem;
+      color: #888888;
+      font-family: 'Geist Mono', monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .project-meta-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: #71717a;
+    }
+
+    /* Sidebar Workspace Selector */
+    .workspace-selector {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid #1f1f1f;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      background: #000000;
+      transition: background 0.15s ease;
+    }
+    .workspace-selector:hover {
+      background: #080808;
+    }
+    .ws-avatar {
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      background: #ffffff;
+      color: #000000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.75rem;
+    }
+    .ws-info {
+      flex: 1;
+      margin-left: 0.65rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .ws-name {
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #ededed;
+    }
+    .ws-badge {
+      font-size: 0.65rem;
+      font-family: 'Geist Mono', monospace;
+      padding: 1px 5px;
+      border-radius: 9999px;
+      background: #141414;
+      border: 1px solid #262626;
+      color: #888888;
+    }
+    .sidebar-search-box {
+      margin: 0.75rem 0.75rem 0.25rem 0.75rem;
+      background: #000000;
+      border: 1px solid #222222;
+      border-radius: 6px;
+      padding: 0.35rem 0.65rem;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      color: #666;
+    }
+    .sidebar-search-box input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #ededed;
+      font-size: 0.8rem;
+      width: 100%;
+      font-family: inherit;
+    }
+
     /* View Switcher */
     .view-panel {
       display: none;
@@ -658,14 +968,21 @@
 
   <!-- Sidebar -->
   <aside>
-    <div class="brand-section">
-      <div class="brand-title">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-        </svg>
-        GoRoute
+    <div class="workspace-selector" onclick="switchView('dashboard')">
+      <div class="ws-avatar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 10 17H2L12 2z"/></svg>
       </div>
-      <span class="brand-badge">Go + Rust</span>
+      <div class="ws-info">
+        <span class="ws-name">goroute-gateway</span>
+        <span class="ws-badge">Local :8128</span>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+
+    <div class="sidebar-search-box">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input placeholder="Find..." id="sidebar-find" oninput="filterSidebar(this.value)">
+      <kbd class="kbd">F</kbd>
     </div>
 
     <div class="nav-scroll">
@@ -772,69 +1089,157 @@
 
       <!-- VIEW: DASHBOARD (HOME) -->
       <div id="view-dashboard" class="view-panel active">
-        <!-- 4 Stats -->
-        <div class="grid-4">
-          <div class="stat-card">
-            <span class="stat-label">Gateway Endpoint</span>
-            <span class="stat-value" style="font-size: 1.3rem; color: #60a5fa;">:8128/v1</span>
-            <span class="stat-sub">OpenAI + Anthropic protocol</span>
+        <!-- Vercel Action Bar -->
+        <div class="vercel-action-bar">
+          <div class="search-box">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="search-input" id="search-overview" placeholder="Search providers, accounts, and combos..." oninput="filterOverview(this.value)">
+            <kbd class="kbd">/</kbd>
           </div>
-          <div class="stat-card">
-            <span class="stat-label">Active Providers</span>
-            <span class="stat-value" id="stat-providers">5</span>
-            <span class="stat-sub">Antigravity, Kiro, Codex, etc.</span>
+          <div class="filter-pills">
+            <button class="pill active" onclick="setOverviewFilter('all', this)">All</button>
+            <button class="pill" onclick="setOverviewFilter('providers', this)">Providers</button>
+            <button class="pill" onclick="setOverviewFilter('combos', this)">Combos</button>
+            <button class="pill" onclick="setOverviewFilter('oauth', this)">OAuth</button>
+            <button class="pill" onclick="setOverviewFilter('gateways', this)">Gateways</button>
           </div>
-          <div class="stat-card">
-            <span class="stat-label">Configured Combos</span>
-            <span class="stat-value" id="stat-combos">7</span>
-            <span class="stat-sub">Pure single-provider chains</span>
-          </div>
-          <div class="stat-card">
-            <span class="stat-label">RAM Footprint</span>
-            <span class="stat-value" style="color: #34d399;" id="stat-ram">1.5 MB</span>
-            <span class="stat-sub">Compiled native Go binary</span>
+          <div class="action-buttons">
+            <button class="btn btn-outline" onclick="openImportModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              1-Click Import
+            </button>
+            <button class="btn btn-primary" onclick="openAddAccountModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Account
+            </button>
+            <button class="btn btn-outline" onclick="openNewComboModal()">
+              + New Combo
+            </button>
           </div>
         </div>
 
-        <!-- Topology Preview & Live Stream -->
-        <div class="grid-2">
-          <!-- Topology Card -->
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <div class="card-title">Provider & Combo Topology</div>
-                <div class="card-subtitle">Real-time model cluster connection graph</div>
+        <!-- Vercel 2-Column Split Layout -->
+        <div class="vercel-layout">
+          <!-- Left Sidebar Column: Usage & Alerts & Live Stream -->
+          <div class="vercel-side-col">
+            <!-- Usage Card -->
+            <div class="card">
+              <div class="card-header">
+                <div>
+                  <div class="card-title" style="font-size: 0.95rem;">Gateway Resources</div>
+                  <div class="card-subtitle">Local runtime telemetry</div>
+                </div>
+                <span class="badge badge-success"><span class="pulse-dot"></span> Live</span>
               </div>
-              <button class="btn btn-outline btn-sm" onclick="switchView('topology')">Full View →</button>
+              <div class="meter-group">
+                <div class="meter-row">
+                  <span class="meter-label">RAM Footprint</span>
+                  <span class="meter-val" id="stat-ram">1.5 MB</span>
+                </div>
+                <div class="meter-bar"><div class="meter-fill" id="meter-ram-fill" style="width: 15%;"></div></div>
+              </div>
+              <div class="meter-group">
+                <div class="meter-row">
+                  <span class="meter-label">Active Providers</span>
+                  <span class="meter-val" id="stat-providers">5</span>
+                </div>
+                <div class="meter-bar"><div class="meter-fill" id="meter-provs-fill" style="width: 25%; background: #60a5fa;"></div></div>
+              </div>
+              <div class="meter-group">
+                <div class="meter-row">
+                  <span class="meter-label">Routing Combos</span>
+                  <span class="meter-val" id="stat-combos">7</span>
+                </div>
+                <div class="meter-bar"><div class="meter-fill" id="meter-combos-fill" style="width: 35%; background: #a78bfa;"></div></div>
+              </div>
+              <div class="meter-group">
+                <div class="meter-row">
+                  <span class="meter-label">Universal Endpoint</span>
+                  <span class="meter-val" style="color: #fff;">http://127.0.0.1:8128/v1</span>
+                </div>
+              </div>
             </div>
-            <div class="topology-container" id="dash-topology-svg">
-              <!-- Rendered via JS -->
+
+            <!-- Health Status Card -->
+            <div class="card" style="border-left: 3px solid #10b981;">
+              <div style="display: flex; gap: 0.75rem; align-items: flex-start;">
+                <div style="width: 28px; height: 28px; border-radius: 6px; background: rgba(16, 185, 129, 0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #10b981;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 0.85rem; color: #fff;">Zero Drop Gateway Active</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem; line-height: 1.4;">
+                    Claude Code, Codex, and Cursor are mapped to GoRoute. All fallback routes and token pools are armed.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Live Requests Stream Card -->
+            <div class="card" style="flex: 1;">
+              <div class="card-header">
+                <div>
+                  <div class="card-title" style="font-size: 0.95rem;">Recent Request Stream</div>
+                  <div class="card-subtitle">Real-time incoming agent requests</div>
+                </div>
+                <span class="badge badge-success"><span class="pulse-dot"></span> SSE</span>
+              </div>
+              <div class="table-container" style="max-height: 380px; overflow-y: auto;">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Tokens</th>
+                      <th>Latency</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody id="dash-requests-tbody">
+                    <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Connecting to real-time event stream...</td></tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
-          <!-- Live Requests Card -->
-          <div class="card">
-            <div class="card-header">
-              <div>
-                <div class="card-title">Recent Request Stream</div>
-                <div class="card-subtitle">Live stream from incoming agents</div>
+          <!-- Right Column: Banner + Project Grid -->
+          <div class="vercel-main-col">
+            <!-- Detection Banner -->
+            <div class="vercel-banner">
+              <div style="display: flex; align-items: center; gap: 0.75rem;">
+                <div style="width: 32px; height: 32px; border-radius: 6px; background: #18181b; border: 1px solid #27272a; display: flex; align-items: center; justify-content: center;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                </div>
+                <div>
+                  <div style="font-weight: 600; font-size: 0.88rem; color: #fff;">Local Developer CLI Sessions Found</div>
+                  <div style="font-size: 0.78rem; color: var(--text-muted);">Import active tokens from AWS Kiro, OpenAI Codex, and GitHub Copilot directly.</div>
+                </div>
               </div>
-              <span class="badge badge-success"><span class="pulse-dot"></span> Live SSE</span>
+              <button class="btn btn-primary btn-sm" onclick="openImportModal()">1-Click Import</button>
             </div>
-            <div class="table-container" style="max-height: 380px; overflow-y: auto;">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Model</th>
-                    <th>Tokens</th>
-                    <th>Latency</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody id="dash-requests-tbody">
-                  <tr><td colspan="4" style="text-align: center; color: var(--text-dim); padding: 2rem;">Connecting to real-time event stream...</td></tr>
-                </tbody>
-              </table>
+
+            <!-- Active Providers Section -->
+            <div class="section-title-row">
+              <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                Active Providers & Accounts
+                <span class="badge badge-muted" id="badge-overview-prov-count">5</span>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="switchView('providers')">Catalog & Custom →</button>
+            </div>
+            <div class="project-grid" id="overview-providers-grid">
+              <!-- Dynamically populated with Vercel provider project cards -->
+            </div>
+
+            <!-- Combos Section -->
+            <div class="section-title-row" style="margin-top: 1.5rem;">
+              <div style="font-size: 0.98rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                Routing Combos & Claude Code Models
+                <span class="badge badge-muted" id="badge-overview-combos-count">7</span>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="switchView('combos')">Manage Combos →</button>
+            </div>
+            <div class="project-grid" id="overview-combos-grid">
+              <!-- Dynamically populated with Vercel combo cards -->
             </div>
           </div>
         </div>
@@ -1591,8 +1996,7 @@
 
     function refreshCurrentView() {
       if (currentView === 'dashboard') {
-        loadStats();
-        loadTopology('dash-topology-svg');
+        loadDashboardOverview();
       } else if (currentView === 'topology') {
         loadTopology('full-topology-svg');
       } else if (currentView === 'cli-agents') {
@@ -1615,31 +2019,210 @@
       }
     }
 
-    // Load Overview Stats
-    async function loadStats() {
+    let allOverviewProviders = [];
+    let allOverviewCombos = [];
+    let currentOverviewFilter = 'all';
+
+    function setOverviewFilter(filter, btn) {
+      currentOverviewFilter = filter;
+      document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderOverviewCards();
+    }
+
+    function filterOverview(q) {
+      renderOverviewCards(q);
+    }
+
+    function getProviderEmoji(id) {
+      id = (id || '').toLowerCase();
+      if (id.includes('antigravity') || id.includes('gemini')) return '⚡';
+      if (id.includes('kiro') || id.includes('bedrock') || id.includes('aws')) return '☁️';
+      if (id.includes('codex') || id.includes('openai')) return '🤖';
+      if (id.includes('copilot') || id.includes('github')) return '🐙';
+      if (id.includes('cursor')) return '🎯';
+      if (id.includes('apinex') || id.includes('bond')) return '✨';
+      if (id.includes('groq') || id.includes('cerebras')) return '⚡';
+      if (id.includes('deepseek')) return '🐋';
+      if (id.includes('anthropic') || id.includes('claude')) return '🧠';
+      if (id.includes('ollama') || id.includes('local')) return '💻';
+      return '🌐';
+    }
+
+    // Load Vercel-style Overview Data
+    async function loadDashboardOverview() {
       try {
         const [topoRes, combosRes] = await Promise.all([
-          fetch('/api/topology').then(r => r.json()),
-          fetch('/api/combos').then(r => r.json())
+          fetch('/api/topology').then(r => r.json()).catch(() => ({})),
+          fetch('/api/combos').then(r => r.json()).catch(() => ({}))
         ]);
-        
+
         if (topoRes.nodes) {
           const gw = topoRes.nodes.find(n => n.id === 'goroute');
           if (gw && gw.details) {
-            document.getElementById('sb-memory').innerHTML = `<span class="pulse-dot"></span> ${gw.details.memory}`;
-            document.getElementById('stat-ram').textContent = gw.details.memory;
-            document.getElementById('sb-uptime').textContent = gw.details.uptime;
+            const mem = gw.details.memory || '1.5 MB';
+            const sbMem = document.getElementById('sb-memory');
+            if (sbMem) sbMem.innerHTML = `<span class="pulse-dot"></span> ${mem}`;
+            const statRam = document.getElementById('stat-ram');
+            if (statRam) statRam.textContent = mem;
+            const sbUp = document.getElementById('sb-uptime');
+            if (sbUp) sbUp.textContent = gw.details.uptime || 'Active';
+
+            const num = parseFloat(mem);
+            const pct = Math.min(Math.round((num / 15) * 100), 100);
+            const ramMeter = document.getElementById('meter-ram-fill');
+            if (ramMeter) ramMeter.style.width = `${Math.max(pct, 12)}%`;
           }
-          const provs = topoRes.nodes.filter(n => n.type === 'provider');
-          document.getElementById('stat-providers').textContent = provs.length;
+
+          allOverviewProviders = topoRes.nodes.filter(n => n.type === 'provider');
+          const provCount = document.getElementById('stat-providers');
+          if (provCount) provCount.textContent = allOverviewProviders.length;
+          const provBadge = document.getElementById('badge-overview-prov-count');
+          if (provBadge) provBadge.textContent = allOverviewProviders.length;
         }
 
         if (combosRes.combos) {
-          document.getElementById('stat-combos').textContent = combosRes.combos.length;
+          allOverviewCombos = combosRes.combos;
+          const comboCount = document.getElementById('stat-combos');
+          if (comboCount) comboCount.textContent = allOverviewCombos.length;
+          const comboBadge = document.getElementById('badge-overview-combos-count');
+          if (comboBadge) comboBadge.textContent = allOverviewCombos.length;
         }
+
+        renderOverviewCards();
       } catch (e) {
-        console.error('loadStats error:', e);
+        console.error('loadDashboardOverview error:', e);
       }
+    }
+
+    function renderOverviewCards(query = '') {
+      const q = (query || document.getElementById('search-overview')?.value || '').toLowerCase().trim();
+      const provGrid = document.getElementById('overview-providers-grid');
+      const combosGrid = document.getElementById('overview-combos-grid');
+
+      // Filter Providers
+      if (provGrid) {
+        const filteredProvs = allOverviewProviders.filter(p => {
+          if (currentOverviewFilter === 'combos') return false;
+          if (currentOverviewFilter === 'oauth') {
+            const isOauth = ['antigravity', 'kiro', 'codex', 'copilot', 'cursor'].includes(p.id);
+            if (!isOauth) return false;
+          }
+          if (currentOverviewFilter === 'gateways') {
+            const isGw = ['openrouter', 'apinexbond', 'tokenrouter', 'agentrouter', 'portkey', 'helicone'].includes(p.id);
+            if (!isGw) return false;
+          }
+          if (!q) return true;
+          return p.label?.toLowerCase().includes(q) || p.id?.toLowerCase().includes(q) || p.details?.type?.toLowerCase().includes(q);
+        });
+
+        if (filteredProvs.length === 0) {
+          provGrid.innerHTML = `<div style="grid-column: 1/-1; padding: 2.5rem; text-align: center; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 8px;">No matching providers found in pool. Click <strong>+ Add Account</strong> to connect one.</div>`;
+        } else {
+          provGrid.innerHTML = filteredProvs.map(p => {
+            const emoji = getProviderEmoji(p.id);
+            const accCount = p.details?.accounts || 1;
+            const provType = p.details?.type || p.id;
+            const metaUrl = PROVIDER_META[p.id]?.url;
+            const ep = metaUrl ? metaUrl.replace(/^https?:\/\//, '') : (p.details?.endpoint || p.id + ' endpoint');
+            return `
+              <div class="project-card" onclick="openProviderDetails('${p.id}')">
+                <div class="project-card-header">
+                  <div class="project-card-identity">
+                    <div class="project-avatar">${emoji}</div>
+                    <div>
+                      <div class="project-title">${p.label || p.id}</div>
+                      <div class="project-endpoint" title="${ep}">${ep}</div>
+                    </div>
+                  </div>
+                  <span class="badge ${p.status === 'active' ? 'badge-success' : 'badge-warning'}">
+                    <span class="pulse-dot"></span> ${p.status === 'active' ? 'Active' : p.status}
+                  </span>
+                </div>
+                <div class="project-meta-row">
+                  <span>Protocol: <strong style="color: #ededed;">${provType}</strong></span>
+                  <span>Pool: <strong style="color: #ededed;">${accCount} in pool</strong></span>
+                </div>
+                <div style="display: flex; gap: 0.5rem; justify-content: space-between; margin-top: 0.25rem;">
+                  <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); testProvider('${p.id}')">⚡ Test Ping</button>
+                  <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProviderDetails('${p.id}')">Models & Playground →</button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      // Filter Combos
+      if (combosGrid) {
+        if (currentOverviewFilter === 'providers' || currentOverviewFilter === 'oauth' || currentOverviewFilter === 'gateways') {
+          combosGrid.parentElement.style.display = 'none';
+        } else {
+          combosGrid.parentElement.style.display = 'block';
+          const filteredCombos = allOverviewCombos.filter(c => {
+            if (!q) return true;
+            return c.name?.toLowerCase().includes(q) || c.strategy?.toLowerCase().includes(q) || (c.targets || []).some(t => t.model?.toLowerCase().includes(q));
+          });
+
+          if (filteredCombos.length === 0) {
+            combosGrid.innerHTML = `<div style="grid-column: 1/-1; padding: 2.5rem; text-align: center; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 8px;">No matching combos found. Click <strong>+ New Combo</strong> to configure one.</div>`;
+          } else {
+            combosGrid.innerHTML = filteredCombos.map(c => {
+              const targets = (c.targets || []).map(t => `${t.provider_id}/${t.model}`).join(' → ');
+              return `
+                <div class="project-card" style="cursor: default;">
+                  <div class="project-card-header">
+                    <div class="project-card-identity">
+                      <div class="project-avatar" style="background: #141414;">🔀</div>
+                      <div>
+                        <div class="project-title" style="font-family: 'Geist Mono'; font-size: 0.88rem;">${c.name}</div>
+                        <div class="project-endpoint" title="${targets}">${targets}</div>
+                      </div>
+                    </div>
+                    <span class="badge badge-accent">${c.strategy}</span>
+                  </div>
+                  <div class="project-meta-row">
+                    <span>Claude Code / Gateway alias</span>
+                    <button class="btn btn-danger btn-sm" style="padding: 0.2rem 0.5rem;" onclick="deleteCombo('${c.name}')">Delete</button>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
+        }
+      }
+    }
+
+    // Global Keyboard Shortcuts (Vercel Style)
+    window.addEventListener('keydown', (e) => {
+      if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        const searchInput = document.getElementById('search-overview');
+        if (searchInput) searchInput.focus();
+      } else if ((e.key === 'f' || e.key === 'F') && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+        const sbFind = document.getElementById('sidebar-find');
+        if (sbFind) sbFind.focus();
+      } else if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-backdrop.active').forEach(m => m.classList.remove('active'));
+      }
+    });
+
+    function filterSidebar(query) {
+      const q = (query || '').toLowerCase().trim();
+      document.querySelectorAll('.nav-items .nav-item').forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (!q || text.includes(q)) {
+          item.style.display = 'flex';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+    }
+
+    // Load Overview Stats
+    async function loadStats() {
+      return loadDashboardOverview();
     }
 
     // Render Topology Graph (Pure SVG)
