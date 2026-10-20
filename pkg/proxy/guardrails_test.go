@@ -15,25 +15,25 @@ func TestSanitizeAndGuardrailMessages(t *testing.T) {
 			Role: "user",
 			Content: []interface{}{
 				map[string]interface{}{
-					"type": "thinking",
+					"type":     "thinking",
 					"thinking": "some internal thought",
 				},
 				map[string]interface{}{
-					"type": "tool_result",
+					"type":        "tool_result",
 					"tool_use_id": "toolu_123",
-					"content": hugeToolOutput,
+					"content":     hugeToolOutput,
 				},
 			},
 		},
 		{
-			Role: "user",
+			Role:    "user",
 			Content: "follow up prompt",
 		},
 	}
 
-	sanitized := SanitizeAndGuardrailMessages(msgs, 50000)
+	sanitized := SanitizeAndGuardrailMessages(msgs, 0)
 
-	// Verify thinking was pruned from turn 0 (non-latest turn)
+	// Verify thinking was pruned from turn 0 (non-latest turn, required by Anthropic)
 	firstTurnBlocks, ok := sanitized[0].Content.([]interface{})
 	if !ok {
 		t.Fatalf("expected []interface{} for content")
@@ -46,11 +46,12 @@ func TestSanitizeAndGuardrailMessages(t *testing.T) {
 	toolResultBlock := firstTurnBlocks[0].(map[string]interface{})
 	contentStr := toolResultBlock["content"].(string)
 
-	if len(contentStr) >= 100000 {
-		t.Fatalf("expected tool_result content to be truncated, got %d chars", len(contentStr))
+	// Verify full fidelity passthrough: NO artificial truncation
+	if len(contentStr) != 100000 {
+		t.Fatalf("expected full 100000 chars preserved without artificial limit, got %d", len(contentStr))
 	}
 
-	if !strings.Contains(contentStr, "goroute context guard: truncated") {
-		t.Fatalf("expected truncation marker in output")
+	if len(sanitized) != 2 {
+		t.Fatalf("expected all conversation turns preserved, got %d", len(sanitized))
 	}
 }

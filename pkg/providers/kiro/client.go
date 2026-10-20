@@ -408,9 +408,6 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 								filtered := rtk.GlobalEngine.FilterCommandOutput("", resContent)
 								resContent = filtered.Output
 							}
-							if len(resContent) > 12000 {
-								resContent = resContent[:12000] + "\n... [truncated by GoRoute to fit model context limit]"
-							}
 							toolResults = append(toolResults, kiroToolResult{
 								ToolUseId: toolUseId,
 								Status:    status,

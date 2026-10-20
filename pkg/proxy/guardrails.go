@@ -18,25 +18,13 @@ const (
 	DefaultMaxTotalContextChars = 800000
 )
 
-// SanitizeAndGuardrailMessages compresses tool outputs, strips historical thinking, and prunes older turns if oversized
+// SanitizeAndGuardrailMessages strips historical thinking blocks from older turns as required by upstream APIs,
+// while preserving 100% of messages, turns, tool outputs, and context without artificial gateway limits.
 func SanitizeAndGuardrailMessages(messages []providers.ChatMessage, maxToolChars int) []providers.ChatMessage {
-	if maxToolChars <= 0 {
-		maxToolChars = DefaultMaxToolResultChars
-	}
-
 	sanitized := make([]providers.ChatMessage, len(messages))
 
 	for i, msg := range messages {
-		// 1. Tool role with string content
-		if msg.Role == "tool" {
-			if strContent, ok := msg.Content.(string); ok && len(strContent) > maxToolChars {
-				msg.Content = truncateString(strContent, maxToolChars)
-			}
-			sanitized[i] = msg
-			continue
-		}
-
-		// 2. User or Assistant role with array content blocks (Anthropic / multimodal format)
+		// User or Assistant role with array content blocks (Anthropic / multimodal format)
 		if sliceContent, ok := msg.Content.([]interface{}); ok {
 			var newSlice []interface{}
 			for _, block := range sliceContent {
@@ -46,63 +34,20 @@ func SanitizeAndGuardrailMessages(messages []providers.ChatMessage, maxToolChars
 					continue
 				}
 
-				// Skip historical thinking blocks from non-latest turns
+				// Skip historical thinking blocks from non-latest turns (Anthropic API requirement)
 				if m["type"] == "thinking" && i < len(messages)-1 {
 					continue
-				}
-
-				// Truncate tool_result blocks
-				if m["type"] == "tool_result" {
-					if contentStr, ok := m["content"].(string); ok && len(contentStr) > maxToolChars {
-						cloned := make(map[string]interface{}, len(m))
-						for k, v := range m {
-							cloned[k] = v
-						}
-						cloned["content"] = truncateString(contentStr, maxToolChars)
-						newSlice = append(newSlice, cloned)
-						continue
-					}
-					// Handle nested content array inside tool_result
-					if contentArr, ok := m["content"].([]interface{}); ok {
-						var newSubArr []interface{}
-						for _, subItem := range contentArr {
-							if subM, ok := subItem.(map[string]interface{}); ok {
-								if subM["type"] == "text" {
-									if textStr, ok := subM["text"].(string); ok && len(textStr) > maxToolChars {
-										subCloned := make(map[string]interface{}, len(subM))
-										for k, v := range subM {
-											subCloned[k] = v
-										}
-										subCloned["text"] = truncateString(textStr, maxToolChars)
-										newSubArr = append(newSubArr, subCloned)
-										continue
-									}
-								}
-							}
-							newSubArr = append(newSubArr, subItem)
-						}
-						cloned := make(map[string]interface{}, len(m))
-						for k, v := range m {
-							cloned[k] = v
-						}
-						cloned["content"] = newSubArr
-						newSlice = append(newSlice, cloned)
-						continue
-					}
 				}
 
 				newSlice = append(newSlice, block)
 			}
 			msg.Content = newSlice
-			sanitized[i] = msg
-			continue
 		}
 
 		sanitized[i] = msg
 	}
 
-	// Apply conversation history pruning if total characters exceed threshold
-	return PruneHistoryToFit(sanitized, DefaultMaxTotalContextChars)
+	return sanitized
 }
 
 func truncateString(s string, maxChars int) string {
