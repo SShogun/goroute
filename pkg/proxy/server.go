@@ -118,6 +118,10 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)
 	s.mux.Post("/api/providers/{id}/accounts", s.handleAddAccount)
+	s.mux.Get("/api/providers/{id}/models", s.handleProviderModels)
+	s.mux.Post("/api/providers/{id}/test-model", s.handleTestModel)
+	s.mux.Post("/api/providers/{id}/expose-claude", s.handleExposeClaude)
+	s.mux.Post("/api/playground/chat", s.handlePlaygroundChat)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
@@ -1248,6 +1252,200 @@ func (s *Server) handleTestAccount(w http.ResponseWriter, r *http.Request) {
 		"valid":      true,
 		"latency_ms": latency,
 		"message":    fmt.Sprintf("Account %s verified successfully", accId),
+	})
+}
+
+func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	prov, ok := s.router.GetProvider(id)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "provider not found", "models": []providers.ModelInfo{}})
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	models, err := prov.Models(ctx)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": err.Error(), "models": []providers.ModelInfo{}})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "models": models})
+}
+
+func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Model string `json:"model"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+	if req.Model == "" {
+		req.Model = "gemini-3.1-pro"
+	}
+	prov, ok := s.router.GetProvider(id)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "provider not found"})
+		return
+	}
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	chatReq := &providers.ChatRequest{
+		Model: req.Model,
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "Say OK"},
+		},
+	}
+	resp, _, code, err := prov.ChatCompletion(ctx, chatReq)
+	duration := time.Since(start).Milliseconds()
+	if err != nil || code >= 400 {
+		errMsg := "error"
+		if err != nil {
+			errMsg = err.Error()
+		} else {
+			errMsg = fmt.Sprintf("HTTP %d", code)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     "error",
+			"error":      errMsg,
+			"latency_ms": duration,
+		})
+		return
+	}
+	if resp != nil {
+		resp.Close()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":     "ok",
+		"latency_ms": duration,
+		"model":      req.Model,
+	})
+}
+
+func (s *Server) handlePlaygroundChat(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ProviderID string `json:"provider_id"`
+		Model      string `json:"model"`
+		Prompt     string `json:"prompt"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Prompt == "" {
+		http.Error(w, "prompt required", http.StatusBadRequest)
+		return
+	}
+	prov, ok := s.router.GetProvider(req.ProviderID)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{"status": "error", "error": "provider not found"})
+		return
+	}
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 25*time.Second)
+	defer cancel()
+	chatReq := &providers.ChatRequest{
+		Model: req.Model,
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: req.Prompt},
+		},
+	}
+	resp, _, code, err := prov.ChatCompletion(ctx, chatReq)
+	duration := time.Since(start).Milliseconds()
+	if err != nil || code >= 400 {
+		errMsg := "error"
+		if err != nil {
+			errMsg = err.Error()
+		} else {
+			errMsg = fmt.Sprintf("HTTP %d", code)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":      "error",
+			"error":       errMsg,
+			"duration_ms": duration,
+		})
+		return
+	}
+	defer resp.Close()
+	bodyBytes, _ := io.ReadAll(resp)
+	var parsed struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			TotalTokens int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+	json.Unmarshal(bodyBytes, &parsed)
+	content := ""
+	if len(parsed.Choices) > 0 {
+		content = parsed.Choices[0].Message.Content
+	} else {
+		content = string(bodyBytes)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"content":     content,
+		"duration_ms": duration,
+		"tokens":      parsed.Usage.TotalTokens,
+	})
+}
+
+func (s *Server) handleExposeClaude(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Model string `json:"model"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+	if req.Model == "" {
+		req.Model = "gemini-3.1-pro"
+	}
+	home, _ := os.UserHomeDir()
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		cfg = config.DefaultConfig()
+	}
+	comboName := req.Model
+	exists := false
+	for _, c := range cfg.Combos {
+		if c.Name == comboName {
+			exists = true
+			break
+		}
+	}
+	if !exists {
+		cfg.Combos = append(cfg.Combos, config.ComboConfig{
+			Name:     comboName,
+			Strategy: "failover",
+			Targets: []config.ComboTarget{
+				{ProviderID: id, Model: req.Model},
+				{ProviderID: "antigravity", Model: "gemini-3.8-flash-high"},
+			},
+		})
+		cfg.Save(cfgPath)
+		s.Reload()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"message": fmt.Sprintf("Exposed %s in Claude Code catalog", comboName),
 	})
 }
 

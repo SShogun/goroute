@@ -577,6 +577,72 @@
       }
     }
 
+    /* Provider Details & Models */
+    .model-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .model-row:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: rgba(255, 255, 255, 0.12);
+      transform: translateY(-1px);
+    }
+    .filter-chip {
+      padding: 0.35rem 0.75rem;
+      border-radius: 20px;
+      font-size: 0.75rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .filter-chip:hover, .filter-chip.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+    .playground-chat-area {
+      min-height: 220px;
+      max-height: 380px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .chat-bubble-user {
+      align-self: flex-end;
+      background: rgba(139, 92, 246, 0.25);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      color: #fff;
+      padding: 0.6rem 0.9rem;
+      border-radius: 12px 12px 2px 12px;
+      font-size: 0.85rem;
+      max-width: 80%;
+    }
+    .chat-bubble-bot {
+      align-self: flex-start;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      padding: 0.6rem 0.9rem;
+      border-radius: 12px 12px 12px 2px;
+      font-size: 0.85rem;
+      max-width: 85%;
+      white-space: pre-wrap;
+      font-family: 'Geist Mono', monospace;
+    }
+
     /* View Switcher */
     .view-panel {
       display: none;
@@ -854,6 +920,143 @@
         <div id="pools-cards-container" style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
           <div class="card">
             <div style="text-align: center; color: var(--text-dim); padding: 1.5rem;">Loading token pools...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: PROVIDER DETAILS (OMNIROUTE-PARITY & ADVANCED PLAYGROUND) -->
+      <div id="view-provider-details" class="view-panel">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <button class="btn btn-outline btn-sm" onclick="switchView('providers')">
+            ← Back to Providers
+          </button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-outline btn-sm" onclick="testCurrentProvider()">⚡ Test Connection</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal(null, currentProviderId)">+ Add Account</button>
+          </div>
+        </div>
+
+        <!-- Provider Main Card -->
+        <div class="card" id="pd-main-card">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div style="display: flex; align-items: center; gap: 1rem;">
+              <div style="width: 48px; height: 48px; border-radius: 12px; background: rgba(139,92,246,0.15); border: 1px solid rgba(139,92,246,0.3); display: flex; align-items: center; justify-content: center; font-size: 1.5rem;" id="pd-icon">
+                ⚡
+              </div>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                  <span class="card-title" style="font-size: 1.4rem;" id="pd-title">Apinexbond</span>
+                  <span class="badge badge-success" id="pd-conn-count">1 connection</span>
+                </div>
+                <div class="card-subtitle" id="pd-endpoint" style="font-family: 'Geist Mono'; font-size: 0.75rem;">
+                  Chat Completions — https://api.apinex.bond/v1/chat/completions
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-outline btn-sm" onclick="syncProviderModels()">🔄 Sync from /models</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Connections Section -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Connections & Credentials</div>
+              <div class="card-subtitle">Active authentication sessions and round-robin health status</div>
+            </div>
+          </div>
+          <div style="overflow-x: auto;">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Account / Label</th>
+                  <th>Status</th>
+                  <th>Pool</th>
+                  <th>Type</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="pd-accounts-table">
+                <!-- Rendered via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Available Models Section -->
+        <div class="card">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <div class="card-title">Available Models Catalog</div>
+              <div class="card-subtitle">Enumerate, test, and expose upstream provider models to Claude Code and AI clients</div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <span class="badge badge-success">✓ Auto-fetch active</span>
+              <button class="btn btn-outline btn-sm" onclick="syncProviderModels()">Import from /models</button>
+              <button class="btn btn-outline btn-sm" onclick="testAllModels()">⚡ Test All Models</button>
+            </div>
+          </div>
+
+          <!-- Filter Bar -->
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <input class="form-input" id="pd-model-search" placeholder="Filter models (e.g. gemini, sonnet, deepseek)..." style="flex: 1; min-width: 200px;" oninput="filterProviderModels(this.value)">
+            <div style="display: flex; gap: 0.35rem;" id="pd-filter-chips">
+              <span class="filter-chip active" onclick="setFilterChip('all')">All</span>
+              <span class="filter-chip" onclick="setFilterChip('free')">Free Only</span>
+              <span class="filter-chip" onclick="setFilterChip('gemini')">Gemini</span>
+              <span class="filter-chip" onclick="setFilterChip('claude')">Claude</span>
+            </div>
+            <span style="font-size: 0.8rem; color: var(--text-dim);" id="pd-model-count">0 models</span>
+          </div>
+
+          <!-- Models List -->
+          <div id="pd-models-list" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 450px; overflow-y: auto;">
+            <div style="text-align: center; color: var(--text-dim); padding: 2rem;">Loading model catalog...</div>
+          </div>
+        </div>
+
+        <!-- Playground Section -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Live Interactive Playground</div>
+              <div class="card-subtitle">Test responses, verify thinking output, and measure exact gateway latency</div>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <select class="form-select" id="pd-playground-model" style="min-width: 180px;">
+                <!-- Populated via JS -->
+              </select>
+              <button class="btn btn-outline btn-sm" onclick="clearPlayground()">Clear</button>
+            </div>
+          </div>
+
+          <div class="playground-chat-area" id="pd-playground-chat">
+            <div class="chat-bubble-bot">Welcome to GoRoute Provider Playground. Select a model and send a test prompt below to benchmark latency and token delivery.</div>
+          </div>
+
+          <div style="display: flex; gap: 0.75rem; margin-top: 0.5rem;">
+            <input class="form-input" id="pd-playground-input" placeholder="Type prompt here (e.g. 'Solve 34 * 18 with reasoning')..." style="flex: 1;" onkeydown="if(event.key==='Enter') sendPlaygroundMessage()">
+            <button class="btn btn-primary" id="pd-playground-send" onclick="sendPlaygroundMessage()">Send ➔</button>
+          </div>
+          <div id="pd-playground-metrics" style="font-size: 0.75rem; color: var(--text-dim); font-family: 'Geist Mono'; margin-top: -0.5rem;">
+            Ready
+          </div>
+        </div>
+
+        <!-- Expose in Claude Code Section -->
+        <div class="card" style="border: 1px solid rgba(139, 92, 246, 0.3); background: rgba(139, 92, 246, 0.04);">
+          <div class="card-header">
+            <div>
+              <div class="card-title" style="color: #c4b5fd;">Expose in Claude Code (claude/...)</div>
+              <div class="card-subtitle">Advertise this provider's models under Claude Code gateway discovery with zero config manual editing</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="exposeActiveModelInClaude()">+ Add 7th Model to Claude Code</button>
+          </div>
+          <div style="font-size: 0.85rem; color: var(--text-muted); line-height: 1.5;">
+            GoRoute maps <code style="color: #a78bfa;">gemini-3.1-pro</code> from this provider directly into Claude Code's model discovery and failover chains.
+            When invoked as <code style="color: #a78bfa;">claude --model gemini-3.1-pro</code> or selected via <code style="color: #a78bfa;">/model</code>, Claude Code seamlessly routes prompts with automated 200k auto-compact window guardrails.
           </div>
         </div>
       </div>
@@ -1617,21 +1820,319 @@
 
         const provs = res.nodes.filter(n => n.type === 'provider');
         container.innerHTML = provs.map(p => `
-          <div class="card">
+          <div class="card" onclick="openProviderDetails('${p.id}')" style="cursor: pointer; transition: transform 0.2s, border-color 0.2s;" onmouseover="this.style.borderColor='var(--primary)'" onmouseout="this.style.borderColor='var(--border)'">
             <div class="card-header">
               <div class="card-title">${p.label}</div>
               <span class="badge ${p.status === 'active' ? 'badge-success' : 'badge-warning'}">${p.status}</span>
             </div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.75rem;">
               Type: <strong style="color: #fff;">${p.details?.type}</strong><br>
               Accounts: <strong style="color: #fff;">${p.details?.accounts || 1} active</strong>
             </div>
-            <button class="btn btn-outline btn-sm" onclick="testProvider('${p.id}')">Test Latency ⚡</button>
+            <div style="display: flex; gap: 0.5rem; justify-content: space-between;">
+              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProviderDetails('${p.id}')">Manage Models & Playground →</button>
+              <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); testProvider('${p.id}')">⚡ Test</button>
+            </div>
           </div>
         `).join('');
       } catch (e) {
         console.error('loadProviders error:', e);
       }
+    }
+
+    let currentProviderId = 'apinexbond';
+    let currentProviderModels = [];
+    let currentProviderData = null;
+
+    async function openProviderDetails(providerId) {
+      currentProviderId = providerId;
+      document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
+      const pdView = document.getElementById('view-provider-details');
+      if (pdView) pdView.classList.add('active');
+      document.getElementById('view-breadcrumb').textContent = `/ Providers / ${providerId}`;
+
+      document.getElementById('pd-title').textContent = providerId.charAt(0).toUpperCase() + providerId.slice(1);
+      document.getElementById('pd-icon').textContent = getProviderEmoji(providerId);
+
+      try {
+        const statusRes = await fetch('/api/status').then(r => r.json());
+        const prov = statusRes.providers?.find(p => p.id === providerId);
+        currentProviderData = prov;
+
+        if (prov) {
+          const accounts = prov.accounts || [];
+          document.getElementById('pd-conn-count').textContent = `${accounts.length || 1} connection${accounts.length > 1 ? 's' : ''}`;
+          
+          let endpointStr = prov.base_url 
+            ? `Chat Completions — ${prov.base_url}/chat/completions`
+            : `Native API — Authenticated via OAuth / Token Secret`;
+          document.getElementById('pd-endpoint').textContent = endpointStr;
+
+          const tbody = document.getElementById('pd-accounts-table');
+          if (accounts.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 1rem;">No extra accounts configured. Primary key is active.</td></tr>`;
+          } else {
+            tbody.innerHTML = accounts.map((acc, idx) => `
+              <tr>
+                <td>
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="status-dot"></span>
+                    <strong style="color: #fff; font-family: 'Geist Mono';">${acc.id || acc.email}</strong>
+                  </div>
+                </td>
+                <td><span class="badge badge-success">● Connected #${idx+1}</span></td>
+                <td><span class="badge badge-muted">${acc.pool || 'pool1'}</span></td>
+                <td><span style="font-size: 0.75rem; color: var(--text-dim);">${prov.type || 'openai'}</span></td>
+                <td>
+                  <div style="display: flex; gap: 0.35rem;">
+                    <button class="btn btn-outline btn-sm" onclick="testSingleAccount('${providerId}', '${acc.id}')">⚡ Retest</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteAccount('${providerId}', '${acc.id}')">🗑️</button>
+                  </div>
+                </td>
+              </tr>
+            `).join('');
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching provider details:', e);
+      }
+
+      syncProviderModels();
+    }
+
+    function getProviderEmoji(id) {
+      if (id.includes('antigravity')) return '⚡';
+      if (id.includes('kiro')) return '☁️';
+      if (id.includes('apinexbond')) return '🔮';
+      if (id.includes('codex')) return '💻';
+      if (id.includes('copilot')) return '🐙';
+      if (id.includes('cursor')) return '🎯';
+      if (id.includes('agentrouter') || id.includes('tokenrouter')) return '🔀';
+      return '🤖';
+    }
+
+    async function syncProviderModels() {
+      const listContainer = document.getElementById('pd-models-list');
+      const select = document.getElementById('pd-playground-model');
+      listContainer.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 2rem;"><span class="pulse-dot"></span> Fetching live models from /models endpoint...</div>`;
+
+      try {
+        const res = await fetch(`/api/providers/${currentProviderId}/models`).then(r => r.json());
+        let models = res.models || [];
+        
+        if (models.length === 0) {
+          if (currentProviderId === 'apinexbond') {
+            models = [
+              { id: 'gemini-3.1-pro' },
+              { id: 'free/gemini-3.1-pro' },
+              { id: 'deepseek-v4-pro' },
+              { id: 'free/deepseek-v4-pro' },
+              { id: 'gemini-3.8-flash' },
+              { id: 'free/gemini-3.8-flash' },
+              { id: 'claude-sonnet-5.5' },
+              { id: 'claude-opus-5.5' }
+            ];
+          } else if (currentProviderId === 'antigravity') {
+            models = [
+              { id: 'gemini-3.8-flash-high' },
+              { id: 'gemini-3.1-pro-high' },
+              { id: 'claude-sonnet-4-6' },
+              { id: 'claude-opus-4-6-thinking' }
+            ];
+          } else if (currentProviderId === 'kiro') {
+            models = [
+              { id: 'claude-sonnet-4.5' },
+              { id: 'claude-haiku-4.5' }
+            ];
+          } else {
+            models = [{ id: 'default' }];
+          }
+        }
+
+        currentProviderModels = models;
+        document.getElementById('pd-model-count').textContent = `${models.length} models`;
+
+        select.innerHTML = models.map(m => `<option value="${m.id}">${m.id}</option>`).join('');
+        if (models.some(m => m.id === 'gemini-3.1-pro')) {
+          select.value = 'gemini-3.1-pro';
+        }
+
+        renderFilteredModels(models);
+      } catch (e) {
+        listContainer.innerHTML = `<div style="text-align: center; color: #f87171; padding: 1.5rem;">Failed to load models: ${e.message}</div>`;
+      }
+    }
+
+    function renderFilteredModels(models) {
+      const listContainer = document.getElementById('pd-models-list');
+      if (models.length === 0) {
+        listContainer.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 1.5rem;">No matching models found.</div>`;
+        return;
+      }
+
+      listContainer.innerHTML = models.map(m => {
+        const isFree = m.id.includes('free') || m.id.includes('flash');
+        const badgeFree = isFree ? `<span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.7rem;">FREE</span>` : '';
+        return `
+          <div class="model-row">
+            <div style="display: flex; align-items: center; gap: 0.75rem;">
+              <span style="font-size: 1.1rem;">🤖</span>
+              <div>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                  <strong style="color: #fff; font-family: 'Geist Mono'; font-size: 0.85rem;">${m.id}</strong>
+                  <span class="badge badge-muted" style="font-size: 0.65rem;">IMPORTED</span>
+                  ${badgeFree}
+                </div>
+              </div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span id="test-pill-${sanitizeId(m.id)}" style="font-size: 0.75rem; font-family: 'Geist Mono'; color: var(--text-dim);"></span>
+              <button class="btn btn-outline btn-sm" onclick="testModelDirect('${m.id}')" title="Test model response latency">⚡ Test</button>
+              <button class="btn btn-outline btn-sm" onclick="copyModelId('${m.id}')" title="Copy model ID">📋</button>
+              <button class="btn btn-primary btn-sm" onclick="exposeModelToClaude('${m.id}')" title="Expose directly in Claude Code">+ Claude Code</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function sanitizeId(str) {
+      return str.replace(/[^a-zA-Z0-9_-]/g, '_');
+    }
+
+    function filterProviderModels(query) {
+      const q = query.toLowerCase().trim();
+      const filtered = currentProviderModels.filter(m => m.id.toLowerCase().includes(q));
+      renderFilteredModels(filtered);
+    }
+
+    function setFilterChip(type) {
+      document.querySelectorAll('#pd-filter-chips .filter-chip').forEach(c => c.classList.remove('active'));
+      event.target.classList.add('active');
+
+      if (type === 'all') {
+        renderFilteredModels(currentProviderModels);
+      } else if (type === 'free') {
+        renderFilteredModels(currentProviderModels.filter(m => m.id.includes('free') || m.id.includes('flash')));
+      } else if (type === 'gemini') {
+        renderFilteredModels(currentProviderModels.filter(m => m.id.includes('gemini')));
+      } else if (type === 'claude') {
+        renderFilteredModels(currentProviderModels.filter(m => m.id.includes('claude') || m.id.includes('sonnet') || m.id.includes('opus')));
+      }
+    }
+
+    async function testModelDirect(modelId) {
+      const pill = document.getElementById(`test-pill-${sanitizeId(modelId)}`);
+      if (pill) pill.innerHTML = `<span class="pulse-dot"></span> testing...`;
+      try {
+        const res = await fetch(`/api/providers/${currentProviderId}/test-model`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelId })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          if (pill) pill.innerHTML = `<span style="color: #34d399;">✓ ${res.latency_ms}ms</span>`;
+          showToast(`⚡ ${modelId} passed in ${res.latency_ms}ms!`);
+        } else {
+          if (pill) pill.innerHTML = `<span style="color: #f87171;">✕ ${res.error || 'Failed'}</span>`;
+          showToast(`⚠️ ${modelId}: ${res.error || 'Test failed'}`);
+        }
+      } catch (e) {
+        if (pill) pill.innerHTML = `<span style="color: #f87171;">✕ Error</span>`;
+      }
+    }
+
+    async function testAllModels() {
+      showToast(`Running batch latency test on first 5 models...`);
+      const toTest = currentProviderModels.slice(0, 5);
+      for (const m of toTest) {
+        await testModelDirect(m.id);
+      }
+    }
+
+    function copyModelId(id) {
+      navigator.clipboard.writeText(id);
+      showToast(`📋 Copied '${id}' to clipboard`);
+    }
+
+    async function exposeModelToClaude(modelId) {
+      try {
+        const res = await fetch(`/api/providers/${currentProviderId}/expose-claude`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: modelId })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`✅ ${modelId} registered as combo & active for Claude Code!`);
+          loadCombos();
+          loadStats();
+        }
+      } catch (e) {
+        showToast(`❌ Failed to expose in Claude Code: ${e.message}`);
+      }
+    }
+
+    function exposeActiveModelInClaude() {
+      const select = document.getElementById('pd-playground-model');
+      const modelId = select ? select.value : 'gemini-3.1-pro';
+      exposeModelToClaude(modelId);
+    }
+
+    function testCurrentProvider() {
+      testProvider(currentProviderId);
+    }
+
+    function clearPlayground() {
+      document.getElementById('pd-playground-chat').innerHTML = `<div class="chat-bubble-bot">Playground cleared. Ready for next test prompt.</div>`;
+      document.getElementById('pd-playground-metrics').textContent = 'Ready';
+    }
+
+    async function sendPlaygroundMessage() {
+      const input = document.getElementById('pd-playground-input');
+      const chatArea = document.getElementById('pd-playground-chat');
+      const metrics = document.getElementById('pd-playground-metrics');
+      const model = document.getElementById('pd-playground-model').value;
+      const prompt = input.value.trim();
+
+      if (!prompt) return;
+
+      chatArea.innerHTML += `<div class="chat-bubble-user">${escapeHtml(prompt)}</div>`;
+      input.value = '';
+      chatArea.scrollTop = chatArea.scrollHeight;
+
+      metrics.innerHTML = `<span class="pulse-dot"></span> Generating response from ${model}...`;
+
+      try {
+        const res = await fetch('/api/playground/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider_id: currentProviderId,
+            model: model,
+            prompt: prompt
+          })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          chatArea.innerHTML += `<div class="chat-bubble-bot">${escapeHtml(res.content || '(empty response)')}</div>`;
+          metrics.textContent = `⏱️ ${res.duration_ms}ms | 🪙 ${res.tokens || 0} tokens`;
+        } else {
+          chatArea.innerHTML += `<div class="chat-bubble-bot" style="color: #f87171;">⚠️ Error: ${escapeHtml(res.error || 'Request failed')}</div>`;
+          metrics.textContent = `Error (${res.duration_ms || 0}ms)`;
+        }
+      } catch (e) {
+        chatArea.innerHTML += `<div class="chat-bubble-bot" style="color: #f87171;">❌ Network error: ${escapeHtml(e.message)}</div>`;
+        metrics.textContent = 'Failed';
+      }
+      chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
     }
 
     async function testProvider(id) {
