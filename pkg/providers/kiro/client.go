@@ -798,6 +798,16 @@ func pruneKiroConversationState(state *kiroConversationState, maxBytes int) {
 		return
 	}
 
+	// 0. Compact tool descriptions first to free up massive space (e.g. 200+ MCP tools)
+	if state.CurrentMessage.UserInputMessage.UserInputMessageContext != nil {
+		tools := state.CurrentMessage.UserInputMessage.UserInputMessageContext.Tools
+		for i := range tools {
+			if len(tools[i].ToolSpecification.Description) > 100 {
+				tools[i].ToolSpecification.Description = tools[i].ToolSpecification.Description[:100] + "..."
+			}
+		}
+	}
+
 	// 1. Truncate tool results in history turns to compact size
 	for i := range state.History {
 		turn := &state.History[i]
@@ -805,8 +815,8 @@ func pruneKiroConversationState(state *kiroConversationState, maxBytes int) {
 			for j := range turn.UserInputMessage.UserInputMessageContext.ToolResults {
 				tr := &turn.UserInputMessage.UserInputMessageContext.ToolResults[j]
 				for k := range tr.Content {
-					if len(tr.Content[k].Text) > 2048 {
-						tr.Content[k].Text = tr.Content[k].Text[:2048] + "\n... [truncated by GoRoute context pruner]"
+					if len(tr.Content[k].Text) > 1024 {
+						tr.Content[k].Text = tr.Content[k].Text[:1024] + "\n... [truncated to fit AWS limit]"
 					}
 				}
 			}
@@ -818,25 +828,20 @@ func pruneKiroConversationState(state *kiroConversationState, maxBytes int) {
 		for j := range state.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults {
 			tr := &state.CurrentMessage.UserInputMessage.UserInputMessageContext.ToolResults[j]
 			for k := range tr.Content {
-				if len(tr.Content[k].Text) > 8192 {
-					tr.Content[k].Text = tr.Content[k].Text[:8192] + "\n... [truncated by GoRoute context pruner]"
+				if len(tr.Content[k].Text) > 4096 {
+					tr.Content[k].Text = tr.Content[k].Text[:4096] + "\n... [truncated to fit AWS limit]"
 				}
 			}
 		}
 	}
 
 	// 3. Sliding window on history turns: keep first turn (instructions/system context) and latest turns
-	for len(state.History) > 1 {
+	for len(state.History) > 2 {
 		b, err := json.Marshal(state)
 		if err == nil && len(b) <= maxBytes {
 			break
 		}
 		// Drop the oldest turn after the initial context
-		if len(state.History) > 2 {
-			state.History = append(state.History[:1], state.History[2:]...)
-		} else {
-			state.History = state.History[1:]
-			break
-		}
+		state.History = append(state.History[:1], state.History[2:]...)
 	}
 }

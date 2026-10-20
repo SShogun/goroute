@@ -8,14 +8,14 @@ import (
 )
 
 const (
-	// DefaultMaxToolResultChars limits single tool output to ~15k chars (~3.5k tokens)
-	DefaultMaxToolResultChars = 15000
-	headKeepChars             = 9000
-	tailKeepChars             = 4000
+	// DefaultMaxToolResultChars limits single tool output to ~30k chars (~7.5k tokens)
+	DefaultMaxToolResultChars = 30000
+	headKeepChars             = 18000
+	tailKeepChars             = 8000
 
-	// DefaultMaxTotalContextChars limits entire conversation history to ~60k chars (~15k tokens)
-	// to ensure AWS Kiro, Google Cloud Code, and other providers never throw 413 / 400 errors.
-	DefaultMaxTotalContextChars = 60000
+	// DefaultMaxTotalContextChars limits entire conversation history to ~800k chars (~200k tokens)
+	// matching Claude Code, Gemini, and modern frontier LLM context windows.
+	DefaultMaxTotalContextChars = 800000
 )
 
 // SanitizeAndGuardrailMessages compresses tool outputs, strips historical thinking, and prunes older turns if oversized
