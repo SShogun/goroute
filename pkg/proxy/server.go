@@ -956,6 +956,7 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 		ID           string  `json:"id"`
 		Pool         string  `json:"pool"`
 		Type         string  `json:"type"`
+		BaseURL      string  `json:"base_url"`
 		APIKey       string  `json:"api_key"`
 		RefreshToken string  `json:"refresh_token"`
 		Email        string  `json:"email"`
@@ -996,6 +997,9 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 	for i, p := range cfg.Providers {
 		if p.ID == id {
 			found = true
+			if req.BaseURL != "" {
+				cfg.Providers[i].BaseURL = req.BaseURL
+			}
 			if len(cfg.Providers[i].Accounts) == 0 && (cfg.Providers[i].APIKey != "" || cfg.Providers[i].RefreshToken != "") {
 				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
 					ID:           p.ID + "-primary",
@@ -1052,12 +1056,23 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 
 	if !found {
 		pType := req.Type
+		baseURL := req.BaseURL
+		entry := catalog.FindEntry(id)
+		if entry != nil {
+			if pType == "" || pType == id {
+				pType = entry.Type
+			}
+			if baseURL == "" {
+				baseURL = entry.BaseURL
+			}
+		}
 		if pType == "" {
-			pType = id
+			pType = "openai"
 		}
 		newProv := config.ProviderConfig{
-			ID:   id,
-			Type: pType,
+			ID:      id,
+			Type:    pType,
+			BaseURL: baseURL,
 			Accounts: []config.AccountConfig{
 				{
 					ID:           accID,

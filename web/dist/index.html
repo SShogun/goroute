@@ -1401,15 +1401,82 @@
 
       <div class="form-group">
         <label class="form-label">Provider</label>
-        <select class="form-select" id="modal-acc-provider">
-          <option value="antigravity">Google Antigravity (Gemini 2.5 Pro / Flash)</option>
-          <option value="kiro">AWS Bedrock / Kiro (Claude Sonnet 4.5 / Haiku)</option>
-          <option value="apinexbond">APInexBond (Gemini 3.1 Pro / Multimodal)</option>
-          <option value="openai">OpenAI / Compatible / OpenRouter</option>
-          <option value="codex">Codex CLI</option>
-          <option value="copilot">GitHub Copilot</option>
-          <option value="cursor">Cursor Session</option>
+        <select class="form-select" id="modal-acc-provider" onchange="onProviderSelect(this.value)">
+          <optgroup label="🌟 Frontier AI Labs">
+            <option value="openai" selected>OpenAI (GPT-4o, o1, o3, o3-mini)</option>
+            <option value="anthropic">Anthropic Direct (Claude 3.7 Sonnet, 3.5 Haiku)</option>
+            <option value="gemini">Google AI Studio (Gemini 2.5 Pro / Flash)</option>
+            <option value="deepseek">DeepSeek (DeepSeek V3, DeepSeek R1)</option>
+            <option value="xai">xAI Grok (Grok 2, Grok 3 Reasoning)</option>
+            <option value="mistral">Mistral AI (Mistral Large, Codestral 2501)</option>
+            <option value="cohere">Cohere (Command R+, Command R)</option>
+            <option value="perplexity">Perplexity AI (Sonar Reasoning, Sonar Pro)</option>
+          </optgroup>
+          <optgroup label="🔐 Multi-Account OAuth & Coding Agents">
+            <option value="antigravity">Google Antigravity (Cloud Code OAuth Pool)</option>
+            <option value="kiro">AWS Bedrock / Kiro (Claude Sonnet 4.5 / Haiku)</option>
+            <option value="codex">OpenAI Codex CLI (OAuth Refresh Token Pool)</option>
+            <option value="copilot">GitHub Copilot (OAuth Subscription Pool)</option>
+            <option value="cursor">Cursor Pro / Session Token</option>
+            <option value="grok-cli">xAI Grok CLI (OAuth)</option>
+          </optgroup>
+          <optgroup label="⚡ Ultra-Fast LPUs & Inference Clouds">
+            <option value="groq">Groq LPU (500+ tok/s Llama 3.3, Gemma)</option>
+            <option value="cerebras">Cerebras (2,000+ tok/s Wafer-Scale)</option>
+            <option value="sambanova">SambaNova (SN40L Full-Precision)</option>
+            <option value="together">Together AI (Fast Serverless Open Models)</option>
+            <option value="fireworks">Fireworks AI (Compound AI Platform)</option>
+            <option value="nvidia">NVIDIA NIM (Microservices & Hosted GPUs)</option>
+            <option value="deepinfra">DeepInfra (Serverless Pay-As-You-Go)</option>
+            <option value="hyperbolic">Hyperbolic (Decentralized GPU Cluster)</option>
+            <option value="nebius">Nebius AI Studio (H100/H200 Low-Latency)</option>
+            <option value="cloudflare">Cloudflare Workers AI (Global Edge Inference)</option>
+            <option value="lambda">Lambda Labs (High-Performance GPU Cloud)</option>
+            <option value="runpod">RunPod Serverless (vLLM Endpoints)</option>
+          </optgroup>
+          <optgroup label="🌐 Universal AI Gateways & Routers">
+            <option value="openrouter">OpenRouter (Universal 250+ Models Gateway)</option>
+            <option value="apinexbond">APInexBond (Gemini 3.1 Pro / Multimodal Bridge)</option>
+            <option value="tokenrouter">TokenRouter (High-Performance AI Router)</option>
+            <option value="agentrouter">AgentRouter (Coding Agent Proxy)</option>
+            <option value="portkey">Portkey AI Gateway (Enterprise Resilient Proxy)</option>
+            <option value="helicone">Helicone Gateway (LLM Observability Gateway)</option>
+          </optgroup>
+          <optgroup label="🌏 Global & Regional Frontier Models">
+            <option value="dashscope">Alibaba Qwen / DashScope (Qwen 2.5, QwQ)</option>
+            <option value="kimi">Moonshot AI / Kimi (K3, 128k Long-Context)</option>
+            <option value="zhipu">Zhipu AI / GLM (GLM-4 Plus, GLM-4 Flash)</option>
+            <option value="siliconflow">SiliconFlow (High-Concurrency Qwen/DeepSeek)</option>
+            <option value="yi">01.AI / Yi (Yi-Lightning, Yi-Large)</option>
+            <option value="minimax">MiniMax (Text-01, ABAB 6.5s)</option>
+            <option value="stepfun">StepFun (Step-2, Step-1V Multimodal)</option>
+            <option value="novita">Novita AI (Hosted DeepSeek, Llama)</option>
+            <option value="upstage">Upstage AI (Solar Pro, Solar Mini)</option>
+          </optgroup>
+          <optgroup label="💻 Local & Self-Hosted Engines">
+            <option value="ollama">Ollama (localhost:11434 - Zero Config)</option>
+            <option value="lmstudio">LM Studio (localhost:1234 - Desktop GUI)</option>
+            <option value="vllm">vLLM Engine (localhost:8000 - High-Throughput)</option>
+            <option value="llamacpp">llama.cpp Server (localhost:8080 - Native C++)</option>
+            <option value="localai">LocalAI (localhost:8080 - Drop-in OpenAI)</option>
+            <option value="jan">Jan Desktop (localhost:1337 - Local Desktop Runner)</option>
+            <option value="sglang">SGLang (localhost:30000 - High-Speed Framework)</option>
+          </optgroup>
+          <optgroup label="🔍 Embeddings & Custom Endpoints">
+            <option value="voyage">Voyage AI (State-of-the-art Embeddings/Rerankers)</option>
+            <option value="jina">Jina AI (Search Embeddings & Rerankers)</option>
+            <option value="custom">Custom OpenAI-Compatible (Any Custom URL)</option>
+          </optgroup>
         </select>
+      </div>
+
+      <div class="form-group" id="group-acc-baseurl">
+        <label class="form-label" style="display: flex; justify-content: space-between;">
+          <span>API Base URL (Endpoint)</span>
+          <span id="badge-acc-type" style="font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase;"></span>
+        </label>
+        <input class="form-input" id="modal-acc-baseurl" placeholder="https://api.openai.com/v1" style="font-family: 'Geist Mono'; font-size: 0.8rem;">
+        <div id="modal-acc-desc" style="font-size: 0.72rem; color: var(--text-dim); margin-top: 0.25rem;"></div>
       </div>
 
       <div class="form-group">
@@ -1418,8 +1485,8 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">API Key or Refresh Token</label>
-        <textarea class="form-input" id="modal-acc-secret" placeholder="sk-... or OAuth refresh token" rows="3" style="font-family: 'Geist Mono'; font-size: 0.8rem;"></textarea>
+        <label class="form-label" id="label-acc-secret">API Key</label>
+        <textarea class="form-input" id="modal-acc-secret" placeholder="sk-..." rows="2" style="font-family: 'Geist Mono'; font-size: 0.8rem;"></textarea>
       </div>
 
       <div class="grid-2" style="margin-bottom: 1rem;">
@@ -2151,6 +2218,92 @@
       }
     }
 
+    const PROVIDER_META = {
+      'openai': { type: 'openai', auth: 'apikey', url: 'https://api.openai.com/v1', label: 'API Key', ph: 'sk-...', desc: 'GPT-4o, o1, o3, o3-mini models' },
+      'anthropic': { type: 'openai', auth: 'apikey', url: 'https://api.anthropic.com/v1', label: 'API Key', ph: 'sk-ant-...', desc: 'Claude 3.7 Sonnet, Claude 3.5 Sonnet & Haiku' },
+      'gemini': { type: 'openai', auth: 'apikey', url: 'https://generativelanguage.googleapis.com/v1beta/openai', label: 'Gemini API Key', ph: 'AIzaSy...', desc: 'Gemini 2.5 Pro / Flash OpenAI-compatible endpoint' },
+      'deepseek': { type: 'openai', auth: 'apikey', url: 'https://api.deepseek.com/v1', label: 'DeepSeek API Key', ph: 'sk-...', desc: 'DeepSeek V3, DeepSeek R1 open-weights reasoning' },
+      'xai': { type: 'openai', auth: 'apikey', url: 'https://api.x.ai/v1', label: 'xAI API Key', ph: 'xai-...', desc: 'Grok 2, Grok 3 reasoning & vision models' },
+      'mistral': { type: 'openai', auth: 'apikey', url: 'https://api.mistral.ai/v1', label: 'Mistral API Key', ph: '...', desc: 'Mistral Large, Codestral 2501' },
+      'cohere': { type: 'openai', auth: 'apikey', url: 'https://api.cohere.com/v2', label: 'Cohere API Key', ph: '...', desc: 'Command R+, Command R enterprise models' },
+      'perplexity': { type: 'openai', auth: 'apikey', url: 'https://api.perplexity.ai', label: 'Perplexity API Key', ph: 'pplx-...', desc: 'Sonar Reasoning, Sonar Pro search-grounded LLMs' },
+
+      'antigravity': { type: 'antigravity', auth: 'oauth', url: 'https://cloudcode-pa.googleapis.com', label: 'OAuth Refresh Token', ph: '1//04... (paste Google OAuth refresh token)', desc: 'Google Cloud Code Assist multi-account OAuth pool' },
+      'kiro': { type: 'kiro', auth: 'oauth', url: 'https://codewhisperer.us-east-1.amazonaws.com', label: 'AWS SSO Refresh Token / Key', ph: 'OAuth refresh token or import via 1-Click Import', desc: 'AWS Builder ID / SSO Claude Sonnet 4.5 & Haiku' },
+      'codex': { type: 'codex', auth: 'oauth', url: 'https://chatgpt.com/backend-anon/sentinel/chat-requirements', label: 'Codex OAuth Refresh Token', ph: 'Import automatically from ~/.codex or paste token', desc: 'OpenAI Codex CLI OAuth credentials' },
+      'copilot': { type: 'copilot', auth: 'oauth', url: 'https://api.githubcopilot.com', label: 'GitHub Copilot OAuth Token', ph: 'Import automatically from ~/.config/github-copilot', desc: 'GitHub Copilot subscription OAuth integration' },
+      'cursor': { type: 'cursor', auth: 'oauth', url: 'https://api2.cursor.sh', label: 'Cursor Session Token', ph: 'Import from ~/.config/cursor or paste session token', desc: 'Cursor Pro subscription integration' },
+      'grok-cli': { type: 'openai', auth: 'oauth', url: 'https://cli-chat-proxy.grok.com/v1', label: 'Grok CLI OAuth Token', ph: 'xAI Grok CLI OAuth client token', desc: 'xAI Grok CLI with Grok 4.6 & Composer 2.5' },
+
+      'groq': { type: 'openai', auth: 'apikey', url: 'https://api.groq.com/openai/v1', label: 'Groq API Key', ph: 'gsk_...', desc: 'Ultra-fast LPU inference (500+ tok/s) for Llama 3.3, DeepSeek' },
+      'cerebras': { type: 'openai', auth: 'apikey', url: 'https://api.cerebras.ai/v1', label: 'Cerebras API Key', ph: 'csk-...', desc: 'Wafer-scale high-throughput inference (2,000+ tok/s)' },
+      'sambanova': { type: 'openai', auth: 'apikey', url: 'https://api.sambanova.ai/v1', label: 'SambaNova API Key', ph: '...', desc: 'SN40L full-precision open models' },
+      'together': { type: 'openai', auth: 'apikey', url: 'https://api.together.xyz/v1', label: 'Together API Key', ph: '...', desc: 'Serverless inference engine for leading open-source models' },
+      'fireworks': { type: 'openai', auth: 'apikey', url: 'https://api.fireworks.ai/inference/v1', label: 'Fireworks API Key', ph: '...', desc: 'Production-speed compound AI inference platform' },
+      'nvidia': { type: 'openai', auth: 'apikey', url: 'https://integrate.api.nvidia.com/v1', label: 'NVIDIA API Key', ph: 'nvapi-...', desc: 'NVIDIA NIM microservices & hosted GPU models' },
+      'deepinfra': { type: 'openai', auth: 'apikey', url: 'https://api.deepinfra.com/v1/openai', label: 'DeepInfra API Key', ph: '...', desc: 'Pay-as-you-go serverless inference' },
+      'hyperbolic': { type: 'openai', auth: 'apikey', url: 'https://api.hyperbolic.xyz/v1', label: 'Hyperbolic API Key', ph: '...', desc: 'Decentralized GPU cluster open model inference' },
+      'nebius': { type: 'openai', auth: 'apikey', url: 'https://api.studio.nebius.ai/v1', label: 'Nebius API Key', ph: '...', desc: 'NVIDIA H100/H200 cloud inference with ultra-fast TTFT' },
+      'cloudflare': { type: 'openai', auth: 'apikey', url: 'https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1', label: 'Cloudflare API Token', ph: '...', desc: 'Serverless edge GPU inference on Cloudflare global network' },
+      'lambda': { type: 'openai', auth: 'apikey', url: 'https://api.lambdalabs.com/v1', label: 'Lambda API Key', ph: 'secret_...', desc: 'High-performance GPU cloud inference' },
+      'runpod': { type: 'openai', auth: 'apikey', url: 'https://api.runpod.ai/v2/{endpoint_id}/openai/v1', label: 'RunPod API Key', ph: 'rpa_...', desc: 'Custom serverless vLLM endpoints on RunPod GPUs' },
+
+      'openrouter': { type: 'openai', auth: 'apikey', url: 'https://openrouter.ai/api/v1', label: 'OpenRouter API Key', ph: 'sk-or-...', desc: 'Universal gateway aggregating 250+ models with smart fallbacks' },
+      'apinexbond': { type: 'openai', auth: 'apikey', url: 'https://api.apinex.bond/v1', label: 'APInexBond API Key', ph: 'sk-apx...', desc: 'Multi-provider AI endpoint bridge (Gemini 3.1 Pro)' },
+      'tokenrouter': { type: 'openai', auth: 'apikey', url: 'https://api.tokenrouter.io/v1', label: 'TokenRouter API Key', ph: 'sk-...', desc: 'High-performance AI model routing gateway' },
+      'agentrouter': { type: 'openai', auth: 'apikey', url: 'https://api.agentrouter.org/v1', label: 'AgentRouter API Key', ph: 'sk-...', desc: 'Dedicated proxy for Claude Code, Codex, and coding CLI agents' },
+      'portkey': { type: 'openai', auth: 'apikey', url: 'https://api.portkey.ai/v1', label: 'Portkey API Key', ph: '...', desc: 'Enterprise AI gateway with rate-limiting and logging' },
+      'helicone': { type: 'openai', auth: 'apikey', url: 'https://oai.hconeai.com/v1', label: 'Helicone API Key', ph: 'sk-...', desc: 'Open-source LLM observability proxy and gateway' },
+
+      'dashscope': { type: 'openai', auth: 'apikey', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', label: 'DashScope API Key', ph: 'sk-...', desc: 'Alibaba Cloud Qwen 2.5, Qwen Coder, QwQ models' },
+      'kimi': { type: 'openai', auth: 'apikey', url: 'https://api.moonshot.cn/v1', label: 'Moonshot API Key', ph: 'sk-...', desc: 'Moonshot AI Kimi K3, K2.7 Code, 128k long-context' },
+      'zhipu': { type: 'openai', auth: 'apikey', url: 'https://open.bigmodel.cn/api/paas/v4', label: 'Zhipu API Key', ph: '...', desc: 'GLM-4 Plus and GLM-4 Flash frontier series' },
+      'siliconflow': { type: 'openai', auth: 'apikey', url: 'https://api.siliconflow.cn/v1', label: 'SiliconFlow API Key', ph: 'sk-...', desc: 'High-concurrency platform for Qwen, DeepSeek, and Llama' },
+      'yi': { type: 'openai', auth: 'apikey', url: 'https://api.lingyiwanwu.com/v1', label: '01.AI API Key', ph: '...', desc: 'Yi-Lightning, Yi-Large, and Yi-Medium by 01.AI' },
+      'minimax': { type: 'openai', auth: 'apikey', url: 'https://api.minimax.chat/v1', label: 'MiniMax API Key', ph: '...', desc: 'ABAB 6.5s and MiniMax Text-01 models' },
+      'stepfun': { type: 'openai', auth: 'apikey', url: 'https://api.stepfun.com/v1', label: 'StepFun API Key', ph: '...', desc: 'Step-2 and Step-1V large multimodal models' },
+      'novita': { type: 'openai', auth: 'apikey', url: 'https://api.novita.ai/v3/openai', label: 'Novita API Key', ph: '...', desc: 'High-speed API hosting DeepSeek, Llama, and Qwen' },
+      'upstage': { type: 'openai', auth: 'apikey', url: 'https://api.upstage.ai/v1/solar', label: 'Upstage API Key', ph: 'up_...', desc: 'Solar Mini and Solar Pro specialized models' },
+
+      'ollama': { type: 'openai', auth: 'none', url: 'http://localhost:11434/v1', label: 'API Key (Optional)', ph: 'ollama (or leave blank)', desc: 'Zero-config local model runner on port 11434' },
+      'lmstudio': { type: 'openai', auth: 'none', url: 'http://localhost:1234/v1', label: 'API Key (Optional)', ph: 'lm-studio (or leave blank)', desc: 'Desktop GUI with OpenAI-compatible server on port 1234' },
+      'vllm': { type: 'openai', auth: 'none', url: 'http://localhost:8000/v1', label: 'API Key (Optional)', ph: 'token (if configured)', desc: 'Production PagedAttention high-throughput serving engine' },
+      'llamacpp': { type: 'openai', auth: 'none', url: 'http://localhost:8080/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Ultra-lean native C++ GGUF inference server' },
+      'localai': { type: 'openai', auth: 'none', url: 'http://localhost:8080/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Drop-in self-hosted OpenAI alternative' },
+      'jan': { type: 'openai', auth: 'none', url: 'http://localhost:1337/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Open-source desktop LLM runner with local API on port 1337' },
+      'sglang': { type: 'openai', auth: 'none', url: 'http://localhost:30000/v1', label: 'API Key (Optional)', ph: 'none (or leave blank)', desc: 'Fast serving framework for complex LLM programs' },
+
+      'voyage': { type: 'openai', auth: 'apikey', url: 'https://api.voyageai.com/v1', label: 'Voyage API Key', ph: 'pa-...', desc: 'State-of-the-art embedding and reranker models for RAG' },
+      'jina': { type: 'openai', auth: 'apikey', url: 'https://api.jina.ai/v1', label: 'Jina API Key', ph: 'jina_...', desc: 'Search foundation models, embeddings, and rerankers' },
+      'custom': { type: 'openai', auth: 'apikey', url: 'https://api.example.com/v1', label: 'API Key', ph: 'sk-...', desc: 'Any custom OpenAI-compatible endpoint' }
+    };
+
+    function onProviderSelect(providerId) {
+      const meta = PROVIDER_META[providerId] || { type: 'openai', auth: 'apikey', url: '', label: 'API Key / Secret', ph: 'sk-...', desc: '' };
+      const urlInput = document.getElementById('modal-acc-baseurl');
+      const secretLabel = document.getElementById('label-acc-secret');
+      const secretInput = document.getElementById('modal-acc-secret');
+      const descDiv = document.getElementById('modal-acc-desc');
+      const typeBadge = document.getElementById('badge-acc-type');
+
+      if (urlInput) {
+        urlInput.value = meta.url || '';
+        urlInput.placeholder = meta.url || 'https://api.openai.com/v1';
+      }
+      if (secretLabel) {
+        secretLabel.innerText = meta.label || 'API Key or Token';
+      }
+      if (secretInput) {
+        secretInput.placeholder = meta.ph || 'sk-...';
+      }
+      if (descDiv) {
+        descDiv.innerText = meta.desc ? `💡 ${meta.desc}` : '';
+      }
+      if (typeBadge) {
+        typeBadge.innerText = `${meta.type} · ${meta.auth}`;
+      }
+    }
+
     function openAddAccountModal(targetPool) {
       const select = document.getElementById('modal-acc-pool');
       const customInput = document.getElementById('modal-acc-pool-custom');
@@ -2170,6 +2323,10 @@
         } else {
           customInput.style.display = 'none';
         }
+      }
+      const provSelect = document.getElementById('modal-acc-provider');
+      if (provSelect) {
+        onProviderSelect(provSelect.value);
       }
       document.getElementById('modal-add-account').classList.add('active');
     }
@@ -2194,27 +2351,38 @@
         pool = document.getElementById('modal-acc-pool-custom').value.trim() || 'pool1';
       }
       const provider = document.getElementById('modal-acc-provider').value;
+      const baseUrl = document.getElementById('modal-acc-baseurl') ? document.getElementById('modal-acc-baseurl').value.trim() : '';
       const accountId = document.getElementById('modal-acc-id').value.trim();
-      const secret = document.getElementById('modal-acc-secret').value.trim();
+      let secret = document.getElementById('modal-acc-secret').value.trim();
       const email = document.getElementById('modal-acc-email').value.trim();
       const project = document.getElementById('modal-acc-project').value.trim();
 
-      if (!accountId || !secret) {
-        alert('Please specify both Account ID and API Key / Refresh Token');
+      const meta = PROVIDER_META[provider] || { type: 'openai', auth: 'apikey' };
+
+      if (!accountId) {
+        alert('Please specify an Account ID / Identifier');
         return;
+      }
+      if (meta.auth !== 'none' && !secret) {
+        alert('Please provide an API Key or Refresh Token');
+        return;
+      }
+      if (!secret && meta.auth === 'none') {
+        secret = 'local-dummy-key';
       }
 
       const payload = {
         id: accountId,
         pool: pool,
         email: email,
-        type: provider
+        type: meta.type || 'openai',
+        base_url: baseUrl
       };
 
-      if (secret.startsWith('sk-') || provider === 'openai') {
-        payload.api_key = secret;
-      } else {
+      if (meta.auth === 'oauth') {
         payload.refresh_token = secret;
+      } else {
+        payload.api_key = secret;
       }
 
       if (project) {
