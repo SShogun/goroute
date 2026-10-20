@@ -147,6 +147,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/usage/analytics", s.handleUsageAnalytics)
 	s.mux.Get("/api/usage/ledger", s.handleUsageLedger)
 	s.mux.Get("/api/usage/call-logs", s.handleUsageCallLogs)
+	s.mux.Get("/api/usage/call-logs/filters", s.handleUsageCallLogFilters)
 	s.mux.Get("/api/settings", s.handleGetSettings)
 	s.mux.Patch("/api/settings", s.handlePatchSettings)
 	s.mux.Get("/api/keys", s.handleListKeys)
@@ -252,6 +253,23 @@ func (s *Server) handleUsageCallLogs(w http.ResponseWriter, r *http.Request) {
 		"count":  len(logs),
 		"filter": filter,
 	})
+}
+
+func (s *Server) handleUsageCallLogFilters(w http.ResponseWriter, r *http.Request) {
+	db := storage.GetDB()
+	var opts storage.CallLogFilterOptions
+	var err error
+	if db != nil {
+		opts, err = db.GetFilterOptions()
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(opts)
 }
 
 func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
