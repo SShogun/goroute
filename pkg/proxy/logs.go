@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/ziuus/goroute/pkg/storage"
 )
 
 const maxLogEntries = 200
@@ -52,6 +54,23 @@ func RecordRequest(entry RequestLog) {
 		}
 	}
 	globalLogHub.mu.Unlock()
+
+	// Asynchronously record into SQLite persistent store
+	go func(logEntry RequestLog) {
+		db := storage.GetDB()
+		if db != nil {
+			_ = db.RecordCall(storage.CallLog{
+				ID:           logEntry.ID,
+				Timestamp:    logEntry.Timestamp,
+				Model:        logEntry.Model,
+				Provider:     logEntry.Provider,
+				OutputTokens: logEntry.Tokens,
+				LatencyMs:    logEntry.DurationMs,
+				StatusCode:   logEntry.StatusCode,
+				ErrorMessage: logEntry.Error,
+			})
+		}
+	}(entry)
 }
 
 // GetRecentLogs returns a copy of recent request logs
