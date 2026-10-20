@@ -255,7 +255,7 @@ func (m *Manager) StopTailscale() (TunnelStatus, error) {
 	return m.tsStatus, nil
 }
 
-// HttpHandler exposes standard OmniRoute endpoints:
+// HttpHandler exposes standard tunnel endpoints:
 // GET /api/tunnels/cloudflared
 // POST /api/tunnels/cloudflared
 // GET /api/tunnels/tailscale

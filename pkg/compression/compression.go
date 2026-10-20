@@ -40,7 +40,7 @@ type CompressionStats struct {
 	Intensity       string   `json:"intensity"`
 }
 
-// CompressCaveman applies OmniRoute-style Caveman linguistic reduction with intensity level (lite, full, ultra)
+// CompressCaveman applies Caveman linguistic reduction with intensity level (lite, full, ultra)
 func CompressCaveman(input string, intensity string) (string, []string) {
 	if len(input) == 0 {
 		return input, nil

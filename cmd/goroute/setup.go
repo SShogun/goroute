@@ -616,9 +616,6 @@ func setupHermes(home string) error {
 
 	gorouteBlock := "providers:\n  goroute:\n    base_url: http://127.0.0.1:8128/v1\n    api_key: goroute\n    default_model: gemini-flash\n"
 	if strings.Contains(content, "providers:") {
-		if strings.Contains(content, "omniroute:") {
-			content = strings.Replace(content, "http://localhost:20128/v1", "http://127.0.0.1:8128/v1", 1)
-		}
 		if !strings.Contains(content, "goroute:") {
 			content = strings.Replace(content, "providers:", "providers:\n  goroute:\n    base_url: http://127.0.0.1:8128/v1\n    api_key: goroute\n    default_model: gemini-flash", 1)
 		}
