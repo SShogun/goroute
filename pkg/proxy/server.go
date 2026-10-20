@@ -172,6 +172,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/token-health", s.handleTokenHealth)
 	s.mux.Get("/api/quota/groups", s.handleListQuotaGroups)
 	s.mux.Post("/api/quota/groups", s.handleCreateQuotaGroup)
+	s.mux.Get("/api/quota/pools", s.handleListQuotaPools)
+	s.mux.Post("/api/quota/pools", s.handleCreateQuotaPool)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
 	s.mux.Delete("/api/model-capability-overrides", s.handleDeleteCapabilityOverride)
@@ -699,6 +701,50 @@ func (s *Server) handleCreateQuotaGroup(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{"group": g})
+}
+
+func (s *Server) handleListQuotaPools(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetQuotaPoolStore()
+	pools, err := store.ListPools()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if pools == nil {
+		pools = []storage.QuotaPool{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"pools": pools,
+		"total": len(pools),
+	})
+}
+
+func (s *Server) handleCreateQuotaPool(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name         string `json:"name"`
+		GroupID      string `json:"groupId"`
+		ConnectionID string `json:"connectionId"`
+		Strategy     string `json:"strategy"`
+		MaxTokens    int64  `json:"maxTokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetQuotaPoolStore()
+	p, err := store.CreatePool(body.Name, body.GroupID, body.ConnectionID, body.Strategy, body.MaxTokens)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"pool": p})
 }
 
 func (s *Server) handleListCapabilityOverrides(w http.ResponseWriter, r *http.Request) {
