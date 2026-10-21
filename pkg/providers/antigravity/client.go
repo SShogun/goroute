@@ -330,19 +330,35 @@ type antigravityPayload struct {
 	} `json:"request"`
 }
 
+func estimateContentChars(content interface{}) int {
+	if content == nil {
+		return 0
+	}
+	switch v := content.(type) {
+	case string:
+		return len(v)
+	case []interface{}:
+		total := 0
+		for _, item := range v {
+			total += estimateContentChars(item)
+		}
+		return total
+	case map[string]interface{}:
+		total := 0
+		for _, val := range v {
+			total += estimateContentChars(val)
+		}
+		return total
+	default:
+		return 16
+	}
+}
+
 func estimateMessageTokens(msg providers.ChatMessage) int {
 	chars := len(msg.Role) + len(msg.Name) + len(msg.ToolCallID)
-	if msg.Content != nil {
-		if s, ok := msg.Content.(string); ok {
-			chars += len(s)
-		} else {
-			b, _ := json.Marshal(msg.Content)
-			chars += len(b)
-		}
-	}
+	chars += estimateContentChars(msg.Content)
 	for _, tc := range msg.ToolCalls {
-		b, _ := json.Marshal(tc)
-		chars += len(b)
+		chars += estimateContentChars(tc)
 	}
 	return (chars / 3) + 4
 }
@@ -359,35 +375,25 @@ func sanitizeMessageSizes(messages []providers.ChatMessage, maxCharsPerMessage i
 	if maxCharsPerMessage <= 0 {
 		maxCharsPerMessage = 800000
 	}
-	result := make([]providers.ChatMessage, len(messages))
-	for i, m := range messages {
-		result[i] = m
-		switch v := m.Content.(type) {
+	for i := range messages {
+		switch v := messages[i].Content.(type) {
 		case string:
 			if len(v) > maxCharsPerMessage {
-				result[i].Content = v[:maxCharsPerMessage] + "\n[... truncated by GoRoute to prevent context overflow ...]"
+				messages[i].Content = v[:maxCharsPerMessage] + "\n[... truncated by GoRoute to prevent context overflow ...]"
 			}
 		case []interface{}:
-			var newBlocks []interface{}
 			for _, item := range v {
 				if blockMap, ok := item.(map[string]interface{}); ok {
-					newBlock := make(map[string]interface{})
 					for k, val := range blockMap {
 						if strVal, isStr := val.(string); isStr && len(strVal) > maxCharsPerMessage {
-							newBlock[k] = strVal[:maxCharsPerMessage] + "\n[... truncated by GoRoute to prevent context overflow ...]"
-						} else {
-							newBlock[k] = val
+							blockMap[k] = strVal[:maxCharsPerMessage] + "\n[... truncated by GoRoute to prevent context overflow ...]"
 						}
 					}
-					newBlocks = append(newBlocks, newBlock)
-				} else {
-					newBlocks = append(newBlocks, item)
 				}
 			}
-			result[i].Content = newBlocks
 		}
 	}
-	return result
+	return messages
 }
 
 func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetTokens int) []providers.ChatMessage {
@@ -415,9 +421,17 @@ func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetToken
 		return messages
 	}
 
+	// Precompute token counts for rest messages ONCE (O(N) instead of O(N^2))
+	restTokens := make([]int, len(rest))
+	for i, m := range rest {
+		restTokens[i] = estimateMessageTokens(m)
+	}
+
+	runningTokens := currentTokens
 	startIdx := 0
 	prunedCount := 0
 	for startIdx < len(rest)-minKeepSuffix {
+		runningTokens -= restTokens[startIdx]
 		startIdx++
 		prunedCount++
 		if targetTokens <= 0 {
@@ -426,8 +440,7 @@ func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetToken
 			}
 			continue
 		}
-		candidate := append(systemMessages, rest[startIdx:]...)
-		if estimateTotalTokens(candidate) <= targetTokens {
+		if runningTokens <= targetTokens {
 			break
 		}
 	}
@@ -451,7 +464,7 @@ func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetToken
 	result = append(result, rest[startIdx:]...)
 
 	log.Printf("[Antigravity] Pruned %d messages from history (tokens before: ~%d, after: ~%d, target: %d)",
-		prunedCount, currentTokens, estimateTotalTokens(result), targetTokens)
+		prunedCount, currentTokens, runningTokens, targetTokens)
 
 	return result
 }
