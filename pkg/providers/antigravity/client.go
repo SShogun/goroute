@@ -332,17 +332,17 @@ type antigravityPayload struct {
 
 func estimateMessageTokens(msg providers.ChatMessage) int {
 	chars := len(msg.Role) + len(msg.Name) + len(msg.ToolCallID)
-	switch v := msg.Content.(type) {
-	case string:
-		chars += len(v)
-	case []interface{}:
-		for _, item := range v {
-			if m, ok := item.(map[string]interface{}); ok {
-				if text, ok := m["text"].(string); ok {
-					chars += len(text)
-				}
-			}
+	if msg.Content != nil {
+		if s, ok := msg.Content.(string); ok {
+			chars += len(s)
+		} else {
+			b, _ := json.Marshal(msg.Content)
+			chars += len(b)
 		}
+	}
+	for _, tc := range msg.ToolCalls {
+		b, _ := json.Marshal(tc)
+		chars += len(b)
 	}
 	return (chars / 3) + 4
 }
@@ -355,13 +355,48 @@ func estimateTotalTokens(messages []providers.ChatMessage) int {
 	return total
 }
 
+func sanitizeMessageSizes(messages []providers.ChatMessage, maxCharsPerMessage int) []providers.ChatMessage {
+	if maxCharsPerMessage <= 0 {
+		maxCharsPerMessage = 800000
+	}
+	result := make([]providers.ChatMessage, len(messages))
+	for i, m := range messages {
+		result[i] = m
+		switch v := m.Content.(type) {
+		case string:
+			if len(v) > maxCharsPerMessage {
+				result[i].Content = v[:maxCharsPerMessage] + "\n[... truncated by GoRoute to prevent context overflow ...]"
+			}
+		case []interface{}:
+			var newBlocks []interface{}
+			for _, item := range v {
+				if blockMap, ok := item.(map[string]interface{}); ok {
+					newBlock := make(map[string]interface{})
+					for k, val := range blockMap {
+						if strVal, isStr := val.(string); isStr && len(strVal) > maxCharsPerMessage {
+							newBlock[k] = strVal[:maxCharsPerMessage] + "\n[... truncated by GoRoute to prevent context overflow ...]"
+						} else {
+							newBlock[k] = val
+						}
+					}
+					newBlocks = append(newBlocks, newBlock)
+				} else {
+					newBlocks = append(newBlocks, item)
+				}
+			}
+			result[i].Content = newBlocks
+		}
+	}
+	return result
+}
+
 func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetTokens int) []providers.ChatMessage {
 	if len(messages) <= 4 {
 		return messages
 	}
 
 	currentTokens := estimateTotalTokens(messages)
-	if currentTokens <= targetTokens {
+	if targetTokens > 0 && currentTokens <= targetTokens {
 		return messages
 	}
 
@@ -380,15 +415,21 @@ func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetToken
 		return messages
 	}
 
-	prunedCount := 0
 	startIdx := 0
+	prunedCount := 0
 	for startIdx < len(rest)-minKeepSuffix {
-		tokens := estimateTotalTokens(append(systemMessages, rest[startIdx:]...))
-		if tokens <= targetTokens {
-			break
-		}
 		startIdx++
 		prunedCount++
+		if targetTokens <= 0 {
+			if float64(startIdx)/float64(len(rest)) >= 0.40 {
+				break
+			}
+			continue
+		}
+		candidate := append(systemMessages, rest[startIdx:]...)
+		if estimateTotalTokens(candidate) <= targetTokens {
+			break
+		}
 	}
 
 	if prunedCount == 0 {
@@ -420,9 +461,12 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		return nil, false, 0, fmt.Errorf("no accounts configured for antigravity provider")
 	}
 
+	// Cap single oversized messages
+	req.Messages = sanitizeMessageSizes(req.Messages, 800000)
+
 	// Proactively prune history if near or exceeding 1,048,576 token limit
-	if estimateTotalTokens(req.Messages) > 900000 {
-		req.Messages = pruneMessagesForContextWindow(req.Messages, 800000)
+	if estimateTotalTokens(req.Messages) > 750000 {
+		req.Messages = pruneMessagesForContextWindow(req.Messages, 650000)
 	}
 
 	sessionKey := affinity.DeriveSessionKey(nil, req)
@@ -680,8 +724,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		// Handle token count exceeding model limit: prune context and retry
 		if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(respBytes), "exceeds the maximum number of tokens allowed") {
 			log.Printf("[Antigravity] Input token count exceeded 1048576, aggressively pruning context and retrying on account %s...", acc.ID)
-			pruned := pruneMessagesForContextWindow(req.Messages, 600000)
-			if len(pruned) < len(req.Messages) {
+			req.Messages = sanitizeMessageSizes(req.Messages, 400000)
+			pruned := pruneMessagesForContextWindow(req.Messages, 0)
+			if len(pruned) != len(req.Messages) {
 				req.Messages = pruned
 				attempt--
 				continue
