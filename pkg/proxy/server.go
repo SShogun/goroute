@@ -191,6 +191,9 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/conductor/tasks", s.handleCreateConductorTask)
 	s.mux.Get("/api/skills", s.handleListSkills)
 	s.mux.Post("/api/skills", s.handleCreateSkill)
+	s.mux.Get("/api/radar/status", s.handleRadarStatus)
+	s.mux.Get("/api/radar/catalog", s.handleRadarCatalog)
+	s.mux.Post("/api/radar/sync", s.handleRadarSync)
 	s.mux.Get("/api/settings/local-corpus", s.handleGetLocalCorpus)
 	s.mux.Post("/api/settings/local-corpus", s.handlePostLocalCorpus)
 	s.mux.Get("/api/compliance/audit-log", s.handleAuditLog)
@@ -1111,6 +1114,48 @@ func (s *Server) handleCreateSkill(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"skill": sk,
+	})
+}
+
+func (s *Server) handleRadarStatus(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetRadarStore()
+	status := store.GetStatus()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(status)
+}
+
+func (s *Server) handleRadarCatalog(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetRadarStore()
+	entries, err := store.ListEntries()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if entries == nil {
+		entries = []storage.RadarCatalogEntry{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"entries": entries,
+		"total":   len(entries),
+	})
+}
+
+func (s *Server) handleRadarSync(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetRadarStore()
+	count, err := store.SyncRadarCatalog()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "ok",
+		"synced": count,
 	})
 }
 
