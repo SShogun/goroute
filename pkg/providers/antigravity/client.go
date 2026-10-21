@@ -330,9 +330,99 @@ type antigravityPayload struct {
 	} `json:"request"`
 }
 
+func estimateMessageTokens(msg providers.ChatMessage) int {
+	chars := len(msg.Role) + len(msg.Name) + len(msg.ToolCallID)
+	switch v := msg.Content.(type) {
+	case string:
+		chars += len(v)
+	case []interface{}:
+		for _, item := range v {
+			if m, ok := item.(map[string]interface{}); ok {
+				if text, ok := m["text"].(string); ok {
+					chars += len(text)
+				}
+			}
+		}
+	}
+	return (chars / 3) + 4
+}
+
+func estimateTotalTokens(messages []providers.ChatMessage) int {
+	total := 0
+	for _, m := range messages {
+		total += estimateMessageTokens(m)
+	}
+	return total
+}
+
+func pruneMessagesForContextWindow(messages []providers.ChatMessage, targetTokens int) []providers.ChatMessage {
+	if len(messages) <= 4 {
+		return messages
+	}
+
+	currentTokens := estimateTotalTokens(messages)
+	if currentTokens <= targetTokens {
+		return messages
+	}
+
+	var systemMessages []providers.ChatMessage
+	var rest []providers.ChatMessage
+	for _, m := range messages {
+		if m.Role == "system" && len(systemMessages) < 2 {
+			systemMessages = append(systemMessages, m)
+		} else {
+			rest = append(rest, m)
+		}
+	}
+
+	minKeepSuffix := 4
+	if len(rest) <= minKeepSuffix {
+		return messages
+	}
+
+	prunedCount := 0
+	startIdx := 0
+	for startIdx < len(rest)-minKeepSuffix {
+		tokens := estimateTotalTokens(append(systemMessages, rest[startIdx:]...))
+		if tokens <= targetTokens {
+			break
+		}
+		startIdx++
+		prunedCount++
+	}
+
+	if prunedCount == 0 {
+		return messages
+	}
+
+	noticeMsg := providers.ChatMessage{
+		Role:    "user",
+		Content: fmt.Sprintf("[GoRoute Notice: %d earlier messages were trimmed to stay within the model's 1,048,576 token limit]", prunedCount),
+	}
+	ackMsg := providers.ChatMessage{
+		Role:    "assistant",
+		Content: "Understood. Resuming task with current instructions.",
+	}
+
+	result := make([]providers.ChatMessage, 0, len(systemMessages)+2+len(rest)-startIdx)
+	result = append(result, systemMessages...)
+	result = append(result, noticeMsg, ackMsg)
+	result = append(result, rest[startIdx:]...)
+
+	log.Printf("[Antigravity] Pruned %d messages from history (tokens before: ~%d, after: ~%d, target: %d)",
+		prunedCount, currentTokens, estimateTotalTokens(result), targetTokens)
+
+	return result
+}
+
 func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {
 	if len(p.accounts) == 0 {
 		return nil, false, 0, fmt.Errorf("no accounts configured for antigravity provider")
+	}
+
+	// Proactively prune history if near or exceeding 1,048,576 token limit
+	if estimateTotalTokens(req.Messages) > 900000 {
+		req.Messages = pruneMessagesForContextWindow(req.Messages, 800000)
 	}
 
 	sessionKey := affinity.DeriveSessionKey(nil, req)
@@ -585,6 +675,17 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 
 		if resp.StatusCode == http.StatusUnauthorized {
 			acc.InvalidateToken()
+		}
+
+		// Handle token count exceeding model limit: prune context and retry
+		if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(respBytes), "exceeds the maximum number of tokens allowed") {
+			log.Printf("[Antigravity] Input token count exceeded 1048576, aggressively pruning context and retrying on account %s...", acc.ID)
+			pruned := pruneMessagesForContextWindow(req.Messages, 600000)
+			if len(pruned) < len(req.Messages) {
+				req.Messages = pruned
+				attempt--
+				continue
+			}
 		}
 
 		// If 402/429 (quota), 403 (unlicensed/permission), 404 (not found on account), or 401, try next account
