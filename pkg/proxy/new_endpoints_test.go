@@ -99,4 +99,38 @@ func TestNewEndpoints(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Errorf("version manager status GET failed: %d", w.Code)
 	}
+
+	// 9. Ollama /api/tags & /api/version
+	req = httptest.NewRequest(http.MethodGet, "/api/tags", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("ollama /api/tags failed: %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/version", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("ollama /api/version failed: %d", w.Code)
+	}
+
+	// 10. Provider direct /api/v1/providers/openai/models
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/providers/openai/models", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("provider direct models failed: %d", w.Code)
+	}
+
+	// 11. VS Code tokenized path rewrite: /api/v1/vscode/token-abc-123/api/tags
+	req = httptest.NewRequest(http.MethodGet, "/api/v1/vscode/token-abc-123/api/tags", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("vscode tokenized path failed: %d", w.Code)
+	}
+	if req.Header.Get("Authorization") != "Bearer token-abc-123" {
+		t.Errorf("expected token in Authorization header, got %s", req.Header.Get("Authorization"))
+	}
 }

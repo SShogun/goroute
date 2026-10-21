@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -278,6 +279,25 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/v1/audio/transcriptions", s.handleAudioTranscriptions)
 	s.mux.Post("/v1/rerank", s.handleRerank)
 	s.mux.Post("/v1/moderations", s.handleModerations)
+
+	// Ollama compatibility
+	s.mux.Get("/api/tags", s.handleOllamaTags)
+	s.mux.Get("/api/version", s.handleOllamaVersion)
+	s.mux.Post("/api/show", s.handleOllamaShow)
+	s.mux.Post("/api/chat", s.handleOllamaChat)
+
+	// Direct provider endpoints
+	s.mux.Post("/api/v1/providers/{provider}/chat/completions", s.handleProviderDirectChat)
+	s.mux.Get("/api/v1/providers/{provider}/models", s.handleProviderDirectModels)
+	s.mux.Post("/api/v1/providers/{provider}/embeddings", s.handleProviderDirectEmbeddings)
+
+	// Legacy completions & OpenAI Responses API
+	s.mux.Post("/v1/completions", s.handleCompletions)
+	s.mux.Post("/api/v1/completions", s.handleCompletions)
+	s.mux.Post("/v1/responses", s.handleResponses)
+	s.mux.Post("/api/v1/responses", s.handleResponses)
+	s.mux.Post("/api/v1/responses/*", s.handleResponses)
+
 	if s.enableDashboard {
 		s.mux.Handle("/*", web.Handler())
 	}
@@ -289,6 +309,38 @@ func (s *Server) Handler() http.Handler {
 			s.tunnelServer.HandleConnect(w, r)
 			return
 		}
+
+		// Rewrite VS Code tokenized path: /api/v1/vscode/{token}/... or /api/v1/vscode/raw/{token}/...
+		if strings.HasPrefix(r.URL.Path, "/api/v1/vscode/") {
+			rest := strings.TrimPrefix(r.URL.Path, "/api/v1/vscode/")
+			parts := strings.Split(rest, "/")
+			if len(parts) > 0 {
+				token := parts[0]
+				subPath := ""
+				if token == "raw" && len(parts) > 1 {
+					token = parts[1]
+					subPath = "/" + strings.Join(parts[2:], "/")
+				} else if token == "combos" && len(parts) > 1 {
+					token = parts[1]
+					subPath = "/api/combos"
+				} else {
+					subPath = "/" + strings.Join(parts[1:], "/")
+				}
+
+				if r.Header.Get("Authorization") == "" && token != "" {
+					r.Header.Set("Authorization", "Bearer "+token)
+				}
+				if r.Header.Get("x-api-key") == "" && token != "" {
+					r.Header.Set("x-api-key", token)
+				}
+
+				if subPath == "/" || subPath == "" {
+					subPath = "/v1/models"
+				}
+				r.URL.Path = subPath
+			}
+		}
+
 		s.mux.ServeHTTP(w, r)
 	})
 }
@@ -4344,6 +4396,199 @@ func (s *Server) handleVersionManagerCheckUpdate(w http.ResponseWriter, r *http.
 		"latestVersion":   "1.0.0",
 	})
 }
+
+func (s *Server) handleOllamaTags(w http.ResponseWriter, r *http.Request) {
+	var models []providers.ModelInfo
+	if s.router != nil {
+		models, _ = s.router.ListModels(r.Context())
+	}
+	if len(models) == 0 {
+		models = []providers.ModelInfo{
+			{ID: "claude-3-7-sonnet", OwnedBy: "claude"},
+			{ID: "gpt-4o", OwnedBy: "openai"},
+			{ID: "gemini-2.5-pro", OwnedBy: "google"},
+		}
+	}
+
+	type ollamaDetails struct {
+		Format            string `json:"format"`
+		Family            string `json:"family"`
+		ParameterSize     string `json:"parameter_size"`
+		QuantizationLevel string `json:"quantization_level"`
+	}
+	type ollamaModel struct {
+		Name       string        `json:"name"`
+		Model      string        `json:"model"`
+		ModifiedAt string        `json:"modified_at"`
+		Size       int64         `json:"size"`
+		Digest     string        `json:"digest"`
+		Details    ollamaDetails `json:"details"`
+	}
+
+	tagModels := make([]ollamaModel, 0, len(models))
+	for _, m := range models {
+		tagModels = append(tagModels, ollamaModel{
+			Name:       m.ID,
+			Model:      m.ID,
+			ModifiedAt: "2026-01-01T00:00:00Z",
+			Size:       0,
+			Digest:     "goroute:" + m.ID,
+			Details: ollamaDetails{
+				Format:            "openai",
+				Family:            m.OwnedBy,
+				ParameterSize:     "dynamic",
+				QuantizationLevel: "dynamic",
+			},
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"models": tagModels,
+	})
+}
+
+func (s *Server) handleOllamaVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"version": "0.1.32",
+	})
+}
+
+func (s *Server) handleOllamaShow(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"license":    "Apache-2.0",
+		"modelfile":  "FROM " + req.Name,
+		"parameters": "stop \"\\n\"",
+		"details": map[string]string{
+			"format": "openai",
+			"family": "goroute",
+		},
+	})
+}
+
+func (s *Server) handleOllamaChat(w http.ResponseWriter, r *http.Request) {
+	// Ollama /api/chat payload is compatible with OpenAI /v1/chat/completions
+	s.handleChatCompletions(w, r)
+}
+
+func (s *Server) handleProviderDirectChat(w http.ResponseWriter, r *http.Request) {
+	provider := chi.URLParam(r, "provider")
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &raw); err == nil {
+		if model, ok := raw["model"].(string); ok && !strings.Contains(model, "/") {
+			raw["model"] = provider + "/" + model
+			bodyBytes, _ = json.Marshal(raw)
+		}
+	}
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	s.handleChatCompletions(w, r)
+}
+
+func (s *Server) handleProviderDirectModels(w http.ResponseWriter, r *http.Request) {
+	provider := chi.URLParam(r, "provider")
+	var allModels []providers.ModelInfo
+	if s.router != nil {
+		allModels, _ = s.router.ListModels(r.Context())
+	}
+	filtered := make([]providers.ModelInfo, 0)
+	for _, m := range allModels {
+		if strings.EqualFold(m.OwnedBy, provider) || strings.HasPrefix(m.ID, provider+"/") {
+			filtered = append(filtered, m)
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"object": "list",
+		"data":   filtered,
+	})
+}
+
+func (s *Server) handleProviderDirectEmbeddings(w http.ResponseWriter, r *http.Request) {
+	provider := chi.URLParam(r, "provider")
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &raw); err == nil {
+		if model, ok := raw["model"].(string); ok && !strings.Contains(model, "/") {
+			raw["model"] = provider + "/" + model
+			bodyBytes, _ = json.Marshal(raw)
+		}
+	}
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	s.handleEmbeddings(w, r)
+}
+
+func (s *Server) handleCompletions(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &raw); err == nil {
+		if prompt, ok := raw["prompt"].(string); ok {
+			raw["messages"] = []map[string]string{
+				{"role": "user", "content": prompt},
+			}
+			delete(raw, "prompt")
+			bodyBytes, _ = json.Marshal(raw)
+		}
+	}
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	s.handleChatCompletions(w, r)
+}
+
+func (s *Server) handleResponses(w http.ResponseWriter, r *http.Request) {
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var raw map[string]interface{}
+	if err := json.Unmarshal(bodyBytes, &raw); err == nil {
+		// Continuation virtualization: resolve previous_response_id if present
+		if prevID, ok := raw["previous_response_id"].(string); ok && prevID != "" {
+			db := storage.GetDB()
+			if db != nil {
+				if state, err := db.GetContinuationState(prevID, ""); err == nil && state != nil {
+					// Found previous conversation state
+					log.Printf("[GoRoute Responses API] Virtualized continuation for response %s", prevID)
+				}
+			}
+		}
+
+		// Re-encode input as standard messages if needed
+		if input, ok := raw["input"]; ok && raw["messages"] == nil {
+			switch v := input.(type) {
+			case string:
+				raw["messages"] = []map[string]string{
+					{"role": "user", "content": v},
+				}
+			case []interface{}:
+				raw["messages"] = v
+			}
+			bodyBytes, _ = json.Marshal(raw)
+		}
+	}
+
+	r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	s.handleChatCompletions(w, r)
+}
+
 
 
 
