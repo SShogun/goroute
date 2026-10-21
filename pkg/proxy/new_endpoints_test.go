@@ -133,4 +133,42 @@ func TestNewEndpoints(t *testing.T) {
 	if req.Header.Get("Authorization") != "Bearer token-abc-123" {
 		t.Errorf("expected token in Authorization header, got %s", req.Header.Get("Authorization"))
 	}
+
+	// 12. GET /api/db-backups
+	req = httptest.NewRequest(http.MethodGet, "/api/db-backups", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("db-backups GET failed: %d", w.Code)
+	}
+
+	// 13. GET /api/free-models & /api/free-tier/summary
+	req = httptest.NewRequest(http.MethodGet, "/api/free-models", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("free-models GET failed: %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/free-tier/summary", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("free-tier summary GET failed: %d", w.Code)
+	}
+
+	// 14. Chaos testing /api/chaos/config & /api/chaos/run
+	req = httptest.NewRequest(http.MethodGet, "/api/chaos/config", nil)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("chaos config GET failed: %d", w.Code)
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/chaos/run", bytes.NewReader([]byte(`{"task":"Test chaos"}`)))
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("chaos run POST failed: %d", w.Code)
+	}
 }
