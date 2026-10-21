@@ -194,6 +194,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/radar/status", s.handleRadarStatus)
 	s.mux.Get("/api/radar/catalog", s.handleRadarCatalog)
 	s.mux.Post("/api/radar/sync", s.handleRadarSync)
+	s.mux.Get("/api/pricing", s.handleGetPricing)
+	s.mux.Patch("/api/pricing", s.handlePatchPricing)
 	s.mux.Get("/api/settings/local-corpus", s.handleGetLocalCorpus)
 	s.mux.Post("/api/settings/local-corpus", s.handlePostLocalCorpus)
 	s.mux.Get("/api/compliance/audit-log", s.handleAuditLog)
@@ -1157,6 +1159,31 @@ func (s *Server) handleRadarSync(w http.ResponseWriter, r *http.Request) {
 		"status": "ok",
 		"synced": count,
 	})
+}
+
+func (s *Server) handleGetPricing(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetPricingStore()
+	pricing := store.GetPricing()
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(pricing)
+}
+
+func (s *Server) handlePatchPricing(w http.ResponseWriter, r *http.Request) {
+	var body map[string]map[string]storage.ModelPricing
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request json: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetPricingStore()
+	if err := store.UpdatePricing(body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(store.GetPricing())
 }
 
 func (s *Server) handleGetLocalCorpus(w http.ResponseWriter, r *http.Request) {
