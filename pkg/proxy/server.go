@@ -181,6 +181,11 @@ func (s *Server) setupRoutes() {
 	s.mux.Delete("/api/webhooks/{id}", s.handleDeleteWebhook)
 	s.mux.Get("/api/batches", s.handleListBatches)
 	s.mux.Post("/api/batches", s.handleCreateBatch)
+	s.mux.Get("/api/evals", s.handleGetEvals)
+	s.mux.Post("/api/evals/suites", s.handleCreateEvalSuite)
+	s.mux.Post("/api/evals/runs", s.handleRecordEvalRun)
+	s.mux.Get("/api/settings/local-corpus", s.handleGetLocalCorpus)
+	s.mux.Post("/api/settings/local-corpus", s.handlePostLocalCorpus)
 	s.mux.Get("/api/compliance/audit-log", s.handleAuditLog)
 	s.mux.Get("/api/model-capability-overrides", s.handleListCapabilityOverrides)
 	s.mux.Post("/api/model-capability-overrides", s.handleSetCapabilityOverride)
@@ -869,6 +874,101 @@ func (s *Server) handleCreateBatch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(b)
+}
+
+func (s *Server) handleGetEvals(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetEvalCorpusStore()
+	suites, _ := store.ListSuites()
+	runs, _ := store.ListRuns(20)
+
+	var targets []map[string]interface{}
+	for _, p := range s.router.GetAllProviders() {
+		targets = append(targets, map[string]interface{}{
+			"type":  "model",
+			"key":   p.ID(),
+			"label": p.ID(),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"suites":     suites,
+		"recentRuns": runs,
+		"targets":    targets,
+	})
+}
+
+func (s *Server) handleCreateEvalSuite(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetEvalCorpusStore()
+	suite, err := store.CreateSuite(body.Name, body.Description)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(suite)
+}
+
+func (s *Server) handleRecordEvalRun(w http.ResponseWriter, r *http.Request) {
+	var body storage.EvalRunRecord
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.SuiteID == "" {
+		http.Error(w, "suiteId and target are required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetEvalCorpusStore()
+	if err := store.RecordRun(body); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok"})
+}
+
+func (s *Server) handleGetLocalCorpus(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetEvalCorpusStore()
+	cfg := store.GetLocalCorpusConfig()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(cfg)
+}
+
+func (s *Server) handlePostLocalCorpus(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RootPath string `json:"rootPath"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RootPath == "" {
+		http.Error(w, "rootPath is required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetEvalCorpusStore()
+	if err := store.SetLocalCorpusRoot(body.RootPath); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"configured": true,
+		"rootPath":   body.RootPath,
+		"message":    "Local corpus root saved.",
+	})
 }
 
 func (s *Server) handleAuditLog(w http.ResponseWriter, r *http.Request) {
