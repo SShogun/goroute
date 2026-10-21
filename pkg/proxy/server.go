@@ -186,6 +186,11 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/evals/runs", s.handleRecordEvalRun)
 	s.mux.Get("/api/discovery/results", s.handleDiscoveryResults)
 	s.mux.Post("/api/discovery/scan", s.handleDiscoveryScan)
+	s.mux.Get("/api/conductor/fleet", s.handleConductorFleet)
+	s.mux.Get("/api/conductor/tasks", s.handleListConductorTasks)
+	s.mux.Post("/api/conductor/tasks", s.handleCreateConductorTask)
+	s.mux.Get("/api/skills", s.handleListSkills)
+	s.mux.Post("/api/skills", s.handleCreateSkill)
 	s.mux.Get("/api/settings/local-corpus", s.handleGetLocalCorpus)
 	s.mux.Post("/api/settings/local-corpus", s.handlePostLocalCorpus)
 	s.mux.Get("/api/compliance/audit-log", s.handleAuditLog)
@@ -991,6 +996,121 @@ func (s *Server) handleDiscoveryScan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"results": []storage.DiscoveryRecord{rec},
+	})
+}
+
+func (s *Server) handleConductorFleet(w http.ResponseWriter, r *http.Request) {
+	// Active coding agent fleet status
+	fleet := []storage.FleetAgent{
+		{ID: "node-1", Name: "Local Worker", CLI: "opencode", Status: "idle", LastSeen: time.Now().UTC()},
+		{ID: "node-2", Name: "Claude Runner", CLI: "claude", Status: "idle", LastSeen: time.Now().UTC()},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"offline": false,
+		"fleet":   fleet,
+		"total":   len(fleet),
+	})
+}
+
+func (s *Server) handleListConductorTasks(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if lStr := r.URL.Query().Get("limit"); lStr != "" {
+		fmt.Sscanf(lStr, "%d", &limit)
+	}
+
+	store := storage.GetConductorStore()
+	tasks, err := store.ListTasks(limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if tasks == nil {
+		tasks = []storage.ConductorTask{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"tasks": tasks,
+		"total": len(tasks),
+	})
+}
+
+func (s *Server) handleCreateConductorTask(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RepoURL string `json:"repoUrl"`
+		Prompt  string `json:"prompt"`
+		BaseRef string `json:"baseRef"`
+		CLI     string `json:"cli"`
+		Model   string `json:"model"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RepoURL == "" || body.Prompt == "" {
+		http.Error(w, "repoUrl and prompt are required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetConductorStore()
+	task, err := store.CreateTask(body.RepoURL, body.Prompt, body.BaseRef, body.CLI, body.Model)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"ok":      true,
+		"task_id": task.ID,
+		"task":    task,
+	})
+}
+
+func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
+	store := storage.GetConductorStore()
+	skills, err := store.ListSkills()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if skills == nil {
+		skills = []storage.SkillRecord{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"skills": skills,
+		"total":  len(skills),
+	})
+}
+
+func (s *Server) handleCreateSkill(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Mode        string   `json:"mode"`
+		Source      string   `json:"source"`
+		Tags        []string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" || body.Description == "" {
+		http.Error(w, "name and description are required", http.StatusBadRequest)
+		return
+	}
+
+	store := storage.GetConductorStore()
+	sk, err := store.CreateSkill(body.Name, body.Description, body.Mode, body.Source, body.Tags)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"skill": sk,
 	})
 }
 
