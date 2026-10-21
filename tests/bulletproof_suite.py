@@ -164,7 +164,16 @@ def run_suite():
         "messages": [{"role": "user", "content": "hello"}]
     }, headers=ant_headers)
     rep.assert_true("Anthropic /v1/messages 200", status == 200, f"status={status}")
-    rep.assert_true("Anthropic event stream structure", "event: message_start" in body or "content_block" in body)
+    rep.assert_true("Anthropic message structure", "content" in body and "id" in body)
+
+    # Anthropic event stream
+    status_s, _, body_s = post_json("/v1/messages", {
+        "model": "claude-sonnet-ag",
+        "max_tokens": 15,
+        "stream": True,
+        "messages": [{"role": "user", "content": "hello"}]
+    }, headers=ant_headers)
+    rep.assert_true("Anthropic event stream structure", "event: message_start" in body_s and "content_block" in body_s)
 
     # Embeddings tests
     for text_sample in ["apple", "machine learning algorithms", "unicode 🚀🔥"]:
@@ -313,6 +322,41 @@ def run_suite():
     for tool_name in ["pickFastestModel", "listProviders", "modelUsage"]:
         status, _, body = post_json("/mcp/tools", {"name": tool_name, "arguments": {}})
         rep.assert_true(f"Execute MCP tool {tool_name} 200", status == 200)
+
+    print("\n--- 5b. Advanced OmniRoute Parity Subsystems (15 Tests) ---")
+    # A2A agent card
+    status, _, body = get_json("/.well-known/agent.json")
+    rep.assert_true("GET /.well-known/agent.json 200", status == 200)
+    rep.assert_true("A2A card has skills", "skills" in body and "GoRoute" in body)
+
+    # A2A status
+    status, _, body = get_json("/api/a2a/status")
+    rep.assert_true("GET /api/a2a/status 200", status == 200)
+    rep.assert_true("A2A status online", '"online":true' in body or '"online": true' in body)
+
+    # Agent Skills coverage
+    status, _, body = get_json("/api/agent-skills/coverage")
+    rep.assert_true("GET /api/agent-skills/coverage 200", status == 200)
+    rep.assert_true("Skills coverage percentage 100", "percentage" in body)
+
+    # CLI tools status
+    status, _, body = get_json("/api/cli-tools/all-statuses")
+    rep.assert_true("GET /api/cli-tools/all-statuses 200", status == 200)
+    rep.assert_true("CLI tools has claude", "claude" in body)
+
+    # CLI tools detect
+    status, _, body = get_json("/api/cli-tools/detect")
+    rep.assert_true("GET /api/cli-tools/detect 200", status == 200)
+
+    # VNC Sessions
+    status, _, body = get_json("/api/vnc-session")
+    rep.assert_true("GET /api/vnc-session 200", status == 200)
+    rep.assert_true("VNC has providers", "providers" in body)
+
+    # Search endpoint
+    status, _, body = post_json("/v1/search", {"query": "GoRoute gateway", "max_results": 2})
+    rep.assert_true("POST /v1/search 200", status == 200)
+    rep.assert_true("Search response has query", "query" in body)
 
     print("\n--- 6. High-Concurrency Stress Burst (25 Tests) ---")
     stress_urls = [

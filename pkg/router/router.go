@@ -212,18 +212,51 @@ func (r *Router) ListModels(ctx context.Context) ([]providers.ModelInfo, error) 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	seen := make(map[string]bool)
 	var models []providers.ModelInfo
 
-	// If custom combos are configured, expose only the curated combos
-	// This prevents flooding clients (Claude Code, etc.) with 100+ raw provider models
-	if len(r.combos) > 0 {
-		for name := range r.combos {
+	// 1. Add configured combos
+	for name := range r.combos {
+		if !seen[name] {
+			seen[name] = true
 			models = append(models, providers.ModelInfo{
 				ID:      name,
 				Object:  "model",
 				OwnedBy: "goroute",
 			})
 		}
+	}
+
+	// 2. Add standard curated aliases and gateway virtual models
+	standardAliases := []string{
+		"gemini-flash",
+		"gemini-flash-lite",
+		"gemini-2.5-flash",
+		"gemini-3.8-flash-high",
+		"claude-sonnet-ag",
+		"opus",
+		"haiku",
+		"sonnet",
+		"claude-sonnet-4.5",
+		"claude-opus-5.5",
+		"claude-3-7-sonnet",
+		"claude-3-5-sonnet",
+		"gpt-4o",
+		"gpt-4o-mini",
+	}
+	for _, alias := range standardAliases {
+		if !seen[alias] {
+			seen[alias] = true
+			models = append(models, providers.ModelInfo{
+				ID:      alias,
+				Object:  "model",
+				OwnedBy: "goroute",
+			})
+		}
+	}
+
+	// If custom combos are configured, return curated list to prevent flooding clients
+	if len(r.combos) > 0 {
 		return models, nil
 	}
 
