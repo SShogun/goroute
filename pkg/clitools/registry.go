@@ -1,12 +1,15 @@
 package clitools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 )
 
 type CliTool struct {
@@ -186,44 +189,212 @@ var Registry = map[string]CliTool{
 		DocsURL:        "https://codeium.com/windsurf",
 		SettingsFile:   "~/.codeium/windsurf/settings.json",
 	},
+	"zcode": {
+		ID:             "zcode",
+		Name:           "ZCode (GLM Coding Plan)",
+		Category:       "code",
+		Description:    "Local ZCode app-server backend with GoRoute upstream",
+		DefaultCommand: "zcode",
+		DocsURL:        "https://zcode.z.ai",
+		SettingsFile:   "~/.zcode/config.json",
+	},
+	"antigravity": {
+		ID:             "antigravity",
+		Name:           "Antigravity",
+		Category:       "code",
+		Description:    "Google Antigravity IDE — MITM intercept and endpoint redirection",
+		DefaultCommand: "antigravity",
+		DocsURL:        "https://cloud.google.com/antigravity",
+		SettingsFile:   "~/.config/antigravity/mitm.json",
+	},
+	"copilot": {
+		ID:             "copilot",
+		Name:           "GitHub Copilot",
+		Category:       "code",
+		Description:    "GitHub Copilot Chat with COPILOT_PROVIDER_BASE_URL support",
+		DefaultCommand: "copilot",
+		DocsURL:        "https://code.visualstudio.com/docs/copilot/overview",
+		SettingsFile:   "~/.config/github-copilot/hosts.json",
+	},
+	"kiro": {
+		ID:             "kiro",
+		Name:           "Kiro AI",
+		Category:       "code",
+		Description:    "Amazon Kiro — AI-powered IDE with MITM intercept",
+		DefaultCommand: "kiro",
+		DocsURL:        "https://kiro.aws",
+		SettingsFile:   "~/.kiro/config.json",
+	},
+	"custom": {
+		ID:             "custom",
+		Name:           "Custom CLI",
+		Category:       "code",
+		Description:    "Generic OpenAI-compatible CLI or SDK configuration generator",
+		DefaultCommand: "",
+		DocsURL:        "https://goroute.dev/docs/cli-tools",
+		SettingsFile:   "~/.goroute/custom-tools.json",
+	},
+	"forge": {
+		ID:             "forge",
+		Name:           "ForgeCode",
+		Category:       "code",
+		Description:    "ForgeCode coding agent CLI — custom provider via .forge.toml",
+		DefaultCommand: "forge",
+		DocsURL:        "https://github.com/antinomyhq/forge",
+		SettingsFile:   "~/.forge.toml",
+	},
+	"jcode": {
+		ID:             "jcode",
+		Name:           "jcode",
+		Category:       "code",
+		Description:    "jcode terminal coding agent — OpenAI-compatible CLI",
+		DefaultCommand: "jcode",
+		DocsURL:        "https://github.com/1jehuang/jcode",
+		SettingsFile:   "~/.jcode/config.json",
+	},
+	"codewhale": {
+		ID:             "codewhale",
+		Name:           "CodeWhale",
+		Category:       "code",
+		Description:    "CodeWhale — Rust-based coding agent CLI with OPENAI_BASE_URL support",
+		DefaultCommand: "codewhale",
+		DocsURL:        "https://github.com/Hmbown/CodeWhale",
+		SettingsFile:   "~/.codewhale/config.toml",
+	},
+	"smelt": {
+		ID:             "smelt",
+		Name:           "Smelt",
+		Category:       "code",
+		Description:    "Smelt coding agent CLI — OpenAI-compatible agent",
+		DefaultCommand: "smelt",
+		DocsURL:        "https://github.com/leonardcser/smelt",
+		SettingsFile:   "~/.smelt/config.json",
+	},
+	"pi": {
+		ID:             "pi",
+		Name:           "Pi",
+		Category:       "code",
+		Description:    "Pi coding agent CLI — lightweight terminal AI",
+		DefaultCommand: "pi",
+		DocsURL:        "https://github.com/badlogic/pi",
+		SettingsFile:   "~/.pi/config.json",
+	},
+	"crush": {
+		ID:             "crush",
+		Name:           "Crush",
+		Category:       "code",
+		Description:    "Crush coding agent CLI — terminal AI agent by Charm",
+		DefaultCommand: "crush",
+		DocsURL:        "https://github.com/charmbracelet/crush",
+		SettingsFile:   "~/.config/crush/crush.json",
+	},
+	"zed": {
+		ID:             "zed",
+		Name:           "Zed",
+		Category:       "code",
+		Description:    "Zed code editor — built-in agent through an OpenAI-compatible provider",
+		DefaultCommand: "zed",
+		DocsURL:        "https://zed.dev/docs/ai/llm-providers#openai-api-compatible",
+		SettingsFile:   "~/.config/zed/settings.json",
+	},
+	"interpreter": {
+		ID:             "interpreter",
+		Name:           "Open Interpreter",
+		Category:       "autonomous",
+		Description:    "Open Interpreter — autonomous coding agent CLI with --api_base flag",
+		DefaultCommand: "interpreter",
+		DocsURL:        "https://docs.openinterpreter.com/",
+		SettingsFile:   "~/.open-interpreter/config.yaml",
+	},
+	"omp": {
+		ID:             "omp",
+		Name:           "Oh My Pi",
+		Category:       "autonomous",
+		Description:    "Oh My Pi terminal coding agent via GoRoute",
+		DefaultCommand: "omp",
+		DocsURL:        "https://github.com/can1357/oh-my-pi",
+		SettingsFile:   "~/.omp/config.json",
+	},
+	"letta": {
+		ID:             "letta",
+		Name:           "Letta CLI",
+		Category:       "autonomous",
+		Description:    "Letta CLI — AI agent with persistent memory and tool use",
+		DefaultCommand: "letta",
+		DocsURL:        "https://docs.letta.com",
+		SettingsFile:   "~/.letta/config.json",
+	},
+	"warp": {
+		ID:             "warp",
+		Name:           "Warp AI",
+		Category:       "autonomous",
+		Description:    "Warp AI terminal — BYOK desktop app with partial base URL support",
+		DefaultCommand: "warp",
+		DocsURL:        "https://docs.warp.dev/",
+		SettingsFile:   "~/.warp/settings.json",
+	},
+	"deepseek-tui": {
+		ID:             "deepseek-tui",
+		Name:           "DeepSeek TUI",
+		Category:       "code",
+		Description:    "DeepSeek TUI terminal coding client",
+		DefaultCommand: "deepseek",
+		DocsURL:        "https://github.com/deepseek-ai",
+		SettingsFile:   "~/.config/deepseek-tui/config.toml",
+	},
 }
 
 func ListTools() []CliTool {
 	home, _ := os.UserHomeDir()
 	var list []CliTool
+	var mu sync.Mutex
+	var wg sync.WaitGroup
 
 	for id, tool := range Registry {
-		t := tool
-		// 1. Detect binary in PATH
-		binName := t.DefaultCommand
-		if p, err := exec.LookPath(binName); err == nil && p != "" {
-			t.Detected = true
-			t.Runnable = true
-			// Try version detection with 500ms timeout
-			cmd := exec.Command(binName, "--version")
-			if out, err := cmd.Output(); err == nil {
-				t.Version = strings.TrimSpace(string(out))
-				if len(t.Version) > 40 {
-					t.Version = t.Version[:40]
+		wg.Add(1)
+		go func(id string, tool CliTool) {
+			defer wg.Done()
+			t := tool
+			// 1. Detect binary in PATH
+			binName := t.DefaultCommand
+			if binName != "" {
+				if p, err := exec.LookPath(binName); err == nil && p != "" {
+					t.Detected = true
+					t.Runnable = true
+					// Skip version probe on GUI apps that might hang without display
+					if binName != "antigravity" && binName != "cursor" && binName != "windsurf" && binName != "zed" {
+						ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+						cmd := exec.CommandContext(ctx, binName, "--version")
+						if out, err := cmd.Output(); err == nil {
+							t.Version = strings.TrimSpace(string(out))
+							if len(t.Version) > 40 {
+								t.Version = t.Version[:40]
+							}
+						}
+						cancel()
+					}
 				}
 			}
-		}
 
-		// 2. Check settings file
-		expandedPath := strings.Replace(t.SettingsFile, "~", home, 1)
-		if fi, err := os.Stat(expandedPath); err == nil && !fi.IsDir() {
-			t.Detected = true
-			// Check if file mentions 8128 (GoRoute port)
-			data, _ := os.ReadFile(expandedPath)
-			if strings.Contains(string(data), "8128") || strings.Contains(string(data), "goroute") {
-				t.Configured = true
+			// 2. Check settings file
+			expandedPath := strings.Replace(t.SettingsFile, "~", home, 1)
+			if fi, err := os.Stat(expandedPath); err == nil && !fi.IsDir() {
+				t.Detected = true
+				// Check if file mentions 8128 (GoRoute port)
+				data, _ := os.ReadFile(expandedPath)
+				if strings.Contains(string(data), "8128") || strings.Contains(string(data), "goroute") {
+					t.Configured = true
+				}
 			}
-		}
 
-		list = append(list, t)
-		_ = id
+			mu.Lock()
+			list = append(list, t)
+			mu.Unlock()
+			_ = id
+		}(id, tool)
 	}
 
+	wg.Wait()
 	return list
 }
 
@@ -264,6 +435,40 @@ func ConfigureTool(id string) (string, error) {
 		return "Configured Grok Build (~/.config/grok-build/config.json)", setupGrokBuild(home)
 	case "windsurf":
 		return "Configured Windsurf (~/.codeium/windsurf/settings.json)", setupWindsurf(home)
+	case "zcode":
+		return "Configured ZCode (~/.zcode/config.json)", setupZCode(home)
+	case "antigravity":
+		return "Configured Antigravity MITM (~/.config/antigravity/mitm.json)", setupAntigravity(home)
+	case "copilot":
+		return "Configured Copilot (~/.config/github-copilot/hosts.json)", setupCopilot(home)
+	case "kiro":
+		return "Configured Kiro (~/.kiro/config.json)", setupKiro(home)
+	case "custom":
+		return "Configured Custom CLI (~/.goroute/custom-tools.json)", setupCustom(home)
+	case "forge":
+		return "Configured ForgeCode (~/.forge.toml)", setupForge(home)
+	case "jcode":
+		return "Configured jcode (~/.jcode/config.json)", setupJCode(home)
+	case "codewhale":
+		return "Configured CodeWhale (~/.codewhale/config.toml)", setupCodeWhale(home)
+	case "smelt":
+		return "Configured Smelt (~/.smelt/config.json)", setupSmelt(home)
+	case "pi":
+		return "Configured Pi (~/.pi/config.json)", setupPi(home)
+	case "crush":
+		return "Configured Crush (~/.config/crush/crush.json)", setupCrush(home)
+	case "zed":
+		return "Configured Zed (~/.config/zed/settings.json)", setupZed(home)
+	case "interpreter":
+		return "Configured Open Interpreter (~/.open-interpreter/config.yaml)", setupInterpreter(home)
+	case "omp":
+		return "Configured Oh My Pi (~/.omp/config.json)", setupOmp(home)
+	case "letta":
+		return "Configured Letta CLI (~/.letta/config.json)", setupLetta(home)
+	case "warp":
+		return "Configured Warp AI (~/.warp/settings.json)", setupWarp(home)
+	case "deepseek-tui":
+		return "Configured DeepSeek TUI (~/.config/deepseek-tui/config.toml)", setupDeepSeekTUI(home)
 	default:
 		return "", fmt.Errorf("agent %s not supported for automated configuration", id)
 	}
@@ -530,4 +735,210 @@ func setupWindsurf(home string) error {
 }`
 	return os.WriteFile(cfgFile, []byte(content), 0644)
 }
+
+func setupZCode(home string) error {
+	dir := filepath.Join(home, ".zcode")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "endpoint": "http://127.0.0.1:8128/v1",
+  "apiKey": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupAntigravity(home string) error {
+	dir := filepath.Join(home, ".config", "antigravity")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "mitm.json")
+	content := `{
+  "enabled": true,
+  "listen": "127.0.0.1:8128",
+  "target": "antigravity",
+  "intercept_tls": false
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupCopilot(home string) error {
+	dir := filepath.Join(home, ".config", "github-copilot")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "hosts.json")
+	content := `{
+  "github.com": {
+    "user": "goroute",
+    "oauth_token": "goroute",
+    "enterprise_endpoint": "http://127.0.0.1:8128/v1"
+  }
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupKiro(home string) error {
+	dir := filepath.Join(home, ".kiro")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "custom_endpoint": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute",
+  "active_model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupCustom(home string) error {
+	dir := filepath.Join(home, ".goroute")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "custom-tools.json")
+	content := `{
+  "openai_base_url": "http://127.0.0.1:8128/v1",
+  "anthropic_base_url": "http://127.0.0.1:8128",
+  "api_key": "goroute"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupForge(home string) error {
+	cfgFile := filepath.Join(home, ".forge.toml")
+	content := `[provider]
+name = "goroute"
+base_url = "http://127.0.0.1:8128/v1"
+api_key = "goroute"
+default_model = "claude-sonnet-4.5"
+`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupJCode(home string) error {
+	dir := filepath.Join(home, ".jcode")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "base_url": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupCodeWhale(home string) error {
+	dir := filepath.Join(home, ".codewhale")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.toml")
+	content := `[server]
+base_url = "http://127.0.0.1:8128/v1"
+api_key = "goroute"
+model = "claude-sonnet-4.5"
+`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupSmelt(home string) error {
+	dir := filepath.Join(home, ".smelt")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "endpoint": "http://127.0.0.1:8128/v1",
+  "key": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupPi(home string) error {
+	dir := filepath.Join(home, ".pi")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "openai_endpoint": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute",
+  "default_model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupCrush(home string) error {
+	dir := filepath.Join(home, ".config", "crush")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "crush.json")
+	content := `{
+  "endpoint": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupZed(home string) error {
+	dir := filepath.Join(home, ".config", "zed")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "settings.json")
+	content := `{
+  "language_models": {
+    "openai": {
+      "api_url": "http://127.0.0.1:8128/v1",
+      "available_models": ["claude-sonnet-4.5", "claude-opus-5.5"]
+    }
+  }
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupInterpreter(home string) error {
+	dir := filepath.Join(home, ".open-interpreter")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.yaml")
+	content := `api_base: http://127.0.0.1:8128/v1
+api_key: goroute
+model: claude-sonnet-4.5
+`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupOmp(home string) error {
+	dir := filepath.Join(home, ".omp")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "base_url": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute",
+  "model": "claude-sonnet-4.5"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupLetta(home string) error {
+	dir := filepath.Join(home, ".letta")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.json")
+	content := `{
+  "openai_endpoint": "http://127.0.0.1:8128/v1",
+  "auth_token": "goroute"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupWarp(home string) error {
+	dir := filepath.Join(home, ".warp")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "settings.json")
+	content := `{
+  "ai_gateway": "http://127.0.0.1:8128/v1",
+  "api_key": "goroute"
+}`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
+func setupDeepSeekTUI(home string) error {
+	dir := filepath.Join(home, ".config", "deepseek-tui")
+	os.MkdirAll(dir, 0755)
+	cfgFile := filepath.Join(dir, "config.toml")
+	content := `base_url = "http://127.0.0.1:8128/v1"
+api_key = "goroute"
+model = "deepseek-chat"
+`
+	return os.WriteFile(cfgFile, []byte(content), 0644)
+}
+
 

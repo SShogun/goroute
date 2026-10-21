@@ -311,6 +311,21 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/v1/responses", s.handleResponses)
 	s.mux.Post("/api/v1/responses/*", s.handleResponses)
 
+	// CLI Tools full subsystem
+	s.registerCliToolsRoutes()
+
+	// Web Fetch & Search subsystem
+	s.registerWebSearchRoutes()
+
+	// Agent-to-Agent (A2A) protocol
+	s.registerA2ARoutes()
+
+	// Agent Skills subsystem
+	s.registerAgentSkillsRoutes()
+
+	// Auth & VNC interactive browser login
+	s.registerAuthAndVncRoutes()
+
 	if s.enableDashboard {
 		s.mux.Handle("/*", web.Handler())
 	}

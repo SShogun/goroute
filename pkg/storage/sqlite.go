@@ -90,6 +90,24 @@ func InitDB(dbPath string) (*DBStore, error) {
 		action TEXT NOT NULL,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS cli_tool_state (
+		tool_id TEXT PRIMARY KEY,
+		last_configured_at INTEGER NOT NULL,
+		config_path TEXT,
+		endpoint TEXT
+	);
+
+	CREATE TABLE IF NOT EXISTS a2a_tasks (
+		id TEXT PRIMARY KEY,
+		skill TEXT,
+		state TEXT NOT NULL,
+		input TEXT,
+		result TEXT,
+		error TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -190,6 +208,200 @@ func (s *DBStore) QueryRecentLogs(limit, offset int) ([]CallLog, error) {
 	}
 
 	return logs, nil
+}
+
+// CliToolState records configuration state for a developer CLI tool.
+type CliToolState struct {
+	ToolID           string `json:"tool_id"`
+	LastConfiguredAt int64  `json:"last_configured_at"`
+	ConfigPath       string `json:"config_path"`
+	Endpoint         string `json:"endpoint"`
+}
+
+// SaveCliToolState persists or updates the CLI tool's last configured timestamp and metadata.
+func (s *DBStore) SaveCliToolState(toolID string, lastConfiguredAt int64, configPath, endpoint string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `
+	INSERT INTO cli_tool_state (tool_id, last_configured_at, config_path, endpoint)
+	VALUES (?, ?, ?, ?)
+	ON CONFLICT(tool_id) DO UPDATE SET
+		last_configured_at = excluded.last_configured_at,
+		config_path = excluded.config_path,
+		endpoint = excluded.endpoint;
+	`
+	_, err := s.db.Exec(query, toolID, lastConfiguredAt, configPath, endpoint)
+	return err
+}
+
+// GetAllCliToolLastConfigured returns a map of toolID -> lastConfiguredAt Unix timestamp (ms or sec).
+func (s *DBStore) GetAllCliToolLastConfigured() (map[string]int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query("SELECT tool_id, last_configured_at FROM cli_tool_state")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	res := make(map[string]int64)
+	for rows.Next() {
+		var toolID string
+		var lastConfigured int64
+		if err := rows.Scan(&toolID, &lastConfigured); err == nil {
+			res[toolID] = lastConfigured
+		}
+	}
+	return res, nil
+}
+
+// GetCliToolState retrieves the persisted state for a specific tool.
+func (s *DBStore) GetCliToolState(toolID string) (*CliToolState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var state CliToolState
+	query := "SELECT tool_id, last_configured_at, config_path, endpoint FROM cli_tool_state WHERE tool_id = ?"
+	err := s.db.QueryRow(query, toolID).Scan(&state.ToolID, &state.LastConfiguredAt, &state.ConfigPath, &state.Endpoint)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &state, nil
+}
+
+// DeleteCliToolState removes the configured state entry for a tool.
+func (s *DBStore) DeleteCliToolState(toolID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec("DELETE FROM cli_tool_state WHERE tool_id = ?", toolID)
+	return err
+}
+
+// A2ATask represents an Agent-to-Agent task execution unit.
+type A2ATask struct {
+	ID        string `json:"id"`
+	Skill     string `json:"skill"`
+	State     string `json:"state"` // submitted, working, completed, failed, cancelled
+	Input     string `json:"input"`
+	Result    string `json:"result,omitempty"`
+	Error     string `json:"error,omitempty"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
+}
+
+// UpsertA2ATask persists or updates an A2A task in SQLite.
+func (s *DBStore) UpsertA2ATask(task *A2ATask) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `
+	INSERT INTO a2a_tasks (id, skill, state, input, result, error, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+	ON CONFLICT(id) DO UPDATE SET
+		skill = excluded.skill,
+		state = excluded.state,
+		input = excluded.input,
+		result = excluded.result,
+		error = excluded.error,
+		updated_at = CURRENT_TIMESTAMP;
+	`
+	_, err := s.db.Exec(query, task.ID, task.Skill, task.State, task.Input, task.Result, task.Error)
+	return err
+}
+
+// GetA2ATask retrieves a single A2A task by ID.
+func (s *DBStore) GetA2ATask(id string) (*A2ATask, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var t A2ATask
+	query := "SELECT id, skill, state, input, COALESCE(result, ''), COALESCE(error, ''), created_at, updated_at FROM a2a_tasks WHERE id = ?"
+	err := s.db.QueryRow(query, id).Scan(&t.ID, &t.Skill, &t.State, &t.Input, &t.Result, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &t, nil
+}
+
+// ListA2ATasks returns matching tasks with pagination and total count.
+func (s *DBStore) ListA2ATasks(state, skill string, limit, offset int) ([]A2ATask, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	where := "WHERE 1=1"
+	var args []interface{}
+	if state != "" {
+		where += " AND state = ?"
+		args = append(args, state)
+	}
+	if skill != "" {
+		where += " AND skill = ?"
+		args = append(args, skill)
+	}
+
+	var total int
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM a2a_tasks %s", where)
+	if err := s.db.QueryRow(countQuery, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 50
+	}
+	listQuery := fmt.Sprintf("SELECT id, skill, state, input, COALESCE(result, ''), COALESCE(error, ''), created_at, updated_at FROM a2a_tasks %s ORDER BY created_at DESC LIMIT ? OFFSET ?", where)
+	args = append(args, limit, offset)
+
+	rows, err := s.db.Query(listQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var tasks []A2ATask
+	for rows.Next() {
+		var t A2ATask
+		if err := rows.Scan(&t.ID, &t.Skill, &t.State, &t.Input, &t.Result, &t.Error, &t.CreatedAt, &t.UpdatedAt); err == nil {
+			tasks = append(tasks, t)
+		}
+	}
+	return tasks, total, nil
+}
+
+// GetA2ATaskStats returns the count of tasks grouped by state.
+func (s *DBStore) GetA2ATaskStats() (map[string]int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rows, err := s.db.Query("SELECT state, COUNT(*) FROM a2a_tasks GROUP BY state")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := map[string]int{
+		"submitted": 0,
+		"working":   0,
+		"completed": 0,
+		"failed":    0,
+		"cancelled": 0,
+	}
+	for rows.Next() {
+		var state string
+		var count int
+		if err := rows.Scan(&state, &count); err == nil {
+			stats[state] = count
+		}
+	}
+	return stats, nil
 }
 
 // Close closes the database connection.
