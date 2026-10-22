@@ -125,6 +125,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/catalog", s.handleCatalog)
 	s.mux.Get("/api/logs", s.handleLogs)
 	s.mux.Get("/api/logs/stream", s.handleLogsStream)
+	s.mux.Post("/api/logs/{id}/replay", s.handleReplayLog)
 	s.mux.Post("/api/reload", s.handleReload)
 	s.mux.Post("/api/agents/setup", s.handleAgentSetup)
 	s.mux.Post("/api/providers/add", s.handleAddProvider)

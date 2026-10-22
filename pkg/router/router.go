@@ -441,6 +441,14 @@ func (r *Router) executeCombo(ctx context.Context, combo *Combo, req *providers.
 			continue
 		}
 
+		// Pre-emptive Quota Fallback (OmniRoute Parity)
+		// Skip targets automatically if remaining quota drops below 5% to avoid upstream 429
+		targetMetrics := r.GetTargetMetrics(target.ProviderID, target.Model)
+		if targetMetrics.QuotaPercent > 0.0 && targetMetrics.QuotaPercent < 5.0 {
+			log.Printf("[GoRoute] Pre-emptive Quota Fallback: Skipping %s/%s (remaining quota %.1f%% < 5%% limit)", target.ProviderID, target.Model, targetMetrics.QuotaPercent)
+			continue
+		}
+
 		// Clone request with target model and sanitize parameters for provider/model
 		targetReq := *req
 		targetReq.Model = target.Model

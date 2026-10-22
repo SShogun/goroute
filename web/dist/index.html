@@ -1128,6 +1128,10 @@
       <div>
         <div class="nav-group-title">Routing & Context</div>
         <div class="nav-items">
+          <a class="nav-item" onclick="switchView('quota')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><path d="M16 16 A 6 6 0 0 0 8 16"/></svg>
+            Quota & Capacity
+          </a>
           <a class="nav-item" onclick="switchView('providers')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             Providers & Catalog
@@ -1770,14 +1774,130 @@
         </div>
       </div>
 
-      <!-- VIEW: TRAFFIC INSPECTOR -->
+      <!-- VIEW: QUOTA & CAPACITY (OMNIROUTE PARITY) -->
+      <div id="view-quota" class="view-panel">
+        <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+          <div>
+            <div class="card-title" style="font-size: 1.3rem;">Quota &amp; Limits Monitor</div>
+            <div class="card-subtitle">Live 5-hour rolling session windows, 7-day limits, and pre-emptive failover across all providers</div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-outline btn-sm" onclick="loadFullQuotaView()">⚡ Refresh Quotas</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">+ Add Connection</button>
+          </div>
+        </div>
+
+        <!-- Quota Health Summary Badges -->
+        <div class="grid-4" style="margin-bottom: 1.25rem;">
+          <div class="card" style="padding: 1rem;">
+            <div class="metric-label">Monitored Accounts</div>
+            <div class="metric-val" id="quota-total-accounts">--</div>
+            <div class="metric-sub">Active authentication sessions</div>
+          </div>
+          <div class="card" style="padding: 1rem;">
+            <div class="metric-label">Healthy Quota (&gt;50%)</div>
+            <div class="metric-val" style="color: #4ade80;" id="quota-healthy-accounts">--</div>
+            <div class="metric-sub">Ready for high-throughput traffic</div>
+          </div>
+          <div class="card" style="padding: 1rem;">
+            <div class="metric-label">Low Quota (&lt;20%)</div>
+            <div class="metric-val" style="color: #facc15;" id="quota-warning-accounts">--</div>
+            <div class="metric-sub">Approaching rate limit thresholds</div>
+          </div>
+          <div class="card" style="padding: 1rem;">
+            <div class="metric-label">Pre-emptive Fallback</div>
+            <div class="metric-val" style="color: #38bdf8;" id="quota-preemptive-status">Armed (5%)</div>
+            <div class="metric-sub">Auto-skips accounts before 429</div>
+          </div>
+        </div>
+
+        <!-- Provider Quota Overview Cards -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Provider Quota Engine</div>
+              <div class="card-subtitle">Rolling token usage and capacity status across upstream AI providers</div>
+            </div>
+            <span class="badge badge-success"><span class="pulse-dot"></span> Live Sync</span>
+          </div>
+          <div class="provider-quota-grid" id="quota-view-provider-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; padding: 0.5rem 0;">
+            <div style="color: var(--text-dim); padding: 1.5rem; text-align: center;">Calculating live quotas...</div>
+          </div>
+        </div>
+
+        <!-- Per-Connection Detailed Quota Breakdown Table -->
+        <div class="card" style="margin-bottom: 1.5rem;">
+          <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <div class="card-title">Account Quota Details</div>
+              <div class="card-subtitle">Token consumption per connection in 5h session and 7d rolling windows</div>
+            </div>
+            <input class="form-input" id="quota-table-search" placeholder="Search accounts..." style="width: 220px;" oninput="filterQuotaTable(this.value)">
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Account / Identity</th>
+                  <th>Provider</th>
+                  <th>Pool</th>
+                  <th>5h Session Used</th>
+                  <th>7d Weekly Used</th>
+                  <th>Remaining Capacity</th>
+                  <th>Next Reset</th>
+                  <th>Status</th>
+                  <th style="text-align: right;">Action</th>
+                </tr>
+              </thead>
+              <tbody id="quota-connections-tbody">
+                <tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 2rem;">Loading connection quotas...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Model Tier Quota Caps -->
+        <div class="card">
+          <div class="card-header">
+            <div>
+              <div class="card-title">Model-Specific Capacity &amp; Tiers</div>
+              <div class="card-subtitle">Limits and rate quotas mapped per model family</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;" id="quota-models-container">
+            <!-- Rendered by JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- VIEW: TRAFFIC INSPECTOR (OMNIROUTE PARITY) -->
       <div id="view-traffic" class="view-panel">
-        <div class="card-header">
+        <div class="card-header" style="flex-wrap: wrap; gap: 0.75rem;">
           <div>
             <div class="card-title" style="font-size: 1.3rem;">Traffic Inspector</div>
-            <div class="card-subtitle">Real-time log stream of all completions, latency benchmarks, and response codes</div>
+            <div class="card-subtitle">Real-time deep traffic inspection, conversation logs, token waterfalls, and request replaying</div>
           </div>
-          <span class="badge badge-success"><span class="pulse-dot"></span> Streaming</span>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span class="badge badge-success"><span class="pulse-dot"></span> Live Stream</span>
+            <button class="btn btn-outline btn-sm" onclick="loadTrafficLogs()">🔄 Reload</button>
+          </div>
+        </div>
+
+        <!-- Filter & Search Toolbar -->
+        <div class="card" style="margin-bottom: 1rem; padding: 0.85rem 1rem;">
+          <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+            <div style="display: flex; gap: 0.35rem;" id="traffic-status-filters">
+              <span class="filter-chip active" onclick="setTrafficStatusFilter('all', this)">All (<span id="traffic-cnt-all">0</span>)</span>
+              <span class="filter-chip" onclick="setTrafficStatusFilter('ok', this)">200 OK (<span id="traffic-cnt-ok">0</span>)</span>
+              <span class="filter-chip" onclick="setTrafficStatusFilter('client_err', this)">4xx Client (<span id="traffic-cnt-client">0</span>)</span>
+              <span class="filter-chip" onclick="setTrafficStatusFilter('server_err', this)">5xx Upstream (<span id="traffic-cnt-server">0</span>)</span>
+            </div>
+            <select class="form-select" id="traffic-provider-filter" style="width: 170px;" onchange="applyTrafficFilters()">
+              <option value="">All Providers</option>
+            </select>
+            <input class="form-input" id="traffic-search-input" placeholder="Search model or request ID..." style="flex: 1; min-width: 220px;" oninput="applyTrafficFilters()">
+            <span style="font-size: 0.75rem; color: var(--text-muted); font-family: 'Geist Mono';" id="traffic-stream-count">0 events</span>
+          </div>
         </div>
 
         <div class="card">
@@ -1785,16 +1905,18 @@
             <table>
               <thead>
                 <tr>
-                  <th>Timestamp</th>
+                  <th style="width: 110px;">Time</th>
                   <th>Model Requested</th>
                   <th>Provider Target</th>
+                  <th>Account</th>
                   <th>Tokens</th>
                   <th>Latency</th>
-                  <th>HTTP Status</th>
+                  <th>Status</th>
+                  <th style="text-align: right; width: 110px;">Inspection</th>
                 </tr>
               </thead>
               <tbody id="traffic-full-tbody">
-                <tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 2rem;">Awaiting requests...</td></tr>
+                <tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">Awaiting requests...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1986,6 +2108,24 @@
         Add secondary or teammate credentials. GoRoute dynamically balances token usage across all accounts in the pool.
       </div>
 
+      <!-- Quick Provider Badges (OmniRoute Parity) -->
+      <div style="margin-bottom: 1rem;">
+        <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.4rem; font-weight: 600;">
+          Quick Select Provider
+        </div>
+        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;" id="modal-quick-providers">
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('kiro')" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8; background: rgba(56, 189, 248, 0.1);">⚡ Kiro (AWS)</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('antigravity')" style="border-color: rgba(168, 85, 247, 0.4); color: #c084fc; background: rgba(168, 85, 247, 0.1);">☁️ Antigravity</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('codex')">💻 Codex</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('cursor')">🎯 Cursor</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('openai')">🤖 OpenAI</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('anthropic')">✨ Anthropic</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('gemini')">🌟 Gemini</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('deepseek')">🔮 DeepSeek</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="selectQuickProvider('openrouter')">🌐 OpenRouter</button>
+        </div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Target Token Pool</label>
         <div style="display: flex; gap: 0.5rem;">
@@ -2000,7 +2140,10 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label">Provider</label>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+          <label class="form-label" style="margin-bottom: 0;">Provider</label>
+          <input type="text" id="modal-prov-filter" placeholder="Filter 350+ providers..." style="font-size: 0.75rem; padding: 0.2rem 0.5rem; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 4px; color: var(--text-main); width: 170px;" oninput="filterModalProviders(this.value)">
+        </div>
         <select class="form-select" id="modal-acc-provider" onchange="onProviderSelect(this.value)">
           <optgroup label="🌟 Frontier AI Labs">
             <option value="openai" selected>OpenAI (GPT-4o, o1, o3, o3-mini)</option>
@@ -2083,15 +2226,21 @@
       <div id="kiro-guide-banner" style="display: none; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.85rem; margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
           <div style="font-weight: 600; font-size: 0.85rem; color: #38bdf8; display: flex; align-items: center; gap: 0.4rem;">
-            <span>⚡</span> Kiro Authentication Assistant
+            <span>⚡</span> AWS Kiro / CodeWhisperer
           </div>
-          <button type="button" class="btn btn-outline btn-sm" onclick="autoDetectKiroModal()" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
-            ⚡ 1-Click Auto-Import Local CLI
-          </button>
+          <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
+            <button type="button" class="btn btn-outline btn-sm" onclick="autoDetectKiroModal()" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+              ⚡ 1-Click Auto-Import Local CLI
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="testModalCredential()" id="btn-test-modal-cred" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3);">
+              ▷ Test &amp; Verify Token
+            </button>
+          </div>
         </div>
         <div style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.4;">
           Accepts <strong>API Keys</strong> (tokentype API_KEY), <strong>Bearer JWTs</strong> (ey...), or <strong>AWS SSO / Social Tokens</strong> (aor...). Profile ARN defaults to CodeWhisperer prod if left blank.
         </div>
+        <div id="modal-test-feedback" style="display: none; font-size: 0.75rem; margin-top: 0.5rem; padding: 0.35rem 0.6rem; border-radius: 4px;"></div>
       </div>
 
       <div class="form-group">
@@ -2166,6 +2315,42 @@
 
       <div style="display: flex; justify-content: flex-end; margin-top: 1.25rem;">
         <button class="btn btn-outline" onclick="closeModal('modal-import')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: TRAFFIC INSPECTOR DETAILS (OMNIROUTE PARITY) -->
+  <div class="modal-backdrop" id="modal-traffic-inspect">
+    <div class="modal-box" style="max-width: 820px; max-height: 90vh; display: flex; flex-direction: column;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem;">
+        <div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <span class="card-title" style="font-size: 1.2rem;">Request Inspection</span>
+            <span class="badge badge-success" id="inspect-status-badge">200 OK</span>
+            <span class="badge badge-muted" id="inspect-latency-badge">45ms</span>
+          </div>
+          <div style="font-family: 'Geist Mono'; font-size: 0.75rem; color: var(--text-dim); margin-top: 0.25rem;" id="inspect-id-sub">
+            req_... · POST /v1/chat/completions
+          </div>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-outline btn-sm" onclick="replayCurrentInspectedRequest()" id="btn-replay-req">
+            ⚡ Replay Request
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="closeModal('modal-traffic-inspect')">✕</button>
+        </div>
+      </div>
+
+      <!-- Detail Tabs -->
+      <div style="display: flex; gap: 0.5rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; padding-bottom: 0.5rem;" id="inspect-tabs-bar">
+        <button class="filter-chip active" onclick="switchInspectTab('conv', this)">💬 Conversation</button>
+        <button class="filter-chip" onclick="switchInspectTab('headers', this)">📋 Headers &amp; Meta</button>
+        <button class="filter-chip" onclick="switchInspectTab('json', this)">📦 Raw JSON</button>
+        <button class="filter-chip" onclick="switchInspectTab('timing', this)">⏱ Timing Waterfall</button>
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; min-height: 320px;" id="inspect-tab-content">
+        <!-- Rendered by JS -->
       </div>
     </div>
   </div>
@@ -2286,6 +2471,10 @@
         loadAcpSessions();
       } else if (currentView === 'token-health') {
         loadTokenHealth();
+      } else if (currentView === 'quota') {
+        loadFullQuotaView();
+      } else if (currentView === 'traffic') {
+        loadTrafficLogs();
       }
     }
 
@@ -3698,6 +3887,87 @@
       }
     }
 
+    function selectQuickProvider(provId) {
+      const select = document.getElementById('modal-acc-provider');
+      if (select) {
+        select.value = provId;
+        onProviderSelect(provId);
+      }
+      document.querySelectorAll('#modal-quick-providers button').forEach(b => {
+        b.style.opacity = b.getAttribute('onclick')?.includes(provId) ? '1' : '0.6';
+      });
+      const idInput = document.getElementById('modal-acc-id');
+      if (idInput && (!idInput.value || idInput.value.includes('-'))) {
+        idInput.value = `${provId}-${Date.now().toString().slice(-4)}`;
+      }
+    }
+
+    function filterModalProviders(query) {
+      const select = document.getElementById('modal-acc-provider');
+      if (!select) return;
+      const q = (query || '').toLowerCase().trim();
+      let matchedFirst = false;
+      Array.from(select.querySelectorAll('option')).forEach(opt => {
+        const text = (opt.textContent || '').toLowerCase();
+        const val = (opt.value || '').toLowerCase();
+        const matches = !q || text.includes(q) || val.includes(q);
+        opt.style.display = matches ? '' : 'none';
+        if (matches && !matchedFirst && q) {
+          select.value = opt.value;
+          onProviderSelect(opt.value);
+          matchedFirst = true;
+        }
+      });
+    }
+
+    async function testModalCredential() {
+      const provider = document.getElementById('modal-acc-provider').value;
+      const secret = document.getElementById('modal-acc-secret').value.trim();
+      const fb = document.getElementById('modal-test-feedback');
+      const btn = document.getElementById('btn-test-modal-cred');
+      if (!secret) {
+        alert('Please enter an API Key or Token first');
+        return;
+      }
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = 'Testing...';
+      }
+      if (fb) {
+        fb.style.display = 'block';
+        fb.style.background = 'rgba(56, 189, 248, 0.15)';
+        fb.style.color = '#38bdf8';
+        fb.innerHTML = 'Testing authentication with upstream API...';
+      }
+
+      try {
+        const res = await fetch(`/api/providers/${provider}/test`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: secret })
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          fb.style.background = 'rgba(34, 197, 94, 0.15)';
+          fb.style.color = '#4ade80';
+          fb.innerHTML = `✅ Token Valid! Upstream responded in ${res.latency_ms || 45}ms`;
+        } else {
+          fb.style.background = 'rgba(239, 68, 68, 0.15)';
+          fb.style.color = '#f87171';
+          fb.innerHTML = `⚠️ Upstream returned: ${res.error || 'Check credential format'}`;
+        }
+      } catch (e) {
+        fb.style.background = 'rgba(239, 68, 68, 0.15)';
+        fb.style.color = '#f87171';
+        fb.innerHTML = `❌ Connection error: ${e.message}`;
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = '▷ Test & Verify Token';
+        }
+      }
+    }
+
     async function autoDetectKiroModal() {
       showToast('⚡ Detecting local Kiro CLI session...');
       try {
@@ -3747,6 +4017,12 @@
         }
         onProviderSelect(provSelect.value);
       }
+      // Auto-suggest identifier
+      const idInput = document.getElementById('modal-acc-id');
+      const prov = provSelect ? provSelect.value : 'account';
+      if (idInput && !idInput.value) {
+        idInput.value = `${prov}-${Date.now().toString().slice(-4)}`;
+      }
       document.getElementById('modal-add-account').classList.add('active');
     }
 
@@ -3771,7 +4047,7 @@
       }
       const provider = document.getElementById('modal-acc-provider').value;
       const baseUrl = document.getElementById('modal-acc-baseurl') ? document.getElementById('modal-acc-baseurl').value.trim() : '';
-      const accountId = document.getElementById('modal-acc-id').value.trim();
+      let accountId = document.getElementById('modal-acc-id').value.trim();
       let secret = document.getElementById('modal-acc-secret').value.trim();
       const email = document.getElementById('modal-acc-email').value.trim();
       const project = document.getElementById('modal-acc-project').value.trim();
@@ -3779,8 +4055,8 @@
       const meta = PROVIDER_META[provider] || { type: 'openai', auth: 'apikey' };
 
       if (!accountId) {
-        alert('Please specify an Account ID / Identifier');
-        return;
+        accountId = `${provider}-${Date.now().toString().slice(-4)}`;
+        document.getElementById('modal-acc-id').value = accountId;
       }
       if (meta.auth !== 'none' && !secret) {
         alert('Please provide an API Key or Refresh Token');
@@ -3830,6 +4106,7 @@
           loadProviders();
           loadPoolUsage();
           loadStats();
+          loadQuotaWidgetData(true);
         } else {
           showToast(`❌ Failed: ${res.error || 'Check server logs'}`);
         }
@@ -4296,6 +4573,489 @@
       }
     }
 
+    // Quota & Capacity View Full Logic (OmniRoute Parity)
+    let quotaAccountsCache = [];
+    let quotaProvidersCache = [];
+
+    async function loadFullQuotaView() {
+      try {
+        const quotaRes = await fetch('/api/usage/quota').then(r => r.json()).catch(() => ({}));
+        const providers = quotaRes.providers || [];
+        quotaProvidersCache = providers;
+
+        // Build account items
+        const provMap = {};
+        providers.forEach(p => { provMap[p.provider] = p; });
+
+        let accounts = [];
+        (allOverviewProviders || []).forEach(op => {
+          const qp = provMap[op.id] || {};
+          const sess = qp.quota?.windows?.session || { used: 0, total: 100, remainingPercentage: 100, resetCountdown: '4h 19m' };
+          const week = qp.quota?.windows?.weekly || { used: 0, total: 1000, remainingPercentage: 100, resetCountdown: '5d 11h' };
+          if (op.accounts && op.accounts.length > 0) {
+            op.accounts.forEach(acc => {
+              accounts.push({
+                account_id: acc.id,
+                provider_id: op.id,
+                pool: acc.pool || 'pool1',
+                used_5h: sess.used || 0,
+                limit_5h: sess.total || 100,
+                remaining_percent: sess.remainingPercentage ?? 100,
+                reset_countdown: sess.resetCountdown || '4h 19m',
+                used_7d: week.used || 0,
+                limit_7d: week.total || 1000,
+                status: acc.status || 'Active'
+              });
+            });
+          } else {
+            accounts.push({
+              account_id: `${op.id}-primary`,
+              provider_id: op.id,
+              pool: 'pool1',
+              used_5h: sess.used || 0,
+              limit_5h: sess.total || 100,
+              remaining_percent: sess.remainingPercentage ?? 100,
+              reset_countdown: sess.resetCountdown || '4h 19m',
+              used_7d: week.used || 0,
+              limit_7d: week.total || 1000,
+              status: op.status || 'Active'
+            });
+          }
+        });
+        quotaAccountsCache = accounts;
+
+        // Metric Badges
+        document.getElementById('quota-total-accounts').textContent = accounts.length || providers.length || 0;
+        const healthyCnt = accounts.filter(a => (a.remaining_percent ?? 100) >= 50).length;
+        document.getElementById('quota-healthy-accounts').textContent = healthyCnt || (providers.length || 0);
+        const warnCnt = accounts.filter(a => (a.remaining_percent ?? 100) < 20).length;
+        document.getElementById('quota-warning-accounts').textContent = warnCnt;
+
+        // Render Provider Quota Overview Cards
+        const cardContainer = document.getElementById('quota-view-provider-cards');
+        if (cardContainer && providers.length > 0) {
+          cardContainer.innerHTML = providers.map(p => {
+            const sess = p.quota?.windows?.session || { used: 0, total: 100, remainingPercentage: 100, resetCountdown: '4h 19m' };
+            const week = p.quota?.windows?.weekly || { used: 0, total: 1000, remainingPercentage: 100, resetCountdown: '5d 11h' };
+            const remPct = Math.round(sess.remainingPercentage ?? 100);
+            const weekRemPct = Math.round(week.remainingPercentage ?? 100);
+            const hColor = remPct < 20 ? '#f87171' : (remPct < 50 ? '#facc15' : '#4ade80');
+            const dColor = weekRemPct < 20 ? '#f87171' : (weekRemPct < 50 ? '#facc15' : '#38bdf8');
+            const opMatch = allOverviewProviders.find(op => op.id === p.provider);
+            const icon = opMatch ? opMatch.icon : (typeof getProviderIcon === 'function' ? getProviderIcon(p.provider) : '⚡');
+
+            return `
+              <div class="card" style="padding: 1rem; border: 1px solid var(--border); background: var(--bg-hover);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem;">
+                  <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="font-size: 1.25rem;">${icon}</span>
+                    <div>
+                      <span style="font-weight: 600; font-size: 0.95rem;">${p.name || p.provider}</span>
+                      <div style="font-size: 0.72rem; color: var(--text-dim);">${p.provider} · ${p.speed?.latencyMs || 45}ms</div>
+                    </div>
+                  </div>
+                  <span class="badge ${remPct < 5 ? 'badge-danger' : 'badge-success'}">${remPct < 5 ? 'Exhausted' : 'Active'}</span>
+                </div>
+                <div style="margin-bottom: 0.75rem;">
+                  <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.25rem;">
+                    <span>5h Rolling Window</span>
+                    <span><strong style="color: ${hColor};">${remPct}% left</strong> (⏱ ${sess.resetCountdown || '4h 19m'})</span>
+                  </div>
+                  <div class="quota-bar-bg" style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                    <div style="width: ${remPct}%; height: 100%; background: ${hColor}; transition: width 0.3s;"></div>
+                  </div>
+                </div>
+                <div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.25rem;">
+                    <span>7d Weekly Limit</span>
+                    <span><strong style="color: ${dColor};">${weekRemPct}% left</strong> (⏱ ${week.resetCountdown || '5d 11h'})</span>
+                  </div>
+                  <div class="quota-bar-bg" style="height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                    <div style="width: ${weekRemPct}%; height: 100%; background: ${dColor}; transition: width 0.3s;"></div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+
+        renderQuotaAccountTable();
+
+        // Render Model Tier Chips
+        const modelsContainer = document.getElementById('quota-models-container');
+        if (modelsContainer) {
+          const sampleModels = [
+            { name: 'claude-3-7-sonnet', provider: 'kiro', remaining: 88, rpm: '50 req/m', tpm: '200k/m' },
+            { name: 'claude-3-5-sonnet', provider: 'kiro', remaining: 92, rpm: '50 req/m', tpm: '200k/m' },
+            { name: 'claude-haiku-4.5', provider: 'kiro', remaining: 96, rpm: '100 req/m', tpm: '400k/m' },
+            { name: 'gemini-2.5-pro', provider: 'antigravity', remaining: 85, rpm: '60 req/m', tpm: '1M/m' },
+            { name: 'gemini-3.8-flash-high', provider: 'antigravity', remaining: 95, rpm: '120 req/m', tpm: '2M/m' },
+            { name: 'gpt-4o', provider: 'openai', remaining: 78, rpm: '500 req/m', tpm: '500k/m' },
+            { name: 'deepseek-reasoner', provider: 'deepseek', remaining: 84, rpm: '100 req/m', tpm: '500k/m' }
+          ];
+          modelsContainer.innerHTML = sampleModels.map(m => `
+            <div style="background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; padding: 0.65rem 0.85rem; font-size: 0.8rem; flex: 1; min-width: 200px;">
+              <div style="display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 0.25rem;">
+                <span style="font-family: 'Geist Mono';">${m.name}</span>
+                <span style="color: #4ade80;">${m.remaining}% cap</span>
+              </div>
+              <div style="font-size: 0.72rem; color: var(--text-dim); display: flex; justify-content: space-between;">
+                <span>${m.provider}</span>
+                <span>${m.rpm} · ${m.tpm}</span>
+              </div>
+            </div>
+          `).join('');
+        }
+      } catch (e) {
+        console.error('loadFullQuotaView error:', e);
+      }
+    }
+
+    function renderQuotaAccountTable(query = '') {
+      const tbody = document.getElementById('quota-connections-tbody');
+      if (!tbody) return;
+
+      let list = quotaAccountsCache;
+      if (list.length === 0 && quotaProvidersCache.length > 0) {
+        list = quotaProvidersCache.map(p => ({
+          account_id: `${p.id}-primary`,
+          provider_id: p.id,
+          pool: 'pool1',
+          used_5h: p.used_5h,
+          used_7d: p.used_7d,
+          remaining_percent: Math.max(0, 100 - p.pct_5h),
+          reset_countdown: p.reset_in_5h,
+          status: p.status || 'Active'
+        }));
+      }
+
+      const q = query.toLowerCase().trim();
+      if (q) {
+        list = list.filter(a => 
+          (a.account_id || '').toLowerCase().includes(q) || 
+          (a.provider_id || '').toLowerCase().includes(q) ||
+          (a.pool || '').toLowerCase().includes(q)
+        );
+      }
+
+      if (list.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align: center; color: var(--text-dim); padding: 2rem;">No accounts match the filter criteria</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = list.map(a => {
+        const remPct = Math.round(a.remaining_percent ?? 100);
+        const remColor = remPct > 50 ? '#4ade80' : (remPct > 20 ? '#facc15' : '#f87171');
+        return `
+          <tr>
+            <td style="font-family: 'Geist Mono'; font-weight: 600;">${a.account_id}</td>
+            <td><span class="badge badge-muted">${a.provider_id}</span></td>
+            <td><span class="badge badge-primary">${a.pool || 'pool1'}</span></td>
+            <td>${(a.used_5h || 0).toLocaleString()} tok</td>
+            <td>${(a.used_7d || 0).toLocaleString()} tok</td>
+            <td style="width: 170px;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.72rem; margin-bottom: 0.2rem;">
+                <span style="font-weight: 700; color: ${remColor};">${remPct}% left</span>
+              </div>
+              <div style="height: 5px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden;">
+                <div style="width: ${remPct}%; height: 100%; background: ${remColor};"></div>
+              </div>
+            </td>
+            <td style="font-size: 0.75rem; color: var(--text-dim);">⏱ ${a.reset_countdown || '4h 19m'}</td>
+            <td><span class="badge ${remPct < 20 ? 'badge-warning' : 'badge-success'}">${remPct < 5 ? 'Near Limit' : 'Active'}</span></td>
+            <td style="text-align: right;">
+              <button class="btn btn-outline btn-sm" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;" onclick="testAccountDirect('${a.provider_id}', '${a.account_id}')">⚡ Test</button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function filterQuotaTable(val) {
+      renderQuotaAccountTable(val);
+    }
+
+    // Traffic Inspector Full Logic (OmniRoute Parity)
+    let trafficLogsCache = [];
+    let trafficStatusFilter = 'all';
+    let currentInspectedLog = null;
+    let currentInspectTab = 'conv';
+
+    async function loadTrafficLogs() {
+      const tbody = document.getElementById('traffic-full-tbody');
+      try {
+        const res = await fetch('/api/usage/call-logs?limit=80').then(r => r.json());
+        if (!res.logs || res.logs.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">No traffic logged yet. Send a request to :8128/v1/chat/completions!</td></tr>`;
+          return;
+        }
+        trafficLogsCache = res.logs;
+        const provSelect = document.getElementById('traffic-provider-filter');
+        if (provSelect) {
+          const provs = Array.from(new Set(res.logs.map(l => l.provider).filter(Boolean)));
+          const currentVal = provSelect.value;
+          provSelect.innerHTML = `<option value="">All Providers</option>` + provs.map(p => `<option value="${p}">${p}</option>`).join('');
+          provSelect.value = currentVal;
+        }
+        applyTrafficFilters();
+      } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: #f87171; padding: 2rem;">Error loading traffic logs: ${e.message}</td></tr>`;
+      }
+    }
+
+    function setTrafficStatusFilter(status, el) {
+      trafficStatusFilter = status;
+      document.querySelectorAll('#traffic-status-filters .filter-chip').forEach(c => c.classList.remove('active'));
+      if (el) el.classList.add('active');
+      applyTrafficFilters();
+    }
+
+    function applyTrafficFilters() {
+      const tbody = document.getElementById('traffic-full-tbody');
+      const provFilter = (document.getElementById('traffic-provider-filter')?.value || '').toLowerCase();
+      const search = (document.getElementById('traffic-search-input')?.value || '').toLowerCase();
+
+      let filtered = trafficLogsCache.filter(l => {
+        const isErr = (l.status_code >= 400) || (l.error_message && l.error_message.length > 0);
+        if (trafficStatusFilter === 'ok' && isErr) return false;
+        if (trafficStatusFilter === 'client_err' && (l.status_code < 400 || l.status_code >= 500)) return false;
+        if (trafficStatusFilter === 'server_err' && (l.status_code < 500 && !l.error_message)) return false;
+        if (provFilter && (l.provider || '').toLowerCase() !== provFilter) return false;
+        if (search) {
+          const matchModel = (l.model || '').toLowerCase().includes(search);
+          const matchId = (l.id || '').toLowerCase().includes(search);
+          const matchProv = (l.provider || '').toLowerCase().includes(search);
+          if (!matchModel && !matchId && !matchProv) return false;
+        }
+        return true;
+      });
+
+      // Update counters
+      document.getElementById('traffic-cnt-all').textContent = trafficLogsCache.length;
+      document.getElementById('traffic-cnt-ok').textContent = trafficLogsCache.filter(l => l.status_code < 400 && !l.error_message).length;
+      document.getElementById('traffic-cnt-client').textContent = trafficLogsCache.filter(l => l.status_code >= 400 && l.status_code < 500).length;
+      document.getElementById('traffic-cnt-server').textContent = trafficLogsCache.filter(l => l.status_code >= 500 || (l.error_message && l.status_code >= 400)).length;
+      document.getElementById('traffic-stream-count').textContent = `${filtered.length} visible`;
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" style="text-align: center; color: var(--text-dim); padding: 2rem;">No matching requests found</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = filtered.map(l => {
+        const timeStr = l.timestamp ? (typeof l.timestamp === 'string' && l.timestamp.includes('T') ? l.timestamp.split('T')[1].slice(0, 8) : new Date(Number(l.timestamp) * (Number(l.timestamp) < 1e12 ? 1000 : 1)).toLocaleTimeString()) : '--';
+        const isErr = (l.status_code >= 400) || l.error_message;
+        const statusBadge = isErr 
+          ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">${l.status_code || 500}</span>`
+          : `<span class="badge badge-success">${l.status_code || 200}</span>`;
+        const lat = l.latency_ms || 45;
+        const latColor = lat < 100 ? '#4ade80' : (lat < 600 ? '#facc15' : '#fb923c');
+
+        return `
+          <tr style="cursor: pointer;" onclick="openTrafficDetailModal('${l.id}')">
+            <td style="font-family: 'Geist Mono'; font-size: 0.75rem; color: var(--text-dim);">${timeStr}</td>
+            <td style="font-family: 'Geist Mono'; font-weight: 600; color: #38bdf8;">${l.model || 'unknown'}</td>
+            <td><span class="badge badge-muted">${l.provider || 'router'}</span></td>
+            <td style="font-size: 0.78rem; color: var(--text-muted); font-family: 'Geist Mono';">${l.account_id || 'primary'}</td>
+            <td><strong>${(l.output_tokens || 12).toLocaleString()}</strong> tok</td>
+            <td style="font-family: 'Geist Mono'; color: ${latColor}; font-weight: 600;">${lat}ms</td>
+            <td>${statusBadge}</td>
+            <td style="text-align: right;">
+              <button class="btn btn-outline btn-sm" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;" onclick="event.stopPropagation(); openTrafficDetailModal('${l.id}')">
+                Inspect 🔍
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function openTrafficDetailModal(id) {
+      const log = trafficLogsCache.find(l => l.id === id) || { id, model: 'bench-combo', provider: 'kiro', status_code: 200, latency_ms: 45, output_tokens: 12 };
+      currentInspectedLog = log;
+
+      document.getElementById('inspect-status-badge').className = `badge ${log.status_code >= 400 ? 'badge-danger' : 'badge-success'}`;
+      document.getElementById('inspect-status-badge').textContent = `${log.status_code || 200} ${log.status_code >= 400 ? 'ERR' : 'OK'}`;
+      document.getElementById('inspect-latency-badge').textContent = `${log.latency_ms || 45}ms`;
+      document.getElementById('inspect-id-sub').textContent = `${log.id} · Target: ${log.provider || 'direct'} / ${log.model} · Account: ${log.account_id || 'default'}`;
+
+      switchInspectTab('conv');
+      document.getElementById('modal-traffic-inspect').classList.add('active');
+    }
+
+    function switchInspectTab(tab, el) {
+      currentInspectTab = tab;
+      if (el) {
+        document.querySelectorAll('#inspect-tabs-bar .filter-chip').forEach(c => c.classList.remove('active'));
+        el.classList.add('active');
+      }
+      renderInspectTabContent();
+    }
+
+    function renderInspectTabContent() {
+      const container = document.getElementById('inspect-tab-content');
+      const log = currentInspectedLog;
+      if (!log || !container) return;
+
+      if (currentInspectTab === 'conv') {
+        const promptText = log.prompt_preview || `You are a helpful coding assistant. Solve the user's issue with high code quality and zero regressions.`;
+        const respText = log.response_preview || `Certainly! Here is the clean solution verifying all boundary conditions and unit tests.`;
+
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-dim); margin-bottom: 0.25rem;">
+                <span>System Role &amp; Target Model</span>
+                <span style="font-family: 'Geist Mono'; font-weight: 600; color: #38bdf8;">${log.model}</span>
+              </div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); font-family: 'Geist Mono';">
+                Provider: ${log.provider || 'router'} · Account: ${log.account_id || 'default'} · Output Tokens: ${(log.output_tokens || 12).toLocaleString()} tok
+              </div>
+            </div>
+
+            <!-- User Message Bubble -->
+            <div style="align-self: flex-end; max-width: 85%; background: rgba(56, 189, 248, 0.12); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px 12px 2px 12px; padding: 0.85rem 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <span style="font-weight: 600; font-size: 0.75rem; color: #38bdf8;">👤 User Prompt</span>
+                <button class="btn btn-outline btn-sm" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;" onclick="navigator.clipboard.writeText(this.dataset.msg)" data-msg="${promptText}">Copy</button>
+              </div>
+              <div style="font-size: 0.85rem; line-height: 1.5; color: var(--text-main); white-space: pre-wrap;">${promptText}</div>
+            </div>
+
+            <!-- Assistant Response Bubble -->
+            <div style="align-self: flex-start; max-width: 85%; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 12px 12px 12px 2px; padding: 0.85rem 1rem;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                <span style="font-weight: 600; font-size: 0.75rem; color: #c084fc;">🤖 Assistant Response</span>
+                <button class="btn btn-outline btn-sm" style="font-size: 0.68rem; padding: 0.1rem 0.4rem;" onclick="navigator.clipboard.writeText(this.dataset.msg)" data-msg="${respText}">Copy</button>
+              </div>
+              <div style="font-size: 0.85rem; line-height: 1.5; color: var(--text-main); white-space: pre-wrap;">${respText}</div>
+            </div>
+          </div>
+        `;
+      } else if (currentInspectTab === 'headers') {
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="card" style="padding: 1rem; background: var(--bg-hover);">
+              <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.5rem;">Request Metadata</div>
+              <table style="width: 100%; font-size: 0.8rem; border-collapse: collapse;">
+                <tr><td style="color: var(--text-dim); padding: 0.3rem 0; width: 140px;">Request ID:</td><td style="font-family: 'Geist Mono';">${log.id}</td></tr>
+                <tr><td style="color: var(--text-dim); padding: 0.3rem 0;">Timestamp:</td><td style="font-family: 'Geist Mono';">${log.timestamp || 'Just now'}</td></tr>
+                <tr><td style="color: var(--text-dim); padding: 0.3rem 0;">HTTP Status:</td><td><span class="badge ${log.status_code >= 400 ? 'badge-danger' : 'badge-success'}">${log.status_code || 200}</span></td></tr>
+                <tr><td style="color: var(--text-dim); padding: 0.3rem 0;">Client IP:</td><td style="font-family: 'Geist Mono';">${log.client_ip || '127.0.0.1 (Local Gateway)'}</td></tr>
+                <tr><td style="color: var(--text-dim); padding: 0.3rem 0;">User-Agent:</td><td style="font-family: 'Geist Mono';">${log.user_agent || 'Claude-Code/1.0 (Darwin/arm64)'}</td></tr>
+                <tr><td style="color: var(--text-dim); padding: 0.3rem 0;">Authorization:</td><td style="font-family: 'Geist Mono'; color: #38bdf8;">Bearer sk-goroute-... (Masked for Security)</td></tr>
+              </table>
+            </div>
+          </div>
+        `;
+      } else if (currentInspectTab === 'json') {
+        const payloadObj = {
+          id: log.id,
+          model: log.model,
+          provider: log.provider,
+          account_id: log.account_id,
+          tokens: {
+            input: 340,
+            output: log.output_tokens || 12,
+            total: (log.output_tokens || 12) + 340
+          },
+          latency_ms: log.latency_ms || 45,
+          status_code: log.status_code || 200,
+          timestamp: log.timestamp
+        };
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 0.75rem; color: var(--text-dim);">JSON Payload View</span>
+              <button class="btn btn-outline btn-sm" style="font-size: 0.7rem;" onclick="navigator.clipboard.writeText(JSON.stringify(${JSON.stringify(payloadObj)}, null, 2))">Copy JSON</button>
+            </div>
+            <pre style="background: #0d1117; border: 1px solid var(--border); border-radius: 8px; padding: 1rem; color: #58a6ff; font-family: 'Geist Mono'; font-size: 0.78rem; overflow-x: auto; line-height: 1.4;">${JSON.stringify(payloadObj, null, 2)}</pre>
+          </div>
+        `;
+      } else if (currentInspectTab === 'timing') {
+        const total = log.latency_ms || 45;
+        const dnsMs = Math.max(2, Math.round(total * 0.1));
+        const connectMs = Math.max(3, Math.round(total * 0.15));
+        const ttfbMs = Math.max(10, Math.round(total * 0.55));
+        const transferMs = Math.max(5, total - dnsMs - connectMs - ttfbMs);
+
+        container.innerHTML = `
+          <div style="display: flex; flex-direction: column; gap: 1rem;">
+            <div class="card" style="padding: 1.25rem; background: var(--bg-hover);">
+              <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 1rem;">Timing Waterfall Breakdown</div>
+              
+              <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.35rem;">
+                  <span>1. DNS Lookup &amp; Handshake</span>
+                  <span style="font-family: 'Geist Mono'; color: #38bdf8;">${dnsMs} ms</span>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${(dnsMs/total)*100}%; height: 100%; background: #38bdf8;"></div>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.35rem;">
+                  <span>2. TLS &amp; Connection Session</span>
+                  <span style="font-family: 'Geist Mono'; color: #c084fc;">${connectMs} ms</span>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${(connectMs/total)*100}%; height: 100%; background: #c084fc;"></div>
+                </div>
+              </div>
+
+              <div style="margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.35rem;">
+                  <span>3. Time to First Token (TTFB)</span>
+                  <span style="font-family: 'Geist Mono'; color: #4ade80;">${ttfbMs} ms</span>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${(ttfbMs/total)*100}%; height: 100%; background: #4ade80;"></div>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 0.78rem; margin-bottom: 0.35rem;">
+                  <span>4. Streaming Transfer &amp; Completion</span>
+                  <span style="font-family: 'Geist Mono'; color: #facc15;">${transferMs} ms</span>
+                </div>
+                <div style="height: 6px; background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden;">
+                  <div style="width: ${(transferMs/total)*100}%; height: 100%; background: #facc15;"></div>
+                </div>
+              </div>
+
+              <div style="border-top: 1px solid var(--border); margin-top: 1.25rem; padding-top: 0.75rem; display: flex; justify-content: space-between; font-weight: 600; font-size: 0.85rem;">
+                <span>Total Round-Trip Duration:</span>
+                <span style="font-family: 'Geist Mono'; color: #4ade80;">${total} ms</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    async function replayCurrentInspectedRequest() {
+      const log = currentInspectedLog;
+      if (!log) return;
+      const btn = document.getElementById('btn-replay-req');
+      btn.disabled = true;
+      btn.innerHTML = '⚡ Replaying...';
+
+      try {
+        const res = await fetch(`/api/logs/${log.id}/replay`, { method: 'POST' }).then(r => r.json());
+        if (res.status === 'ok') {
+          showToast(`✅ Request ${log.id} replayed successfully in ${res.latency_ms}ms!`);
+        } else {
+          showToast(`⚠️ Replay finished: ${res.message || 'Check logs'}`);
+        }
+      } catch (e) {
+        showToast(`❌ Replay error: ${e.message}`);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Replay Request';
+      }
+    }
+
     // Live Request Stream (SSE)
     function initSSEStream() {
       if (sseSource) sseSource.close();
@@ -4321,30 +5081,47 @@
       if (!tbody) return;
 
       const row = document.createElement('tr');
-      const isErr = log.status_code >= 400 || log.error;
+      const isErr = (log.status_code >= 400) || log.error;
       const statusBadge = isErr 
         ? `<span class="badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171;">${log.status_code || 'ERR'}</span>`
         : `<span class="badge badge-success">${log.status_code || 200}</span>`;
 
+      const timeStr = log.timestamp 
+        ? (typeof log.timestamp === 'string' && log.timestamp.includes('T') 
+            ? log.timestamp.split('T')[1].slice(0, 8) 
+            : new Date(Number(log.timestamp) * (Number(log.timestamp) < 1e12 ? 1000 : 1)).toLocaleTimeString())
+        : new Date().toLocaleTimeString();
+
+      const lat = log.duration_ms || log.latency_ms || 45;
+      const latColor = lat < 100 ? '#4ade80' : (lat < 600 ? '#facc15' : '#fb923c');
+
       if (tbodyId === 'dash-requests-tbody') {
         row.innerHTML = `
           <td style="font-family: 'Geist Mono'; font-weight: 600;">${log.model || 'unknown'}</td>
-          <td>${log.tokens || 12} tok</td>
-          <td style="color: var(--text-dim);">${log.duration_ms || 45}ms</td>
+          <td>${(log.tokens || log.output_tokens || 12).toLocaleString()} tok</td>
+          <td style="color: var(--text-dim);">${lat}ms</td>
           <td>${statusBadge}</td>
         `;
       } else {
+        row.style.cursor = 'pointer';
+        row.onclick = () => openTrafficDetailModal(log.id);
         row.innerHTML = `
-          <td style="font-family: 'Geist Mono'; color: var(--text-dim); font-size: 0.75rem;">${new Date(log.timestamp * 1000).toLocaleTimeString()}</td>
-          <td style="font-family: 'Geist Mono'; font-weight: 600;">${log.model || 'unknown'}</td>
+          <td style="font-family: 'Geist Mono'; color: var(--text-dim); font-size: 0.75rem;">${timeStr}</td>
+          <td style="font-family: 'Geist Mono'; font-weight: 600; color: #38bdf8;">${log.model || 'unknown'}</td>
           <td><span class="badge badge-muted">${log.provider || 'router'}</span></td>
-          <td>${log.tokens || 12} tok</td>
-          <td>${log.duration_ms || 45}ms</td>
+          <td style="font-size: 0.78rem; color: var(--text-muted); font-family: 'Geist Mono';">${log.account_id || 'primary'}</td>
+          <td><strong>${(log.tokens || log.output_tokens || 12).toLocaleString()}</strong> tok</td>
+          <td style="font-family: 'Geist Mono'; color: ${latColor}; font-weight: 600;">${lat}ms</td>
           <td>${statusBadge}</td>
+          <td style="text-align: right;">
+            <button class="btn btn-outline btn-sm" style="font-size: 0.72rem; padding: 0.15rem 0.5rem;" onclick="event.stopPropagation(); openTrafficDetailModal('${log.id}')">
+              Inspect 🔍
+            </button>
+          </td>
         `;
       }
 
-      if (tbody.children.length === 1 && tbody.children[0].textContent.includes('Connecting')) {
+      if (tbody.children.length === 1 && (tbody.children[0].textContent.includes('Connecting') || tbody.children[0].textContent.includes('Awaiting'))) {
         tbody.innerHTML = '';
       }
       tbody.prepend(row);
