@@ -5,13 +5,14 @@
 <br/>
 
 ### The Ultra-Lightweight LLM Gateway & Multi-Provider Router for Coding Agents
-**Sub-10ms Latency • < 17MB RAM • 55 RTK Filters • 18 CLI Agents • Zero Node.js Overhead**
+**Sub-10ms Latency • < 12MB RAM • 35 CLI Agents • A2A Protocol • Zero Node.js Overhead**
 
 [![Go Version](https://img.shields.io/badge/go-1.24%2B-00ADD8?style=flat-square&logo=go)](https://golang.org)
 [![NPM Version](https://img.shields.io/npm/v/goroute?style=flat-square&logo=npm&color=CB3837)](https://www.npmjs.com/package/goroute)
+[![GitHub stars](https://img.shields.io/github/stars/ziuus/goroute?style=flat-square&logo=github&color=gold)](https://github.com/ziuus/goroute/stargazers)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3DA639?style=flat-square)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/ziuus/goroute?style=flat-square&color=8A2BE2)](https://github.com/ziuus/goroute/releases)
-[![Memory Footprint](https://img.shields.io/badge/memory-%3C%2017MB%20RAM-00C853?style=flat-square)](#-benchmarks)
+[![Memory Footprint](https://img.shields.io/badge/memory-%3C%2012MB%20RAM-00C853?style=flat-square)](#-benchmarks)
 [![Platform](https://img.shields.io/badge/platform-linux%20%7C%20macos%20%7C%20windows-lightgrey?style=flat-square)](#-cross-platform-matrix)
 
 <p align="center">
@@ -173,38 +174,54 @@ Tested on Linux x86_64 under 500 concurrent streaming requests:
 
 | Agent | Command | Target Config File | Features Supported |
 | :--- | :--- | :--- | :--- |
-| **OpenCode** | `goroute setup opencode` | `~/.config/opencode/opencode.json` | Full models catalog, `auth.json` registration |
 | **Claude Code** | `goroute setup claude` | `~/.claude/settings.json` | Anthropic `/v1/messages` protocol + thinking |
-| **OpenAI Codex CLI** | `goroute setup codex` | `~/.codex/goroute.config.toml` | Custom profile, auto-compaction |
+| **OpenCode** | `goroute setup opencode` | `~/.config/opencode/opencode.json` | Full models catalog, `auth.json` registration |
 | **Cursor IDE** | `goroute setup cursor` | `~/.config/Cursor/User/settings.json`| Custom OpenAI Base URL + `/v1/embeddings` |
-| **Aider** | `goroute setup aider` | `~/.aider.conf.yml` | OpenAI base URL + git workflow routing |
+| **OpenAI Codex CLI** | `goroute setup codex` | `~/.codex/goroute.config.toml` | Custom profile, auto-compaction |
 | **Cline** | `goroute setup cline` | `~/.cline/data/secrets.json` | Act & Plan modes |
 | **Roo Code** | `goroute setup roo` | `~/.roo/settings-import.json` | Custom OpenAI compatible profile |
-| **Continue (cn CLI)** | `goroute setup continue` | `~/.continue/config.yaml` | Chat completions + vector embeddings |
+| **OpenClaw** | `goroute setup openclaw` | `~/.openclaw/config.yaml` | Multi-agent execution harness |
+| **Hermes Agent** | `goroute setup hermes` | `~/.hermes/config.json` | In-flight reasoning inspection |
+| **Droid** | `goroute setup droid` | `~/.droid/settings.json` | Autonomous workspace workflows |
+| **Grok-Build** | `goroute setup grok-build` | `~/.grok/build.json` | Native reasoning compiler |
+| **Aider** | `goroute setup aider` | `~/.aider.conf.yml` | OpenAI base URL + git workflow routing |
 | **Kilo Code** | `goroute setup kilo` | `~/.local/share/kilo/auth.json` | Custom gateway key |
-| **Block Goose** | `goroute setup goose` | `~/.config/goose/config.yaml` | OpenAI provider configuration |
+| **Zed Editor** | `goroute setup zed` | `~/.config/zed/settings.json` | Assistant panel routing |
+| **Letta / MemGPT** | `goroute setup letta` | `~/.letta/config.json` | Stateful agent memory gateway |
+| **Warp Terminal** | `goroute setup warp` | `~/.warp/settings.json` | AI terminal command generator |
+| **DeepSeek TUI** | `goroute setup deepseek-tui` | `~/.deepseek/config.toml` | Interactive terminal reasoning |
 | **Charm Crush** | `goroute setup crush` | `~/.config/crush/crush.json` | Custom host setup |
-| **Qwen Code** | `goroute setup qwen` | `~/.qwen/settings.json` | Provider base URL |
-| **Google Gemini CLI** | `goroute setup gemini` | Shell environment snippet | Native Gemini CLI forwarding |
-| **5dive Fleet** | `goroute setup 5dive` | Agent fleet configuration | Multi-agent profile setup |
+| **Continue (cn CLI)** | `goroute setup continue` | `~/.continue/config.yaml` | Chat completions + vector embeddings |
+| *+ 17 more tools* | `goroute setup all` | All local tools | 35 CLI agents configured in parallel with auto-backups |
 
 ---
 
 ## 💎 Features
 
-- **Dual-Protocol Gateway**:
+- **Universal Multi-Protocol Gateway**:
   - `POST /v1/chat/completions` (OpenAI format + SSE chunks)
   - `POST /v1/messages` (Native Anthropic format + `content_block_delta` SSE streaming)
+  - `POST /api/chat` (Native Ollama emulation)
+  - `GET /mcp` (Model Context Protocol native SSE server)
+  - `GET /.well-known/agent.json` & `POST /api/a2a/tasks` (A2A Protocol v0.3)
 - **Zero-Alloc In-Memory Cache**:
   - Repeated agent queries (e.g. title generation, linters, duplicate prompts) hit the internal cache and return `X-Cache: HIT` with **0ms latency** and **0 upstream tokens**.
-- **Multimodal Vision & Media**:
-  - Automatically translates OpenAI `image_url` data URIs and Anthropic `image` base64 blocks into Gemini `inlineData` parts.
-- **Smart Quota Cascade**:
-  - Automatically cascades across all connected Antigravity accounts on HTTP 429 (quota exhausted) or 403 (licensing limits) before falling back to backup providers.
-- **Vector Embeddings Proxy**:
-  - `POST /v1/embeddings` supported for codebase indexing in Cursor, Continue, and local RAG workflows.
-- **Role & Assistant Prefill Normalization**:
-  - Automatically handles consecutive turns and strips trailing assistant prefill messages to ensure 100% compatibility with Google Cloud Code / Vertex endpoints.
+- **DuckDuckGo Web Search & Readability Scraper**:
+  - Built-in `POST /v1/web/fetch` and `GET/POST /v1/search` with zero API keys required. Converts fetched HTML to clean GitHub-flavored Markdown.
+- **Smart Quota Cascade & Multi-Account Pools**:
+  - Dynamically rotates across accounts with configurable strategies: `Priority / Failover`, `Round-Robin`, and `Fair-Share`.
+  - Automatically isolates accounts on HTTP 429 quota exhaustion or 402 billing limits with proactive token cooldowns.
+- **Context Pruning & Token Optimization**:
+  - Single-pass $O(N)$ integer pruning algorithm trims duplicate prompt prefixes and keeps multi-turn transcripts within upstream limits without dropping active agent instructions.
+
+---
+
+## 🤝 Contributing & Good First Issues
+
+We welcome contributors! Check out our [open Good First Issues](https://github.com/ziuus/goroute/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22):
+- Adding a new provider adapter takes under 20 lines of pure Go in `pkg/providers/`.
+- Adding a new CLI tool integration is just 1 struct entry in `pkg/clitools/registry.go`.
+- Read [CONTRIBUTING.md](CONTRIBUTING.md) to get started in 2 minutes.
 
 ---
 
