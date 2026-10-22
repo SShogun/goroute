@@ -19,6 +19,7 @@ type RequestLog struct {
 	Endpoint   string    `json:"endpoint"`
 	Model      string    `json:"model"`
 	Provider   string    `json:"provider,omitempty"`
+	AccountID  string    `json:"account_id,omitempty"`
 	StatusCode int       `json:"status_code"`
 	DurationMs int64     `json:"duration_ms"`
 	Tokens     int       `json:"tokens,omitempty"`
@@ -64,6 +65,7 @@ func RecordRequest(entry RequestLog) {
 				Timestamp:    logEntry.Timestamp,
 				Model:        logEntry.Model,
 				Provider:     logEntry.Provider,
+				AccountID:    logEntry.AccountID,
 				OutputTokens: logEntry.Tokens,
 				LatencyMs:    logEntry.DurationMs,
 				StatusCode:   logEntry.StatusCode,
@@ -85,6 +87,26 @@ func GetRecentLogs() []RequestLog {
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 	logs := GetRecentLogs()
+	if len(logs) == 0 {
+		// Fallback to SQLite persistent store so history is immediately visible after restart
+		db := storage.GetDB()
+		if db != nil {
+			callLogs, _ := db.QueryRecentLogs(20, 0)
+			for _, cl := range callLogs {
+				logs = append(logs, RequestLog{
+					ID:         cl.ID,
+					Timestamp:  cl.Timestamp,
+					Model:      cl.Model,
+					Provider:   cl.Provider,
+					AccountID:  cl.AccountID,
+					StatusCode: cl.StatusCode,
+					DurationMs: cl.LatencyMs,
+					Tokens:     cl.OutputTokens,
+					Error:      cl.ErrorMessage,
+				})
+			}
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{

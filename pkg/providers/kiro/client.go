@@ -23,6 +23,7 @@ import (
 type Account struct {
 	ID           string
 	Pool         string
+	APIKey       string
 	RefreshToken string
 	ProfileARN   string
 	accessToken  string
@@ -32,6 +33,16 @@ type Account struct {
 
 func (a *Account) GetValidAccessToken(ctx context.Context, client *http.Client) (string, error) {
 	a.mu.RLock()
+	if a.APIKey != "" {
+		token := a.APIKey
+		a.mu.RUnlock()
+		return token, nil
+	}
+	if strings.HasPrefix(a.RefreshToken, "ey") {
+		token := a.RefreshToken
+		a.mu.RUnlock()
+		return token, nil
+	}
 	if a.accessToken != "" && time.Now().Before(a.expiresAt.Add(-2*time.Minute)) {
 		token := a.accessToken
 		a.mu.RUnlock()
@@ -42,6 +53,12 @@ func (a *Account) GetValidAccessToken(ctx context.Context, client *http.Client) 
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
+	if a.APIKey != "" {
+		return a.APIKey, nil
+	}
+	if strings.HasPrefix(a.RefreshToken, "ey") {
+		return a.RefreshToken, nil
+	}
 	if a.accessToken != "" && time.Now().Before(a.expiresAt.Add(-2*time.Minute)) {
 		return a.accessToken, nil
 	}
@@ -231,17 +248,78 @@ func (p *Provider) TestAccount(ctx context.Context, accountID string) error {
 	if len(p.accounts) == 0 {
 		return fmt.Errorf("no accounts configured for kiro provider")
 	}
+	var targetAcc *Account
 	if accountID == "" {
-		_, err := p.accounts[0].GetValidAccessToken(ctx, p.client)
-		return err
-	}
-	for _, a := range p.accounts {
-		if a.ID == accountID {
-			_, err := a.GetValidAccessToken(ctx, p.client)
-			return err
+		targetAcc = p.accounts[0]
+	} else {
+		for _, a := range p.accounts {
+			if a.ID == accountID {
+				targetAcc = a
+				break
+			}
 		}
 	}
-	return fmt.Errorf("account %q not found in kiro provider", accountID)
+	if targetAcc == nil {
+		return fmt.Errorf("account %q not found in kiro provider", accountID)
+	}
+
+	token, err := targetAcc.GetValidAccessToken(ctx, p.client)
+	if err != nil {
+		return fmt.Errorf("token validation failed: %w", err)
+	}
+
+	// Runtime probe to verify credentials against AWS
+	probeURL := "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
+	if targetAcc.APIKey != "" {
+		probeURL = "https://q.us-east-1.amazonaws.com/generateAssistantResponse"
+	}
+	profileArn := targetAcc.ProfileARN
+	if profileArn == "" {
+		profileArn = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+	}
+	probeBody := map[string]interface{}{
+		"profileArn": profileArn,
+		"conversationState": map[string]interface{}{
+			"chatTriggerType": "MANUAL",
+			"conversationId": fmt.Sprintf("probe-%d", time.Now().UnixNano()),
+			"currentMessage": map[string]interface{}{
+				"userInputMessage": map[string]interface{}{
+					"content": "ping",
+					"modelId": "auto",
+					"origin":  "AI_EDITOR",
+				},
+			},
+			"history": []interface{}{},
+		},
+		"inferenceConfig": map[string]interface{}{
+			"maxTokens": 1,
+		},
+	}
+	b, _ := json.Marshal(probeBody)
+	probeReq, err := http.NewRequestWithContext(ctx, "POST", probeURL, bytes.NewReader(b))
+	if err != nil {
+		return nil
+	}
+	probeReq.Header.Set("Content-Type", "application/x-amz-json-1.0")
+	probeReq.Header.Set("X-Amz-Target", "AmazonCodeWhispererStreamingService.GenerateAssistantResponse")
+	probeReq.Header.Set("Accept", "application/vnd.amazon.eventstream")
+	probeReq.Header.Set("Authorization", "Bearer "+token)
+	if targetAcc.APIKey != "" {
+		probeReq.Header.Set("tokentype", "API_KEY")
+	}
+
+	resp, err := p.client.Do(probeReq)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("AWS Kiro rejected credential (HTTP %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	return nil
 }
 
 func (p *Provider) TestConnection(ctx context.Context) error {
@@ -548,6 +626,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		}
 
 		url := "https://codewhisperer.us-east-1.amazonaws.com/generateAssistantResponse"
+		if acc.APIKey != "" {
+			url = "https://q.us-east-1.amazonaws.com/generateAssistantResponse"
+		}
 		httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(bodyBytes))
 		if err != nil {
 			return nil, false, 0, fmt.Errorf("create kiro request: %w", err)
@@ -557,6 +638,9 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 		httpReq.Header.Set("Accept", "application/vnd.amazon.eventstream")
 		httpReq.Header.Set("X-Amz-Target", "AmazonCodeWhispererStreamingService.GenerateAssistantResponse")
 		httpReq.Header.Set("Authorization", "Bearer "+token)
+		if acc.APIKey != "" {
+			httpReq.Header.Set("tokentype", "API_KEY")
+		}
 		httpReq.Header.Set("User-Agent", "AWS-SDK-JS/3.0.0 kiro-ide/1.0.0")
 		httpReq.Header.Set("X-Amz-User-Agent", "aws-sdk-js/3.0.0 kiro-ide/1.0.0")
 

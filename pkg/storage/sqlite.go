@@ -210,6 +210,77 @@ func (s *DBStore) QueryRecentLogs(limit, offset int) ([]CallLog, error) {
 	return logs, nil
 }
 
+// WindowUsage holds aggregated consumption statistics for a time window.
+type WindowUsage struct {
+	Requests     int
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+	OldestCall   time.Time
+	AvgLatencyMs int64
+}
+
+// GetAccountWindowUsage returns rolling usage stats for an account or provider within window.
+func (s *DBStore) GetAccountWindowUsage(provider, accountID string, window time.Duration) (WindowUsage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var u WindowUsage
+	if s.db == nil {
+		return u, fmt.Errorf("db not initialized")
+	}
+
+	since := time.Now().Add(-window).Format(time.RFC3339)
+	var query string
+	var rows *sql.Rows
+	var err error
+
+	if accountID != "" {
+		query = `
+			SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+			       COALESCE(MIN(timestamp), ''), COALESCE(AVG(latency_ms), 0)
+			FROM call_logs
+			WHERE timestamp >= ? AND (account_id = ? OR (account_id = '' AND (provider = ? OR ? = '')))
+		`
+		rows, err = s.db.Query(query, since, accountID, provider, provider)
+	} else if provider != "" {
+		query = `
+			SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+			       COALESCE(MIN(timestamp), ''), COALESCE(AVG(latency_ms), 0)
+			FROM call_logs
+			WHERE timestamp >= ? AND (provider = ? OR provider = '')
+		`
+		rows, err = s.db.Query(query, since, provider)
+	} else {
+		query = `
+			SELECT COUNT(*), COALESCE(SUM(input_tokens), 0), COALESCE(SUM(output_tokens), 0),
+			       COALESCE(MIN(timestamp), ''), COALESCE(AVG(latency_ms), 0)
+			FROM call_logs
+			WHERE timestamp >= ?
+		`
+		rows, err = s.db.Query(query, since)
+	}
+
+	if err != nil {
+		return u, err
+	}
+	defer rows.Close()
+
+	if rows.Next() {
+		var minTs string
+		var avgLat float64
+		if err := rows.Scan(&u.Requests, &u.InputTokens, &u.OutputTokens, &minTs, &avgLat); err == nil {
+			u.TotalTokens = u.InputTokens + u.OutputTokens
+			u.AvgLatencyMs = int64(avgLat)
+			if minTs != "" {
+				u.OldestCall, _ = time.Parse(time.RFC3339, minTs)
+			}
+		}
+	}
+
+	return u, nil
+}
+
 // CliToolState records configuration state for a developer CLI tool.
 type CliToolState struct {
 	ToolID           string `json:"tool_id"`

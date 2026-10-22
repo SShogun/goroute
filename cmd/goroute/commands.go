@@ -442,6 +442,9 @@ func NewAuthCmd() *cobra.Command {
 							ProfileArn   string `json:"profile_arn"`
 						}
 						if json.Unmarshal(out, &tokData) == nil && tokData.RefreshToken != "" {
+							if tokData.ProfileArn == "" {
+								tokData.ProfileArn = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+							}
 							found := false
 							for i, p := range cfg.Providers {
 								if p.ID == "kiro" {
@@ -484,8 +487,69 @@ func NewAuthCmd() *cobra.Command {
 							imported++
 						}
 					}
-				} else if target == "kiro" {
-					return fmt.Errorf("kiro-cli database not found at %s", dbPath)
+				}
+
+				if imported == 0 {
+					// Fallback: Probe ~/.aws/sso/cache/*.json
+					ssoDir := filepath.Join(home, ".aws", "sso", "cache")
+					if entries, err := os.ReadDir(ssoDir); err == nil {
+						for _, ent := range entries {
+							if !ent.IsDir() && strings.HasSuffix(ent.Name(), ".json") {
+								content, err := os.ReadFile(filepath.Join(ssoDir, ent.Name()))
+								if err != nil {
+									continue
+								}
+								var ssoData struct {
+									RefreshToken string `json:"refreshToken"`
+									AccessToken  string `json:"accessToken"`
+									ProfileArn   string `json:"profileArn"`
+								}
+								if json.Unmarshal(content, &ssoData) == nil && (ssoData.RefreshToken != "" || ssoData.AccessToken != "") {
+									token := ssoData.RefreshToken
+									if token == "" {
+										token = ssoData.AccessToken
+									}
+									arn := ssoData.ProfileArn
+									if arn == "" {
+										arn = "arn:aws:codewhisperer:us-east-1:699475941385:profile/EHGA3GRVQMUK"
+									}
+									found := false
+									for i, p := range cfg.Providers {
+										if p.ID == "kiro" {
+											found = true
+											cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+												ID:           "kiro-sso",
+												RefreshToken: token,
+												ProfileARN:   arn,
+											})
+											break
+										}
+									}
+									if !found {
+										cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+											ID:           "kiro",
+											Type:         "kiro",
+											RefreshToken: token,
+											ProfileARN:   arn,
+											Accounts: []config.AccountConfig{
+												{
+													ID:           "kiro-sso",
+													RefreshToken: token,
+													ProfileARN:   arn,
+												},
+											},
+										})
+									}
+									fmt.Printf("✅ Successfully imported Kiro credentials from ~/.aws/sso/cache/%s\n", ent.Name())
+									imported++
+									break
+								}
+							}
+						}
+					}
+				}
+				if target == "kiro" && imported == 0 {
+					return fmt.Errorf("no Kiro credentials found in kiro-cli or ~/.aws/sso/cache")
 				}
 			}
 
