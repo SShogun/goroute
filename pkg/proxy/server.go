@@ -134,6 +134,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/{id}/test-model", s.handleTestModel)
 	s.mux.Post("/api/providers/{id}/expose-claude", s.handleExposeClaude)
 	s.mux.Post("/api/playground/chat", s.handlePlaygroundChat)
+	s.mux.Post("/api/providers/sync-omniroute", s.handleSyncOmniRoute)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
@@ -1997,6 +1998,26 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
 		"id":     req.ID,
+	})
+}
+
+func (s *Server) handleSyncOmniRoute(w http.ResponseWriter, r *http.Request) {
+	out, err := exec.Command("python3", "/tmp/full_restore_sync.py").CombinedOutput()
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  string(out),
+		})
+		return
+	}
+	_ = s.Reload()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "ok",
+		"output":  strings.TrimSpace(string(out)),
+		"message": "Successfully synchronized all accounts from OmniRoute database",
 	})
 }
 

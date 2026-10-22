@@ -1279,6 +1279,10 @@
             <button class="pill" onclick="setOverviewFilter('combos', this)">Custom Combos</button>
           </div>
           <div class="action-buttons">
+            <button class="btn btn-outline" onclick="syncAllFromOmniRoute()" title="Sync all active credentials and accounts directly from OmniRoute SQLite">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+              Sync from OmniRoute
+            </button>
             <button class="btn btn-outline" onclick="openImportModal()">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
               1-Click Import
@@ -4183,7 +4187,25 @@
       }
     }
 
-    async function importCli(type) {
+    async async function syncAllFromOmniRoute() {
+      showToast('🔄 Synchronizing all accounts from OmniRoute database...');
+      try {
+        const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json());
+        if (res.status === 'ok') {
+          showToast(`✅ ${res.message || 'Synced all connections from OmniRoute!'}`);
+          loadProviders();
+          loadPoolUsage();
+          loadStats();
+          loadQuotaWidgetData(true);
+        } else {
+          showToast(`⚠️ Sync failed: ${res.error || 'OmniRoute database not accessible'}`);
+        }
+      } catch (e) {
+        showToast(`❌ Sync error: ${e.message}`);
+      }
+    }
+
+    function importCli(type) {
       showToast(`Importing ${type} credentials...`);
       try {
         const res = await fetch(`/api/providers/import-${type}`, { method: 'POST' }).then(r => r.json());
