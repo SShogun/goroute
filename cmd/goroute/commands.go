@@ -95,7 +95,27 @@ func NewServeCmd() *cobra.Command {
 					if pCfg.APIKey != "" {
 						keys = append(keys, pCfg.APIKey)
 					}
-					prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+					baseURL := pCfg.BaseURL
+					if baseURL == "" {
+						if entry := catalog.FindEntry(pCfg.ID); entry != nil && entry.BaseURL != "" {
+							baseURL = entry.BaseURL
+						} else if pCfg.ID == "agentrouter" {
+							baseURL = "https://api.agentrouter.org/v1"
+						} else if pCfg.ID == "xkiro" {
+							baseURL = "https://api.xkiro.com/v1"
+						} else if pCfg.ID == "openai" {
+							baseURL = "https://api.openai.com/v1"
+						}
+					}
+					prov := openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+					for _, a := range pCfg.Accounts {
+						if a.APIKey != "" {
+							prov.SetAccountKey(a.ID, a.APIKey)
+						}
+					}
+					if pCfg.APIKey != "" {
+						prov.SetAccountKey(pCfg.ID+"-primary", pCfg.APIKey)
+					}
 					r.RegisterProvider(prov)
 				case "antigravity":
 					var accounts []*antigravity.Account

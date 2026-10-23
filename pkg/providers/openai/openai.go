@@ -17,20 +17,30 @@ import (
 )
 
 type Provider struct {
-	id       string
-	baseURL  string
-	apiKeys  []string
-	strategy string
-	counter  uint64
-	headers  map[string]string
-	client   *http.Client
-	mu       sync.RWMutex
+	id          string
+	baseURL     string
+	apiKeys     []string
+	accountKeys map[string]string
+	strategy    string
+	counter     uint64
+	headers     map[string]string
+	client      *http.Client
+	mu          sync.RWMutex
 }
 
 func (p *Provider) SetStrategy(s string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.strategy = s
+}
+
+func (p *Provider) SetAccountKey(accID, apiKey string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.accountKeys == nil {
+		p.accountKeys = make(map[string]string)
+	}
+	p.accountKeys[accID] = apiKey
 }
 
 func NewProvider(id, baseURL, apiKey string, headers map[string]string) *Provider {
@@ -55,10 +65,11 @@ func NewProviderWithKeys(id, baseURL string, apiKeys []string, headers map[strin
 		}
 	}
 	return &Provider{
-		id:      id,
-		baseURL: baseURL,
-		apiKeys: apiKeys,
-		headers: headers,
+		id:          id,
+		baseURL:     baseURL,
+		apiKeys:     apiKeys,
+		accountKeys: make(map[string]string),
+		headers:     headers,
 		client: &http.Client{
 			Transport: &http.Transport{
 				ResponseHeaderTimeout: 300 * time.Second,
@@ -102,11 +113,144 @@ func (p *Provider) IsHealthy() bool {
 }
 
 func (p *Provider) TestConnection(ctx context.Context) error {
-	// Call models endpoint with 10s timeout
-	testCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	_, err := p.Models(testCtx)
-	return err
+	p.mu.RLock()
+	var key string
+	if len(p.apiKeys) > 0 {
+		key = p.apiKeys[0]
+	}
+	headers := p.headers
+	baseURL := p.baseURL
+	p.mu.RUnlock()
+
+	return TestAPIKey(ctx, baseURL, key, headers)
+}
+
+func (p *Provider) TestAccount(ctx context.Context, accID string) error {
+	p.mu.RLock()
+	var key string
+	if p.accountKeys != nil {
+		key = p.accountKeys[accID]
+	}
+	if key == "" && len(p.apiKeys) > 0 {
+		key = p.apiKeys[0]
+	}
+	headers := p.headers
+	baseURL := p.baseURL
+	p.mu.RUnlock()
+
+	return TestAPIKey(ctx, baseURL, key, headers)
+}
+
+// TestAPIKey checks if an API key / endpoint is reachable and authenticates.
+func TestAPIKey(ctx context.Context, baseURL, apiKey string, headers map[string]string) error {
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	modelsURL := baseURL + "/models"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", modelsURL, nil)
+	if err != nil {
+		return err
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("x-api-key", apiKey)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("connection error: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		return nil
+	}
+
+	// If models returned 404 or 405, fall back to chat completions ping
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+		chatURL := baseURL + "/chat/completions"
+		pingBody := []byte(`{"model":"gpt-4o-mini","messages":[{"role":"user","content":"ping"}],"max_tokens":1}`)
+		pingReq, pErr := http.NewRequestWithContext(ctx, "POST", chatURL, bytes.NewReader(pingBody))
+		if pErr == nil {
+			pingReq.Header.Set("Content-Type", "application/json")
+			if apiKey != "" {
+				pingReq.Header.Set("Authorization", "Bearer "+apiKey)
+				pingReq.Header.Set("x-api-key", apiKey)
+			}
+			for k, v := range headers {
+				pingReq.Header.Set(k, v)
+			}
+			pingResp, pingErr := client.Do(pingReq)
+			if pingErr == nil {
+				defer pingResp.Body.Close()
+				if pingResp.StatusCode == http.StatusOK || pingResp.StatusCode == http.StatusBadRequest {
+					return nil
+				}
+				if pingResp.StatusCode == http.StatusUnauthorized || pingResp.StatusCode == http.StatusForbidden {
+					return fmt.Errorf("authentication failed: HTTP %d", pingResp.StatusCode)
+				}
+			}
+		}
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	errMsg := strings.TrimSpace(string(body))
+	if len(errMsg) > 200 {
+		errMsg = errMsg[:200] + "..."
+	}
+	if errMsg == "" {
+		errMsg = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return fmt.Errorf("%s", errMsg)
+}
+
+// FetchModelsDirect retrieves model IDs directly from /models.
+func FetchModelsDirect(ctx context.Context, baseURL, apiKey string, headers map[string]string) ([]string, error) {
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	modelsURL := baseURL + "/models"
+
+	req, err := http.NewRequestWithContext(ctx, "GET", modelsURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+		req.Header.Set("x-api-key", apiKey)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	var data struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, err
+	}
+
+	var models []string
+	for _, m := range data.Data {
+		if m.ID != "" {
+			models = append(models, m.ID)
+		}
+	}
+	return models, nil
 }
 
 func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatRequest) (io.ReadCloser, bool, int, error) {

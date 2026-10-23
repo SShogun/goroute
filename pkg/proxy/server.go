@@ -142,6 +142,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
 	s.mux.Post("/api/providers/import-cursor", s.handleImportCursor)
+	s.mux.Post("/api/providers/test-connection", s.handleTestConnection)
+	s.mux.Post("/api/providers/{id}/sync-models", s.handleSyncModels)
 	s.mux.Post("/api/providers/{id}/test", s.handleTestProvider)
 	s.mux.Post("/api/providers/{id}/accounts/{accId}/test", s.handleTestAccount)
 	s.mux.Delete("/api/providers/{id}", s.handleDeleteProvider)
@@ -2359,17 +2361,19 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		AccountID    string  `json:"account_id"`
-		ID           string  `json:"id"`
-		Pool         string  `json:"pool"`
-		Type         string  `json:"type"`
-		BaseURL      string  `json:"base_url"`
-		APIKey       string  `json:"api_key"`
-		RefreshToken string  `json:"refresh_token"`
-		Email        string  `json:"email"`
-		ProjectID    string  `json:"project_id"`
-		ProfileARN   string  `json:"profile_arn"`
-		Weight       float64 `json:"weight"`
+		AccountID    string            `json:"account_id"`
+		ID           string            `json:"id"`
+		Pool         string            `json:"pool"`
+		Type         string            `json:"type"`
+		BaseURL      string            `json:"base_url"`
+		APIKey       string            `json:"api_key"`
+		RefreshToken string            `json:"refresh_token"`
+		Email        string            `json:"email"`
+		ProjectID    string            `json:"project_id"`
+		ProfileARN   string            `json:"profile_arn"`
+		Weight       float64           `json:"weight"`
+		Headers      map[string]string `json:"headers"`
+		SyncModels   bool              `json:"sync_models"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -2417,6 +2421,14 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 			found = true
 			if req.BaseURL != "" {
 				cfg.Providers[i].BaseURL = req.BaseURL
+			}
+			if len(req.Headers) > 0 {
+				if cfg.Providers[i].Headers == nil {
+					cfg.Providers[i].Headers = make(map[string]string)
+				}
+				for k, v := range req.Headers {
+					cfg.Providers[i].Headers[k] = v
+				}
 			}
 			if len(cfg.Providers[i].Accounts) == 0 && (cfg.Providers[i].APIKey != "" || cfg.Providers[i].RefreshToken != "") {
 				cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
@@ -2491,6 +2503,7 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 			ID:      id,
 			Type:    pType,
 			BaseURL: baseURL,
+			Headers: req.Headers,
 			Accounts: []config.AccountConfig{
 				{
 					ID:           accID,
@@ -2515,13 +2528,31 @@ func (s *Server) handleAddAccount(w http.ResponseWriter, r *http.Request) {
 	pool.GlobalPool.RegisterAccount(req.Pool, id, accID, req.Weight)
 	_ = s.Reload()
 
+	syncedCount := 0
+	if req.SyncModels {
+		if p, ok := s.router.GetProvider(id); ok {
+			ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+			if models, mErr := p.Models(ctx); mErr == nil && len(models) > 0 {
+				var names []string
+				for _, m := range models {
+					if m.ID != "" {
+						names = append(names, m.ID)
+					}
+				}
+				syncedCount, _ = storage.GetRadarStore().InsertOrUpdateModels(id, names)
+			}
+			cancel()
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"status":     "ok",
-		"provider":   id,
-		"account_id": accID,
-		"pool":       req.Pool,
-		"message":    fmt.Sprintf("Account %s added to pool %s successfully", accID, req.Pool),
+		"status":       "ok",
+		"provider":     id,
+		"account_id":   accID,
+		"pool":         req.Pool,
+		"synced_count": syncedCount,
+		"message":      fmt.Sprintf("Account %s added to pool %s successfully", accID, req.Pool),
 	})
 }
 
@@ -2933,6 +2964,8 @@ func (s *Server) handleTestAccount(w http.ResponseWriter, r *http.Request) {
 		if !valid || terr != nil {
 			err = fmt.Errorf("%s", msg)
 		}
+	case *openai.Provider:
+		err = prov.TestAccount(ctx, accId)
 	default:
 		err = fmt.Errorf("account-level testing not supported for %s", p.Type())
 	}
@@ -2976,6 +3009,167 @@ func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"status": "ok", "models": models})
+}
+
+func (s *Server) handleSyncModels(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		http.Error(w, "provider id required", http.StatusBadRequest)
+		return
+	}
+
+	p, ok := s.router.GetProvider(id)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  fmt.Sprintf("provider %q not found in active router", id),
+		})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	models, err := p.Models(ctx)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  fmt.Sprintf("failed to sync models: %s", err.Error()),
+		})
+		return
+	}
+
+	var modelNames []string
+	for _, m := range models {
+		if m.ID != "" {
+			modelNames = append(modelNames, m.ID)
+		}
+	}
+
+	radarStore := storage.GetRadarStore()
+	savedCount, _ := radarStore.InsertOrUpdateModels(id, modelNames)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"provider":    id,
+		"count":       len(models),
+		"saved_count": savedCount,
+		"models":      modelNames,
+		"synced_at":   time.Now().UTC().Format(time.RFC3339),
+		"message":     fmt.Sprintf("Successfully synced %d models for %s", len(models), id),
+	})
+}
+
+func (s *Server) handleTestConnection(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Provider     string            `json:"provider"`
+		Type         string            `json:"type"`
+		BaseURL      string            `json:"base_url"`
+		APIKey       string            `json:"api_key"`
+		RefreshToken string            `json:"refresh_token"`
+		Email        string            `json:"email"`
+		ProjectID    string            `json:"project_id"`
+		ProfileARN   string            `json:"profile_arn"`
+		Headers      map[string]string `json:"headers"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	var testErr error
+	var models []string
+
+	pType := req.Type
+	if pType == "" {
+		if entry := catalog.FindEntry(req.Provider); entry != nil {
+			pType = entry.Type
+		} else {
+			pType = "openai"
+		}
+	}
+
+	key := req.APIKey
+	if key == "" && req.RefreshToken != "" {
+		key = req.RefreshToken
+	}
+
+	switch pType {
+	case "antigravity":
+		if req.RefreshToken == "" {
+			testErr = fmt.Errorf("refresh token is required for Antigravity")
+		} else {
+			testAcc := &antigravity.Account{RefreshToken: req.RefreshToken}
+			_, terr := testAcc.GetValidAccessToken(ctx)
+			if terr != nil {
+				testErr = fmt.Errorf("Google OAuth failed: %w", terr)
+			} else {
+				models = []string{"claude-3-7-sonnet", "gemini-2.5-pro", "gemini-2.5-flash"}
+			}
+		}
+	case "kiro":
+		if key == "" {
+			testErr = fmt.Errorf("API key or refresh token is required for Kiro")
+		} else {
+			p, ok := s.router.GetProvider("kiro")
+			if ok {
+				if kp, ok := p.(*kiro.Provider); ok {
+					testErr = kp.TestAccount(ctx, "")
+				}
+			}
+			models = []string{"claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"}
+		}
+	default:
+		baseURL := req.BaseURL
+		if baseURL == "" {
+			if entry := catalog.FindEntry(req.Provider); entry != nil && entry.BaseURL != "" {
+				baseURL = entry.BaseURL
+			} else {
+				baseURL = "https://api.openai.com/v1"
+			}
+		}
+		testErr = openai.TestAPIKey(ctx, baseURL, key, req.Headers)
+		if testErr == nil {
+			discovered, _ := openai.FetchModelsDirect(ctx, baseURL, key, req.Headers)
+			if len(discovered) > 0 {
+				models = discovered
+			}
+		}
+	}
+
+	latency := time.Since(start).Milliseconds()
+	w.Header().Set("Content-Type", "application/json")
+	if testErr != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":     "error",
+			"valid":      false,
+			"latency_ms": latency,
+			"error":      testErr.Error(),
+		})
+		return
+	}
+
+	msg := fmt.Sprintf("Connection successful (%dms)", latency)
+	if len(models) > 0 {
+		msg = fmt.Sprintf("Connection successful (%dms) — %d models discovered", latency, len(models))
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"valid":       true,
+		"latency_ms":  latency,
+		"model_count": len(models),
+		"models":      models,
+		"message":     msg,
+	})
 }
 
 func (s *Server) handleTestModel(w http.ResponseWriter, r *http.Request) {
@@ -3285,7 +3479,27 @@ func (s *Server) Reload() error {
 				keys = append(keys, pCfg.APIKey)
 				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID+"-primary", 1.0)
 			}
-			prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+			baseURL := pCfg.BaseURL
+			if baseURL == "" {
+				if entry := catalog.FindEntry(pCfg.ID); entry != nil && entry.BaseURL != "" {
+					baseURL = entry.BaseURL
+				} else if pCfg.ID == "agentrouter" {
+					baseURL = "https://api.agentrouter.org/v1"
+				} else if pCfg.ID == "xkiro" {
+					baseURL = "https://api.xkiro.com/v1"
+				} else if pCfg.ID == "openai" {
+					baseURL = "https://api.openai.com/v1"
+				}
+			}
+			prov := openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+			for _, a := range pCfg.Accounts {
+				if a.APIKey != "" {
+					prov.SetAccountKey(a.ID, a.APIKey)
+				}
+			}
+			if pCfg.APIKey != "" {
+				prov.SetAccountKey(pCfg.ID+"-primary", pCfg.APIKey)
+			}
 			if pCfg.Strategy != "" {
 				prov.SetStrategy(pCfg.Strategy)
 			}

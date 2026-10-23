@@ -560,21 +560,32 @@ func FindEntry(query string) *CatalogEntry {
 			return &entry
 		}
 	}
+	for _, entry := range OmniRouteRegistry {
+		if strings.ToLower(entry.ID) == q || strings.ToLower(entry.Name) == q {
+			return &entry
+		}
+	}
 	return nil
 }
 
 // Search returns entries matching a keyword
 func Search(keyword string) []CatalogEntry {
+	all := append(Registry, OmniRouteRegistry...)
 	if keyword == "" {
-		return Registry
+		return all
 	}
 	q := strings.ToLower(keyword)
 	var matches []CatalogEntry
-	for _, entry := range Registry {
+	seen := make(map[string]bool)
+	for _, entry := range all {
+		if seen[entry.ID] {
+			continue
+		}
 		if strings.Contains(strings.ToLower(entry.ID), q) ||
 			strings.Contains(strings.ToLower(entry.Name), q) ||
 			strings.Contains(strings.ToLower(entry.Description), q) ||
 			strings.Contains(strings.ToLower(entry.Category), q) {
+			seen[entry.ID] = true
 			matches = append(matches, entry)
 		}
 	}
