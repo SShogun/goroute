@@ -38,6 +38,7 @@ import (
 	"github.com/ziuus/goroute/pkg/providers/copilot"
 	"github.com/ziuus/goroute/pkg/providers/cursor"
 	"github.com/ziuus/goroute/pkg/providers/kiro"
+	"github.com/ziuus/goroute/pkg/providers/mistral"
 	"github.com/ziuus/goroute/pkg/providers/openai"
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/resilience"
@@ -3132,7 +3133,7 @@ func (s *Server) Reload() error {
 
 	for _, pCfg := range cfg.Providers {
 		switch pCfg.Type {
-		case "openai":
+		case "openai", "mistral":
 			var keys []string
 			for _, a := range pCfg.Accounts {
 				if a.APIKey != "" {
@@ -3155,9 +3156,16 @@ func (s *Server) Reload() error {
 				keys = append(keys, pCfg.APIKey)
 				pool.GlobalPool.RegisterAccount("pool1", pCfg.ID, pCfg.ID+"-primary", 1.0)
 			}
-			prov := openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+			var prov providers.Provider
+			if pCfg.Type == "mistral" {
+				prov = mistral.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+			} else {
+				prov = openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+			}
 			if pCfg.Strategy != "" {
-				prov.SetStrategy(pCfg.Strategy)
+				if strategyProvider, ok := prov.(interface{ SetStrategy(string) }); ok {
+					strategyProvider.SetStrategy(pCfg.Strategy)
+				}
 			}
 			s.router.RegisterProvider(prov)
 		case "antigravity":
@@ -4977,12 +4985,3 @@ func (s *Server) handleRunChaos(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
-
-
-
-
-
-
-
-
-
