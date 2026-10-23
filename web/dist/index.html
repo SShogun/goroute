@@ -1511,12 +1511,30 @@
       <div id="view-providers" class="view-panel">
         <div class="card-header">
           <div>
-            <div class="card-title" style="font-size: 1.3rem;">Connected Providers & Account Pool</div>
-            <div class="card-subtitle">Add multi-account credentials (API keys, OAuth tokens) to enable Fair-Share Token Leveling</div>
+            <div class="card-title" style="font-size: 1.3rem;">Provider Catalog & Connected Pools</div>
+            <div class="card-subtitle">Browse 338+ AI providers across Frontier Labs, Enterprise Cloud, Inference LPUs, and OAuth Agents.</div>
           </div>
           <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-outline btn-sm" onclick="openImportModal()">+ Import From CLI</button>
-            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">+ Add Account</button>
+            <button class="btn btn-outline btn-sm" onclick="syncAllFromOmniRoute()">🔄 Sync from OmniRoute</button>
+            <button class="btn btn-outline btn-sm" onclick="openImportModal()">+ 1-Click Import CLI</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">+ Connect Provider</button>
+          </div>
+        </div>
+
+        <!-- Catalog Category Pills & Search Bar (OmniRoute Parity) -->
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
+          <div class="search-box" style="flex: 1; max-width: 360px;">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="search-input" id="search-catalog" placeholder="Search 338+ providers by name, protocol..." oninput="filterCatalogCards(this.value)">
+          </div>
+          <div class="filter-pills" id="catalog-category-pills">
+            <button class="pill active" onclick="setCatalogCategoryFilter('all', this)">All (338)</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('connected', this)">Connected (<span id="cat-cnt-connected">7</span>)</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('frontier', this)">Frontier</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('oauth', this)">OAuth</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('inference', this)">LPUs / Fast</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('gateway', this)">Gateways</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('local', this)">Local / Self-Hosted</button>
           </div>
         </div>
 
@@ -2534,7 +2552,7 @@
       } else if (currentView === 'combos') {
         loadCombos();
       } else if (currentView === 'providers') {
-        loadProviders();
+        loadProviders(); loadCatalogCards();
         loadPoolUsage();
       } else if (currentView === 'rtk') {
         loadRTKFilters();
@@ -4050,7 +4068,7 @@
         if (res.status === 'ok') {
           showToast('✅ Successfully imported Kiro credentials into pool!');
           closeModal('modal-add-account');
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
           loadQuotaWidgetData(true);
@@ -4178,7 +4196,7 @@
           closeModal('modal-add-account');
           document.getElementById('modal-acc-id').value = '';
           document.getElementById('modal-acc-secret').value = '';
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
           loadQuotaWidgetData(true);
@@ -4196,7 +4214,7 @@
         const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json());
         if (res.status === 'ok') {
           showToast(`✅ ${res.message || 'Synced all connections from OmniRoute!'}`);
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
           loadQuotaWidgetData(true);
@@ -4215,7 +4233,7 @@
         if (res.status === 'ok') {
           showToast(`✅ ${res.message || 'Import successful!'}`);
           closeModal('modal-import');
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
         } else {
@@ -4232,7 +4250,7 @@
         const res = await fetch(`/api/providers/${providerId}/accounts/${accountId}`, { method: 'DELETE' }).then(r => r.json());
         if (res.status === 'ok') {
           showToast(`🗑️ Account '${accountId}' removed`);
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
         } else {
           showToast(`⚠️ ${res.error || 'Failed to delete'}`);
@@ -5320,7 +5338,7 @@
             document.getElementById('kiro-oauth-success').style.display = 'block';
             document.getElementById('kiro-oauth-success-msg').textContent = res.message || 'Connected successfully!';
             showToast('✅ Connected new Kiro account!');
-            loadProviders();
+            loadProviders(); loadCatalogCards();
             loadPoolUsage();
             loadStats();
             if (typeof reloadCurrentProviderDetails === 'function' && currentProviderId === 'kiro') {
@@ -5344,6 +5362,103 @@
         kiroOAuthPollTimer = null;
       }
       document.getElementById('modal-kiro-oauth').classList.remove('active');
+    }
+
+  
+    let currentCatalogCategory = 'all';
+    let currentCatalogSearch = '';
+    let globalCatalogList = [];
+
+    async function loadCatalogCards() {
+      try {
+        const res = await fetch('/api/catalog').then(r => r.json());
+        if (res.data && Array.isArray(res.data)) {
+          globalCatalogList = res.data;
+          renderCatalogCards();
+        }
+      } catch (e) {
+        console.error('Failed to load catalog cards:', e);
+      }
+    }
+
+    function setCatalogCategoryFilter(cat, btn) {
+      currentCatalogCategory = cat;
+      document.querySelectorAll('#catalog-category-pills .pill').forEach(p => p.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderCatalogCards();
+    }
+
+    function filterCatalogCards(query) {
+      currentCatalogSearch = (query || '').toLowerCase().trim();
+      renderCatalogCards();
+    }
+
+    function renderCatalogCards() {
+      const container = document.getElementById('providers-cards-container');
+      if (!container) return;
+
+      const activeProvMap = {};
+      (window.currentProvidersList || []).forEach(p => {
+        activeProvMap[p.id] = p;
+      });
+
+      const connectedCnt = Object.keys(activeProvMap).length;
+      const cntSpan = document.getElementById('cat-cnt-connected');
+      if (cntSpan) cntSpan.textContent = connectedCnt;
+
+      let list = globalCatalogList.length > 0 ? globalCatalogList : (window.currentProvidersList || []);
+
+      if (currentCatalogCategory === 'connected') {
+        list = list.filter(item => activeProvMap[item.id]);
+      } else if (currentCatalogCategory !== 'all') {
+        list = list.filter(item => item.category === currentCatalogCategory);
+      }
+
+      if (currentCatalogSearch) {
+        const q = currentCatalogSearch;
+        list = list.filter(item => (item.id && item.id.toLowerCase().includes(q)) || (item.name && item.name.toLowerCase().includes(q)) || (item.description && item.description.toLowerCase().includes(q)));
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 2rem;">No providers match your search.</div>`;
+        return;
+      }
+
+      // Render top 48 to keep performance snappy, with live quick-connect button
+      container.innerHTML = list.slice(0, 48).map(entry => {
+        const isConnected = !!activeProvMap[entry.id];
+        const provData = activeProvMap[entry.id];
+        const accCount = provData ? (provData.accounts ? provData.accounts.length : 1) : 0;
+        const emoji = getProviderEmoji(entry.id);
+
+        return `
+          <div class="project-card" onclick="openProviderDetails('${entry.id}')">
+            <div class="project-card-header">
+              <div class="project-card-identity">
+                <div class="project-avatar">${emoji}</div>
+                <div>
+                  <div class="project-title">${entry.name || entry.id}</div>
+                  <div class="project-endpoint" title="${entry.base_url || entry.id}">${entry.base_url || entry.id}</div>
+                </div>
+              </div>
+              <span class="badge ${isConnected ? 'badge-success' : 'badge-muted'}">
+                <span class="${isConnected ? 'pulse-dot' : ''}"></span> ${isConnected ? `${accCount} connected` : 'Available'}
+              </span>
+            </div>
+            <div class="project-meta-row" style="font-size: 0.75rem;">
+              <span>Type: <strong style="color: var(--text);">${entry.auth_type || 'apikey'}</strong></span>
+              <span>Category: <strong style="color: var(--text);">${entry.category || 'cloud'}</strong></span>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: space-between; margin-top: 0.25rem;">
+              ${isConnected 
+                ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); testProvider('${entry.id}')">⚡ Test</button>
+                   <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProviderDetails('${entry.id}')">Manage →</button>`
+                : `<button class="btn btn-primary btn-sm" style="width: 100%;" onclick="event.stopPropagation(); openAddAccountModal(null, '${entry.id}')">+ Connect</button>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('');
     }
 
   </script>
