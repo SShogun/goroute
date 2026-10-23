@@ -224,6 +224,7 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/combos", s.handleListCombos)
 	s.mux.Post("/api/combos", s.handleSaveCombo)
 	s.mux.Delete("/api/combos/{name}", s.handleDeleteCombo)
+	s.mux.Post("/api/combos/{name}/test", s.handleTestCombo)
 	s.mux.Get("/api/rtk/filters", s.handleListRTKFilters)
 	s.mux.Post("/api/rtk/test", s.handleTestRTKFilter)
 	s.mux.Get("/api/affinity/sessions", s.handleListAffinitySessions)
@@ -4366,6 +4367,51 @@ func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":  "ok",
 		"deleted": name,
+	})
+}
+
+func (s *Server) handleTestCombo(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if name == "" {
+		http.Error(w, "combo name required", http.StatusBadRequest)
+		return
+	}
+
+	maxTokens := 16
+	start := time.Now()
+	testReq := providers.ChatRequest{
+		Model: name,
+		Messages: []providers.ChatMessage{
+			{Role: "user", Content: "ping"},
+		},
+		MaxTokens: &maxTokens,
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	rc, _, statusCode, err := s.router.Execute(ctx, &testReq)
+	duration := time.Since(start)
+
+	w.Header().Set("Content-Type", "application/json")
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":      "error",
+			"error":       err.Error(),
+			"duration_ms": duration.Milliseconds(),
+			"status_code": statusCode,
+		})
+		return
+	}
+	defer rc.Close()
+
+	bodyBytes, _ := io.ReadAll(rc)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"duration_ms": duration.Milliseconds(),
+		"status_code": statusCode,
+		"response":    string(bodyBytes),
 	})
 }
 

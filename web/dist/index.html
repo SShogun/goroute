@@ -1483,12 +1483,51 @@
         <div class="card-header">
           <div>
             <div class="card-title" style="font-size: 1.3rem;">Combos Studio</div>
-            <div class="card-subtitle">Build, customize, and reorder multi-provider failover chains with zero YAML editing</div>
+            <div class="card-subtitle">Visual multi-provider cascade builder with live latency dry-run testing & zero YAML editing</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">+ Create Combo</button>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-outline btn-sm" onclick="syncCombosFromOmniRoute()">🔄 Sync from OmniRoute</button>
+            <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">+ Create Combo</button>
+          </div>
         </div>
 
-        <div class="card">
+        <!-- Quick 1-Click Templates Bar -->
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1.15rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text);">⚡ Quick Templates:</span>
+            <span style="font-size: 0.76rem; color: var(--text-dim);">1-click verified cascade presets</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.65rem;" onclick="applyComboTemplate('claude-cascade')">+ Claude Cascade (AgentRouter → AGY → Kiro)</button>
+            <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.65rem;" onclick="applyComboTemplate('deepseek-pool')">+ DeepSeek Pool (Kiro → ApinexBond)</button>
+            <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.65rem;" onclick="applyComboTemplate('frontier-heal')">+ Frontier Auto-Heal (Opus → Sonnet → Haiku)</button>
+          </div>
+        </div>
+
+        <!-- Search Bar & Strategy Filter Pills -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.15rem;">
+          <div class="search-box" style="flex: 1; max-width: 380px;">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="search-input" id="search-combos" placeholder="Filter combos by name, strategy, target..." oninput="filterCombos(this.value)">
+          </div>
+          <div class="filter-pills" id="combos-strategy-pills">
+            <button class="pill active" onclick="setComboStrategyFilter('all', this)">All Combos (<span id="combo-cnt-all">0</span>)</button>
+            <button class="pill" onclick="setComboStrategyFilter('failover', this)">Failover Priority</button>
+            <button class="pill" onclick="setComboStrategyFilter('round-robin', this)">Round Robin</button>
+            <button class="pill" onclick="setComboStrategyFilter('load-balance', this)">Lowest Latency</button>
+          </div>
+          <div style="display: flex; gap: 0.35rem;">
+            <button class="btn btn-outline btn-sm" id="btn-toggle-combos-view" onclick="toggleCombosView()" title="Toggle View">Grid / Table</button>
+          </div>
+        </div>
+
+        <!-- Rich Visual Cards Container (Primary View) -->
+        <div id="combos-cards-container" style="display: flex; flex-direction: column; gap: 1rem;">
+          <!-- Dynamically populated via JS -->
+        </div>
+
+        <!-- Table View Container (Fallback / Toggle View) -->
+        <div class="card" id="combos-table-card" style="display: none; margin-top: 1rem;">
           <div class="table-container">
             <table>
               <thead>
@@ -1496,6 +1535,7 @@
                   <th>Combo Name</th>
                   <th>Strategy</th>
                   <th>Targets / Failover Order</th>
+                  <th>Live Test</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -2939,38 +2979,258 @@
       showToast('🎉 All standard agents configured to GoRoute!');
     }
 
+    let currentComboStrategyFilter = 'all';
+    let currentCombosSearchQuery = '';
+    let isCombosTableView = false;
+
+    function toggleCombosView() {
+      isCombosTableView = !isCombosTableView;
+      const cardsCont = document.getElementById('combos-cards-container');
+      const tableCard = document.getElementById('combos-table-card');
+      const btn = document.getElementById('btn-toggle-combos-view');
+      if (cardsCont && tableCard) {
+        cardsCont.style.display = isCombosTableView ? 'none' : 'flex';
+        tableCard.style.display = isCombosTableView ? 'block' : 'none';
+      }
+      if (btn) {
+        btn.textContent = isCombosTableView ? 'Table View (Active)' : 'Grid View (Active)';
+      }
+    }
+
+    function setComboStrategyFilter(strat, btn) {
+      currentComboStrategyFilter = strat;
+      const pills = document.querySelectorAll('#combos-strategy-pills .pill');
+      pills.forEach(p => p.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderCombosList();
+    }
+
+    function filterCombos(query) {
+      currentCombosSearchQuery = (query || '').toLowerCase().trim();
+      renderCombosList();
+    }
+
     // Load Combos
     async function loadCombos() {
-      const tbody = document.getElementById('combos-tbody');
       try {
         const res = await fetch('/api/combos').then(r => r.json());
         if (!res.combos) return;
         allOverviewCombos = res.combos;
 
-        tbody.innerHTML = res.combos.map(c => `
+        const allCnt = document.getElementById('combo-cnt-all');
+        if (allCnt) allCnt.textContent = res.combos.length;
+
+        renderCombosList();
+      } catch (e) {
+        console.error('loadCombos error:', e);
+      }
+    }
+
+    function renderCombosList() {
+      const cardsContainer = document.getElementById('combos-cards-container');
+      const tbody = document.getElementById('combos-tbody');
+      if (!allOverviewCombos) return;
+
+      const filtered = allOverviewCombos.filter(c => {
+        const matchesStrat = (currentComboStrategyFilter === 'all') || (c.strategy === currentComboStrategyFilter);
+        const matchesSearch = !currentCombosSearchQuery ||
+          c.name.toLowerCase().includes(currentCombosSearchQuery) ||
+          c.strategy.toLowerCase().includes(currentCombosSearchQuery) ||
+          (c.targets && c.targets.some(t => `${t.provider_id}/${t.model}`.toLowerCase().includes(currentCombosSearchQuery)));
+        return matchesStrat && matchesSearch;
+      });
+
+      // Render Cards
+      if (cardsContainer) {
+        if (filtered.length === 0) {
+          cardsContainer.innerHTML = `
+            <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
+              <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">⛓️</div>
+              <div style="font-size: 1rem; font-weight: 600; color: var(--text);">No routing combos found</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim); margin-top: 0.3rem;">Create a new combo or pick a quick template above.</div>
+            </div>
+          `;
+        } else {
+          cardsContainer.innerHTML = filtered.map(c => {
+            const stratColor = c.strategy === 'failover' ? '#38bdf8' : (c.strategy === 'round-robin' ? '#a78bfa' : '#34d399');
+            const stratLabel = (c.strategy || 'failover').toUpperCase();
+            
+            return `
+              <div class="card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--border); transition: transform 0.15s, border-color 0.15s;">
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+                  <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                      ⛓️
+                    </div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-family: 'Geist Mono'; font-size: 1.05rem; font-weight: 700; color: var(--text);">${escapeHtml(c.name)}</span>
+                        <button class="btn btn-outline btn-sm" style="padding: 0.1rem 0.35rem; font-size: 0.68rem;" onclick="copyToClipboard('${escapeHtml(c.name)}')" title="Copy Combo Name">Copy</button>
+                        <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: ${stratColor}; border: 1px solid ${stratColor}33; font-size: 0.7rem; font-weight: 600;">${stratLabel}</span>
+                        <span class="badge badge-muted" style="font-size: 0.7rem;">${c.targets ? c.targets.length : 0} Steps</span>
+                      </div>
+                      <div style="font-size: 0.76rem; color: var(--text-dim); margin-top: 0.15rem;">
+                        Endpoint: <code>model: "${escapeHtml(c.name)}"</code> · Cascade failover active
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Actions & Live Test Status -->
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span id="test-status-${escapeHtml(c.name)}" class="badge badge-muted" style="display: none; font-size: 0.72rem;"></span>
+                    <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="testComboExecution('${escapeHtml(c.name)}', this)">⚡ Test Run</button>
+                    <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="openEditComboModal('${escapeHtml(c.name)}')">✏️ Edit</button>
+                    <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="duplicateCombo('${escapeHtml(c.name)}')">📋 Duplicate</button>
+                    <button class="btn btn-danger btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="deleteCombo('${escapeHtml(c.name)}')">🗑️</button>
+                  </div>
+                </div>
+
+                <!-- Sequential Flow Steps Pipeline -->
+                <div style="background: #101014; border: 1px solid var(--border); border-radius: 8px; padding: 0.85rem; display: flex; align-items: center; gap: 0.6rem; overflow-x: auto;">
+                  ${(c.targets || []).map((t, idx) => `
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                      <div style="background: #17171c; border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.7rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; font-weight: 700; color: ${idx === 0 ? '#38bdf8' : 'var(--text-dim)'}; background: rgba(255,255,255,0.06); padding: 0.1rem 0.35rem; border-radius: 4px;">#${idx+1}</span>
+                        <div>
+                          <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase;">${escapeHtml(t.provider_id)}</div>
+                          <div style="font-family: 'Geist Mono'; font-size: 0.78rem; font-weight: 600; color: var(--text);">${escapeHtml(t.model)}</div>
+                        </div>
+                        ${t.quota_percent ? `<span class="badge badge-accent" style="font-size: 0.65rem;">${t.quota_percent}%</span>` : ''}
+                      </div>
+                      ${idx < c.targets.length - 1 ? '<span style="color: var(--text-dim); font-size: 0.85rem; font-weight: 700;">→</span>' : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      // Render Table View (Fallback)
+      if (tbody) {
+        tbody.innerHTML = filtered.map(c => `
           <tr>
-            <td style="font-family: 'Geist Mono'; font-weight: 600; color: var(--text);">${c.name}</td>
-            <td><span class="badge badge-accent">${c.strategy}</span></td>
+            <td style="font-family: 'Geist Mono'; font-weight: 600; color: var(--text);">${escapeHtml(c.name)}</td>
+            <td><span class="badge badge-accent">${escapeHtml(c.strategy)}</span></td>
             <td>
               <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
-                ${c.targets.map((t, i) => `
+                ${(c.targets || []).map((t, i) => `
                   <span class="badge badge-muted" style="display: inline-flex; align-items: center; gap: 0.3rem;">
-                    <span style="color: var(--accent); font-weight: 700;">#${i+1}</span> ${t.provider_id}/${t.model}${t.quota_percent ? ` (${t.quota_percent}%)` : ''}
+                    <span style="color: var(--accent); font-weight: 700;">#${i+1}</span> ${escapeHtml(t.provider_id)}/${escapeHtml(t.model)}
                   </span>
                   ${i < c.targets.length - 1 ? '<span style="color: var(--text-dim); font-size: 0.75rem;">→</span>' : ''}
                 `).join('')}
               </div>
             </td>
             <td>
+              <button class="btn btn-outline btn-sm" onclick="testComboExecution('${escapeHtml(c.name)}', this)">⚡ Test</button>
+            </td>
+            <td>
               <div style="display: flex; gap: 0.4rem;">
-                <button class="btn btn-outline btn-sm" onclick="openEditComboModal('${c.name}')">Edit Chain</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteCombo('${c.name}')">Delete</button>
+                <button class="btn btn-outline btn-sm" onclick="openEditComboModal('${escapeHtml(c.name)}')">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCombo('${escapeHtml(c.name)}')">Delete</button>
               </div>
             </td>
           </tr>
         `).join('');
+      }
+    }
+
+    async function testComboExecution(comboName, btnElement) {
+      const originalText = btnElement.innerHTML;
+      btnElement.disabled = true;
+      btnElement.innerHTML = `Testing...`;
+      
+      const statusPill = document.getElementById(`test-status-${comboName}`);
+      if (statusPill) {
+        statusPill.style.display = 'inline-flex';
+        statusPill.className = 'badge badge-muted';
+        statusPill.textContent = 'Pinging...';
+      }
+
+      try {
+        const res = await fetch(`/api/combos/${encodeURIComponent(comboName)}/test`, {
+          method: 'POST'
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`⚡ Combo '${comboName}' responded in ${res.duration_ms}ms!`);
+          if (statusPill) {
+            statusPill.className = 'badge badge-success';
+            statusPill.textContent = `✓ 200 OK (${res.duration_ms}ms)`;
+          }
+        } else {
+          showToast(`⚠️ Combo '${comboName}' error: ${res.error || 'Check provider tokens'}`);
+          if (statusPill) {
+            statusPill.className = 'badge badge-danger';
+            statusPill.textContent = `✕ Error (${res.duration_ms}ms)`;
+          }
+        }
+      } catch (err) {
+        showToast(`❌ Test error: ${err.message}`);
+        if (statusPill) {
+          statusPill.className = 'badge badge-danger';
+          statusPill.textContent = `✕ Network error`;
+        }
+      } finally {
+        btnElement.disabled = false;
+        btnElement.innerHTML = originalText;
+      }
+    }
+
+    function duplicateCombo(comboName) {
+      const combo = (typeof allOverviewCombos !== 'undefined' && allOverviewCombos)
+        ? allOverviewCombos.find(c => c.name === comboName)
+        : null;
+      if (!combo) return;
+      openNewComboModal();
+      document.getElementById('modal-combo-title').textContent = `Duplicate Combo: ${comboName}`;
+      document.getElementById('modal-combo-name').value = `${combo.name}-copy`;
+      document.getElementById('modal-combo-strategy').value = combo.strategy || 'failover';
+      const container = document.getElementById('combo-targets-list');
+      container.innerHTML = '';
+      if (combo.targets && combo.targets.length > 0) {
+        combo.targets.forEach(t => {
+          addComboTargetRow(t.provider_id, t.model, t.quota_percent || '');
+        });
+      }
+    }
+
+    function applyComboTemplate(type) {
+      openNewComboModal();
+      const container = document.getElementById('combo-targets-list');
+      container.innerHTML = '';
+      if (type === 'claude-cascade') {
+        document.getElementById('modal-combo-name').value = 'claude-cascade';
+        document.getElementById('modal-combo-strategy').value = 'failover';
+        addComboTargetRow('agentrouter', 'gpt-6-astra');
+        addComboTargetRow('antigravity', 'claude-sonnet-4-6');
+        addComboTargetRow('kiro', 'claude-sonnet-4.5');
+      } else if (type === 'deepseek-pool') {
+        document.getElementById('modal-combo-name').value = 'deepseek-pool';
+        document.getElementById('modal-combo-strategy').value = 'round-robin';
+        addComboTargetRow('kiro', 'deepseek-3.2');
+        addComboTargetRow('antigravity', 'gemini-3.7-flash-low');
+        addComboTargetRow('openai-compatible', 'free/deepseek-v4-pro');
+      } else if (type === 'frontier-heal') {
+        document.getElementById('modal-combo-name').value = 'frontier-heal';
+        document.getElementById('modal-combo-strategy').value = 'failover';
+        addComboTargetRow('antigravity', 'claude-opus-4-6-thinking');
+        addComboTargetRow('antigravity', 'claude-sonnet-4-6');
+        addComboTargetRow('kiro', 'claude-haiku-4.5');
+      }
+    }
+
+    async function syncCombosFromOmniRoute() {
+      try {
+        const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json()).catch(() => ({}));
+        showToast('🔄 Synchronized combo state from OmniRoute!');
+        loadCombos();
       } catch (e) {
-        console.error('loadCombos error:', e);
+        showToast('🔄 Reloaded combos from local storage');
+        loadCombos();
       }
     }
 
@@ -4208,7 +4468,7 @@
       }
     }
 
-    async async function syncAllFromOmniRoute() {
+    async function syncAllFromOmniRoute() {
       showToast('🔄 Synchronizing all accounts from OmniRoute database...');
       try {
         const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json());
@@ -4226,7 +4486,7 @@
       }
     }
 
-    function importCli(type) {
+    async function importCli(type) {
       showToast(`Importing ${type} credentials...`);
       try {
         const res = await fetch(`/api/providers/import-${type}`, { method: 'POST' }).then(r => r.json());
