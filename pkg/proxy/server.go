@@ -27,6 +27,7 @@ import (
 	"github.com/ziuus/goroute/pkg/clitools"
 	"github.com/ziuus/goroute/pkg/compression"
 	"github.com/ziuus/goroute/pkg/config"
+	"github.com/ziuus/goroute/pkg/fast"
 	"github.com/ziuus/goroute/pkg/keys"
 	"github.com/ziuus/goroute/pkg/mcp"
 	"github.com/ziuus/goroute/pkg/mitm"
@@ -261,9 +262,10 @@ func (s *Server) setupRoutes() {
 	s.mux.Get("/api/analytics/compression", s.handleAnalyticsCompression)
 	s.mux.Get("/api/analytics/diversity", s.handleAnalyticsDiversity)
 
-	// Version manager
+	// Version manager & Rust Accelerator
 	s.mux.Get("/api/version-manager/status", s.handleVersionManagerStatus)
 	s.mux.Get("/api/version-manager/check-update", s.handleVersionManagerCheckUpdate)
+	s.mux.Get("/api/fast/status", s.handleFastStatus)
 
 	// Database Backups
 	s.mux.Get("/api/db-backups", s.handleListBackups)
@@ -4840,9 +4842,15 @@ func (s *Server) handleVersionManagerStatus(w http.ResponseWriter, r *http.Reque
 			"status":       "running",
 			"pid":          os.Getpid(),
 			"healthStatus": "healthy",
-			"version":      "1.0.0",
+			"version":      "0.2.1",
+			"rustEngine":   fast.Status(),
 		},
 	})
+}
+
+func (s *Server) handleFastStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(fast.Status())
 }
 
 func (s *Server) handleVersionManagerCheckUpdate(w http.ResponseWriter, r *http.Request) {
