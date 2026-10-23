@@ -2295,25 +2295,28 @@
       </div>
 
       <!-- Guided Kiro Banner -->
+      <!-- Guided Kiro Banner -->
       <div id="kiro-guide-banner" style="display: none; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.85rem; margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
           <div style="font-weight: 600; font-size: 0.85rem; color: #38bdf8; display: flex; align-items: center; gap: 0.4rem;">
             <span>⚡</span> AWS Kiro / CodeWhisperer
           </div>
           <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="autoDetectKiroModal()" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
-              ⚡ 1-Click Auto-Import Local CLI
+            <button type="button" class="btn btn-primary btn-sm" onclick="startKiroOAuthFlow('google')" style="font-size: 0.75rem; padding: 0.3rem 0.75rem; background: #38bdf8; color: #000; font-weight: 600; border-color: #38bdf8;">
+              🌐 Sign In with Google
             </button>
-            <button type="button" class="btn btn-outline btn-sm" onclick="testModalCredential()" id="btn-test-modal-cred" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3);">
-              ▷ Test &amp; Verify Token
+            <button type="button" class="btn btn-outline btn-sm" onclick="startKiroOAuthFlow('github')" style="font-size: 0.75rem; padding: 0.3rem 0.75rem;">
+              🐙 Sign In with GitHub
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="autoDetectKiroModal()" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+              ⚡ Auto-Import Local CLI
             </button>
           </div>
         </div>
         <div style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.4;">
-          Accepts <strong>API Keys</strong> (tokentype API_KEY), <strong>Bearer JWTs</strong> (ey...), or <strong>AWS SSO / Social Tokens</strong> (aor...). Profile ARN defaults to CodeWhisperer prod if left blank.
+          Authenticate directly via browser popup/device flow. GoRoute exchanges and secures refresh tokens automatically, matching OmniRoute's seamless connection experience.
         </div>
-        <div id="modal-test-feedback" style="display: none; font-size: 0.75rem; margin-top: 0.5rem; padding: 0.35rem 0.6rem; border-radius: 4px;"></div>
-      </div>
+      </div>/div>
 
       <div class="form-group">
         <label class="form-label">Account Label / Identifier</label>
@@ -5260,6 +5263,140 @@
       loadQuotaWidgetData();
       initSSEStream();
     });
+  
+    // Kiro Interactive Device OAuth Flow (OmniRoute Parity)
+    let kiroOAuthPollTimer = null;
+    let kiroOAuthDeviceCode = null;
+
+    async function startKiroOAuthFlow(socialProvider) {
+      closeModal('modal-add-account');
+      document.getElementById('modal-kiro-oauth').classList.add('active');
+      document.getElementById('kiro-oauth-loading').style.display = 'block';
+      document.getElementById('kiro-oauth-content').style.display = 'none';
+      document.getElementById('kiro-oauth-success').style.display = 'none';
+
+      try {
+        const res = await fetch(`/api/oauth/kiro/device-authorize?provider=${socialProvider || 'google'}`).then(r => r.json());
+        if (res.authUrl && res.deviceCode) {
+          kiroOAuthDeviceCode = res.deviceCode;
+          document.getElementById('kiro-oauth-code').textContent = res.userCode;
+          const link = document.getElementById('kiro-oauth-link');
+          link.href = res.authUrl;
+          
+          document.getElementById('kiro-oauth-loading').style.display = 'none';
+          document.getElementById('kiro-oauth-content').style.display = 'block';
+          
+          // Automatically pop open window in browser
+          window.open(res.authUrl, '_blank');
+
+          // Start polling
+          startKiroOAuthPolling(res.deviceCode, res.interval || 5);
+        } else {
+          alert('Failed to start device authorization: ' + (res.error || 'Unknown error'));
+          closeKiroOAuthModal();
+        }
+      } catch (e) {
+        alert('Error initiating Kiro OAuth: ' + e.message);
+        closeKiroOAuthModal();
+      }
+    }
+
+    function startKiroOAuthPolling(deviceCode, intervalSec) {
+      if (kiroOAuthPollTimer) clearInterval(kiroOAuthPollTimer);
+      const pollMs = Math.max(intervalSec * 1000, 3000);
+
+      kiroOAuthPollTimer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/oauth/kiro/device-poll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceCode: deviceCode, pool: 'pool1' })
+          }).then(r => r.json());
+
+          if (res.success) {
+            clearInterval(kiroOAuthPollTimer);
+            kiroOAuthPollTimer = null;
+            document.getElementById('kiro-oauth-content').style.display = 'none';
+            document.getElementById('kiro-oauth-success').style.display = 'block';
+            document.getElementById('kiro-oauth-success-msg').textContent = res.message || 'Connected successfully!';
+            showToast('✅ Connected new Kiro account!');
+            loadProviders();
+            loadPoolUsage();
+            loadStats();
+            if (typeof reloadCurrentProviderDetails === 'function' && currentProviderId === 'kiro') {
+              reloadCurrentProviderDetails();
+            }
+          } else if (res.pending) {
+            // Still waiting for user confirmation
+          } else if (res.error) {
+            clearInterval(kiroOAuthPollTimer);
+            document.getElementById('kiro-oauth-status').textContent = '⚠️ Authorization: ' + res.error;
+          }
+        } catch (e) {
+          console.error('Polling error:', e);
+        }
+      }, pollMs);
+    }
+
+    function closeKiroOAuthModal() {
+      if (kiroOAuthPollTimer) {
+        clearInterval(kiroOAuthPollTimer);
+        kiroOAuthPollTimer = null;
+      }
+      document.getElementById('modal-kiro-oauth').classList.remove('active');
+    }
+
   </script>
+
+  <!-- MODAL: KIRO OAUTH DEVICE FLOW (OmniRoute Parity) -->
+  <div class="modal-backdrop" id="modal-kiro-oauth">
+    <div class="modal-box" style="max-width: 480px; text-align: center;">
+      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem auto; font-size: 1.75rem;">
+        ⚡
+      </div>
+      <div class="card-title" style="justify-content: center; margin-bottom: 0.25rem;">Connect Kiro AI Account</div>
+      <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 1.5rem;">
+        Authenticate in your browser. GoRoute will automatically detect your login and link the new account.
+      </div>
+
+      <div id="kiro-oauth-loading" style="padding: 1.5rem 0;">
+        <div style="display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(56, 189, 248, 0.2); border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.75rem;">Generating secure device authorization...</div>
+      </div>
+
+      <div id="kiro-oauth-content" style="display: none;">
+        <div style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
+          <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">Your Verification Code</div>
+          <div id="kiro-oauth-code" style="font-family: 'Geist Mono', monospace; font-size: 1.8rem; font-weight: 700; letter-spacing: 0.15em; color: #38bdf8;">----</div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <a id="kiro-oauth-link" href="#" target="_blank" class="btn btn-primary" style="width: 100%; padding: 0.65rem 1rem; font-size: 0.88rem; background: #38bdf8; color: #000; border-color: #38bdf8; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <span>Open Browser Verification Window ↗</span>
+          </a>
+          <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 0.5rem;">
+            A new browser tab will open. Confirm the code matches and click <strong>Allow</strong>.
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+          <span class="pulse-dot" style="background: #38bdf8;"></span>
+          <span id="kiro-oauth-status">Waiting for browser authentication...</span>
+        </div>
+      </div>
+
+      <div id="kiro-oauth-success" style="display: none; padding: 1rem 0;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✅</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #10b981; margin-bottom: 0.25rem;">Connection Successful!</div>
+        <div id="kiro-oauth-success-msg" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem;">Kiro account has been linked to your routing pool.</div>
+        <button class="btn btn-primary" onclick="closeKiroOAuthModal()" style="width: 100%;">Done</button>
+      </div>
+
+      <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; display: flex; justify-content: flex-end;">
+        <button class="btn btn-outline btn-sm" onclick="closeKiroOAuthModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

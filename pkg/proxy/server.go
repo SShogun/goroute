@@ -135,6 +135,8 @@ func (s *Server) setupRoutes() {
 	s.mux.Post("/api/providers/{id}/expose-claude", s.handleExposeClaude)
 	s.mux.Post("/api/playground/chat", s.handlePlaygroundChat)
 	s.mux.Post("/api/providers/sync-omniroute", s.handleSyncOmniRoute)
+	s.mux.Get("/api/oauth/kiro/device-authorize", s.handleKiroDeviceAuthorize)
+	s.mux.Post("/api/oauth/kiro/device-poll", s.handleKiroDevicePoll)
 	s.mux.Post("/api/providers/import-kiro", s.handleImportKiro)
 	s.mux.Post("/api/providers/import-codex", s.handleImportCodex)
 	s.mux.Post("/api/providers/import-copilot", s.handleImportCopilot)
@@ -1998,6 +2000,131 @@ func (s *Server) handleAddProvider(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status": "ok",
 		"id":     req.ID,
+	})
+}
+
+func (s *Server) handleKiroDeviceAuthorize(w http.ResponseWriter, r *http.Request) {
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		provider = "google"
+	}
+	resp, err := kiro.StartSocialDeviceAuth(r.Context(), provider)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadGateway)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleKiroDevicePoll(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DeviceCode string `json:"deviceCode"`
+		Pool       string `json:"pool"`
+		AccountID  string `json:"accountId"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.DeviceCode == "" {
+		http.Error(w, "deviceCode required", http.StatusBadRequest)
+		return
+	}
+	if req.Pool == "" {
+		req.Pool = "pool1"
+	}
+
+	res, err := kiro.PollSocialDeviceAuth(r.Context(), req.DeviceCode)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "error",
+			"error":  err.Error(),
+		})
+		return
+	}
+
+	if res.Pending {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"pending": true,
+		})
+		return
+	}
+
+	if !res.Success {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"pending": false,
+			"error":   res.Error,
+		})
+		return
+	}
+
+	// Auto-register newly authenticated connection into ~/.goroute/config.yaml
+	cfgPath := s.cfgPath
+	if cfgPath == "" {
+		home, _ := os.UserHomeDir()
+		cfgPath = filepath.Join(home, ".goroute", "config.yaml")
+	}
+	cfg, _ := config.Load(cfgPath)
+	if cfg == nil {
+		cfg = config.DefaultConfig()
+	}
+
+	accID := req.AccountID
+	if accID == "" {
+		accID = fmt.Sprintf("kiro-%s", time.Now().Format("02Jan-1504"))
+	}
+
+	found := false
+	for i, p := range cfg.Providers {
+		if p.ID == "kiro" {
+			found = true
+			cfg.Providers[i].Accounts = append(cfg.Providers[i].Accounts, config.AccountConfig{
+				ID:           accID,
+				Pool:         req.Pool,
+				RefreshToken: res.RefreshToken,
+				ProfileARN:   res.ProfileARN,
+				Weight:       1.0,
+			})
+			break
+		}
+	}
+	if !found {
+		cfg.Providers = append(cfg.Providers, config.ProviderConfig{
+			ID:   "kiro",
+			Type: "kiro",
+			Accounts: []config.AccountConfig{
+				{
+					ID:           accID,
+					Pool:         req.Pool,
+					RefreshToken: res.RefreshToken,
+					ProfileARN:   res.ProfileARN,
+					Weight:       1.0,
+				},
+			},
+		})
+	}
+	_ = cfg.Save(cfgPath)
+	_ = s.Reload()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"accountId":  accID,
+		"pool":       req.Pool,
+		"profileArn": res.ProfileARN,
+		"message":    fmt.Sprintf("Successfully connected Kiro account %s!", accID),
 	})
 }
 
