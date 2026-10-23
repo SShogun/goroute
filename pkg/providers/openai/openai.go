@@ -151,7 +151,7 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 			continue
 		}
 
-		if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode >= 500 {
+		if resp.StatusCode == 429 || resp.StatusCode == 402 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
 			if attempts > 1 && i+1 < attempts {
 				log.Printf("[openai] Provider %s key hit %d, failing over to next key (%d/%d)", p.id, resp.StatusCode, i+1, attempts)
 				resp.Body.Close()
@@ -215,7 +215,7 @@ func (p *Provider) AnthropicMessages(ctx context.Context, body []byte, incomingH
 			continue
 		}
 
-		if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode >= 500 {
+		if resp.StatusCode == 429 || resp.StatusCode == 402 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
 			if attempts > 1 && i+1 < attempts {
 				log.Printf("[openai] Provider %s key hit %d on AnthropicMessages, failing over to next key (%d/%d)", p.id, resp.StatusCode, i+1, attempts)
 				resp.Body.Close()
