@@ -3484,6 +3484,27 @@ func (s *Server) Reload() error {
 		s.router.RegisterCombo(combo.Name, combo.Strategy, targets)
 	}
 
+	// Dynamic SQLite combos with ACID persistence
+	if dbCombos, err := storage.GetDB().GetCombos(); err == nil && len(dbCombos) > 0 {
+		for _, raw := range dbCombos {
+			name, _ := raw["name"].(string)
+			strat, _ := raw["strategy"].(string)
+			var rawTargets []config.ComboTarget
+			if tBytes, mErr := json.Marshal(raw["targets"]); mErr == nil {
+				_ = json.Unmarshal(tBytes, &rawTargets)
+			}
+			var targets []router.Target
+			for _, t := range rawTargets {
+				targets = append(targets, router.Target{
+					ProviderID:   t.ProviderID,
+					Model:        t.Model,
+					QuotaPercent: t.QuotaPercent,
+				})
+			}
+			s.router.RegisterCombo(name, strat, targets)
+		}
+	}
+
 	log.Printf("[GoRoute] Configuration reloaded successfully (%d providers, %d combos)", len(cfg.Providers), len(cfg.Combos))
 	return nil
 }
@@ -4266,6 +4287,31 @@ func (s *Server) handleTopology(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListCombos(w http.ResponseWriter, r *http.Request) {
+	// First check SQLite for dynamic combos
+	dbCombos, err := storage.GetDB().GetCombos()
+	if err == nil && len(dbCombos) > 0 {
+		var combos []config.ComboConfig
+		for _, raw := range dbCombos {
+			name, _ := raw["name"].(string)
+			strat, _ := raw["strategy"].(string)
+			var targets []config.ComboTarget
+			if tBytes, mErr := json.Marshal(raw["targets"]); mErr == nil {
+				_ = json.Unmarshal(tBytes, &targets)
+			}
+			combos = append(combos, config.ComboConfig{
+				Name:     name,
+				Strategy: strat,
+				Targets:  targets,
+			})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "ok",
+			"combos": combos,
+		})
+		return
+	}
+
 	home, _ := os.UserHomeDir()
 	cfgPath := s.cfgPath
 	if cfgPath == "" {
@@ -4274,6 +4320,13 @@ func (s *Server) handleListCombos(w http.ResponseWriter, r *http.Request) {
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		cfg = config.DefaultConfig()
+	}
+
+	// Auto-seed SQLite from config.yaml if SQLite is empty
+	for _, c := range cfg.Combos {
+		if tJSON, jErr := json.Marshal(c.Targets); jErr == nil {
+			_ = storage.GetDB().SaveCombo(c.Name, c.Strategy, string(tJSON))
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -4297,6 +4350,18 @@ func (s *Server) handleSaveCombo(w http.ResponseWriter, r *http.Request) {
 		combo.Strategy = "failover"
 	}
 
+	// 1. Save to SQLite with ACID WAL guarantee
+	tJSON, err := json.Marshal(combo.Targets)
+	if err != nil {
+		http.Error(w, "marshal targets failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := storage.GetDB().SaveCombo(combo.Name, combo.Strategy, string(tJSON)); err != nil {
+		http.Error(w, "sqlite save failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Also persist to config.yaml as backup
 	home, _ := os.UserHomeDir()
 	cfgPath := s.cfgPath
 	if cfgPath == "" {
@@ -4319,11 +4384,7 @@ func (s *Server) handleSaveCombo(w http.ResponseWriter, r *http.Request) {
 		cfg.Combos = append(cfg.Combos, combo)
 	}
 
-	if err := cfg.Save(cfgPath); err != nil {
-		http.Error(w, "save config failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
+	_ = cfg.Save(cfgPath)
 	s.Reload()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -4340,6 +4401,10 @@ func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. Delete from SQLite
+	_ = storage.GetDB().DeleteCombo(name)
+
+	// 2. Also update config.yaml
 	home, _ := os.UserHomeDir()
 	cfgPath := s.cfgPath
 	if cfgPath == "" {
@@ -4357,11 +4422,7 @@ func (s *Server) handleDeleteCombo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	cfg.Combos = newCombos
-
-	if err := cfg.Save(cfgPath); err != nil {
-		http.Error(w, "save config failed: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
+	_ = cfg.Save(cfgPath)
 
 	s.Reload()
 

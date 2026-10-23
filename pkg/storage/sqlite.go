@@ -2,6 +2,7 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -108,6 +109,14 @@ func InitDB(dbPath string) (*DBStore, error) {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
+
+	CREATE TABLE IF NOT EXISTS combos (
+		name TEXT PRIMARY KEY,
+		strategy TEXT NOT NULL DEFAULT 'failover',
+		targets_json TEXT NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 
 	if _, err := db.Exec(schema); err != nil {
@@ -129,7 +138,59 @@ func GetDB() *DBStore {
 	return globalDB
 }
 
-// RecordCall logs an LLM request execution to SQLite.
+// SaveCombo saves or updates a combo in SQLite with ACID guarantee.
+func (s *DBStore) SaveCombo(name, strategy, targetsJSON string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	query := `
+	INSERT INTO combos (name, strategy, targets_json, updated_at)
+	VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+	ON CONFLICT(name) DO UPDATE SET
+		strategy = excluded.strategy,
+		targets_json = excluded.targets_json,
+		updated_at = CURRENT_TIMESTAMP
+	`
+	_, err := s.db.Exec(query, name, strategy, targetsJSON)
+	return err
+}
+
+// GetCombos loads all combos from SQLite.
+func (s *DBStore) GetCombos() ([]map[string]interface{}, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	rows, err := s.db.Query(`SELECT name, strategy, targets_json FROM combos ORDER BY name ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []map[string]interface{}
+	for rows.Next() {
+		var name, strategy, targetsJSON string
+		if err := rows.Scan(&name, &strategy, &targetsJSON); err != nil {
+			continue
+		}
+		var targets interface{}
+		_ = json.Unmarshal([]byte(targetsJSON), &targets)
+		result = append(result, map[string]interface{}{
+			"name":     name,
+			"strategy": strategy,
+			"targets":  targets,
+		})
+	}
+	return result, nil
+}
+
+// DeleteCombo removes a combo by name from SQLite.
+func (s *DBStore) DeleteCombo(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	_, err := s.db.Exec(`DELETE FROM combos WHERE name = ?`, name)
+	return err
+}
 func (s *DBStore) RecordCall(log CallLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
