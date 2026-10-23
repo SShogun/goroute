@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/ziuus/goroute/pkg/fast"
 )
 
 var (
@@ -47,6 +49,19 @@ func CompressCaveman(input string, intensity string) (string, []string) {
 	}
 	if intensity == "" {
 		intensity = "full"
+	}
+
+	// High-speed Rust SIMD acceleration when available
+	if fast.IsAvailable() {
+		level := int32(2)
+		if intensity == "lite" {
+			level = 1
+		} else if intensity == "ultra" {
+			level = 3
+		}
+		if res, ok := fast.Compress(input, level); ok && res != input {
+			return res, []string{"rust-simd-caveman", "rust-zero-alloc-pruning"}
+		}
 	}
 
 	var techniques []string

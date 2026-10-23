@@ -668,10 +668,14 @@ func (p *Provider) ChatCompletion(ctx context.Context, req *providers.ChatReques
 				continue
 			}
 
-			if resp.StatusCode == 429 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode >= 500 {
-				log.Printf("[kiro] Account %s returned %d (%s), failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
+			if resp.StatusCode == 429 || resp.StatusCode == 402 || resp.StatusCode == 401 || resp.StatusCode == 403 || resp.StatusCode == 404 || resp.StatusCode >= 500 {
+				log.Printf("[kiro] Account %s returned %d (%s), cooling down and failover to next account (%d/%d)", acc.ID, resp.StatusCode, string(raw), attempt+1, accCount)
 				affinity.GlobalManager.InvalidateAffinity(sessionKey, p.id)
-				pool.GlobalPool.SetCooldown(acc.Pool, acc.ID, 5*time.Minute)
+				cooldownDuration := 5 * time.Minute
+				if resp.StatusCode == 402 {
+					cooldownDuration = 6 * time.Hour
+				}
+				pool.GlobalPool.SetCooldown(acc.Pool, acc.ID, cooldownDuration)
 				continue
 			}
 			return nil, false, resp.StatusCode, lastErr

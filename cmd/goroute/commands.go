@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/ziuus/goroute/pkg/catalog"
 	"github.com/ziuus/goroute/pkg/config"
 	"github.com/ziuus/goroute/pkg/providers"
@@ -30,6 +29,7 @@ import (
 	"github.com/ziuus/goroute/pkg/quota"
 	"github.com/ziuus/goroute/pkg/router"
 	"github.com/ziuus/goroute/pkg/store"
+	"github.com/spf13/cobra"
 )
 
 func init() {
@@ -53,10 +53,37 @@ func newAPIKeyProvider(pCfg config.ProviderConfig) providers.Provider {
 		keys = append(keys, pCfg.APIKey)
 	}
 
-	if pCfg.Type == "mistral" {
-		return mistral.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+	baseURL := pCfg.BaseURL
+	if baseURL == "" {
+		if entry := catalog.FindEntry(pCfg.ID); entry != nil && entry.BaseURL != "" {
+			baseURL = entry.BaseURL
+		} else if pCfg.ID == "agentrouter" {
+			baseURL = "https://api.agentrouter.org/v1"
+		} else if pCfg.ID == "xkiro" {
+			baseURL = "https://api.xkiro.com/v1"
+		} else if pCfg.ID == "openai" {
+			baseURL = "https://api.openai.com/v1"
+		}
 	}
-	return openai.NewProviderWithKeys(pCfg.ID, pCfg.BaseURL, keys, pCfg.Headers)
+
+	var provider interface {
+		providers.Provider
+		SetAccountKey(string, string)
+	}
+	if pCfg.Type == "mistral" {
+		provider = mistral.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+	} else {
+		provider = openai.NewProviderWithKeys(pCfg.ID, baseURL, keys, pCfg.Headers)
+	}
+	for _, account := range pCfg.Accounts {
+		if account.APIKey != "" {
+			provider.SetAccountKey(account.ID, account.APIKey)
+		}
+	}
+	if pCfg.APIKey != "" {
+		provider.SetAccountKey(pCfg.ID+"-primary", pCfg.APIKey)
+	}
+	return provider
 }
 
 func openBrowser(url string) {

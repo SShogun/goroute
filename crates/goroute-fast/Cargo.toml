@@ -1,0 +1,20 @@
+[package]
+name = "goroute-fast"
+version = "0.2.1"
+edition = "2021"
+description = "High-performance Rust acceleration engine for GoRoute (SIMD compression, token counting, stream decoding)"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+regex = { version = "1.10", features = ["std", "perf", "unicode-case"] }
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -152,3 +153,30 @@ func (s *RadarStore) SyncRadarCatalog() (int, error) {
 
 	return len(defaultCatalog), nil
 }
+
+func (s *RadarStore) InsertOrUpdateModels(provider string, models []string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.db == nil || s.db.db == nil {
+		return 0, fmt.Errorf("database not initialized")
+	}
+
+	count := 0
+	for _, m := range models {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		id := fmt.Sprintf("%s/%s", provider, m)
+		_, err := s.db.db.Exec(`
+			INSERT OR REPLACE INTO radar_catalog (id, provider, model, status, latency_p50, latency_p99, success_rate, free_tier, updated_at)
+			VALUES (?, ?, ?, 'online', 220, 650, 1.0, 0, CURRENT_TIMESTAMP)
+		`, id, provider, m)
+		if err == nil {
+			count++
+		}
+	}
+	return count, nil
+}
+

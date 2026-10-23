@@ -597,7 +597,9 @@
       border: 1px solid var(--border);
       border-radius: 12px; box-shadow: var(--shadow-sm);
       width: 100%;
-      max-width: 520px;
+      max-width: 540px;
+      max-height: 90vh;
+      overflow-y: auto;
       padding: 1.5rem;
       display: flex;
       flex-direction: column;
@@ -1247,6 +1249,7 @@
         Dashboard <span id="view-breadcrumb">/ Overview</span>
       </div>
       <div class="header-actions">
+        <span class="badge" style="background: rgba(249, 115, 22, 0.12); color: #f97316; border: 1px solid rgba(249, 115, 22, 0.3); font-size: 0.72rem; display: inline-flex; align-items: center; gap: 0.35rem;" id="badge-rust-engine" title="GoRoute Rust Acceleration Loaded (SIMD + Zero-Alloc)"><span style="width: 6px; height: 6px; border-radius: 50%; background: #f97316;"></span> 🦀 Rust SIMD Engine</span>
         <button class="btn btn-outline btn-sm theme-toggle-btn" id="theme-toggle-btn" onclick="toggleTheme()" title="Toggle Light/Dark Theme">
           <span id="theme-toggle-icon">🌙</span>
           <span id="theme-toggle-label" style="font-size:0.75rem;">Dark</span>
@@ -1483,12 +1486,51 @@
         <div class="card-header">
           <div>
             <div class="card-title" style="font-size: 1.3rem;">Combos Studio</div>
-            <div class="card-subtitle">Build, customize, and reorder multi-provider failover chains with zero YAML editing</div>
+            <div class="card-subtitle">Visual multi-provider cascade builder with live latency dry-run testing & zero YAML editing</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">+ Create Combo</button>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <button class="btn btn-outline btn-sm" onclick="syncCombosFromOmniRoute()">🔄 Sync from OmniRoute</button>
+            <button class="btn btn-primary btn-sm" onclick="openNewComboModal()">+ Create Combo</button>
+          </div>
         </div>
 
-        <div class="card">
+        <!-- Quick 1-Click Templates Bar -->
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem 1.15rem; margin-bottom: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text);">⚡ Quick Templates:</span>
+            <span style="font-size: 0.76rem; color: var(--text-dim);">1-click verified cascade presets</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+            <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.65rem;" onclick="applyComboTemplate('claude-cascade')">+ Claude Cascade (AgentRouter → AGY → Kiro)</button>
+            <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.65rem;" onclick="applyComboTemplate('deepseek-pool')">+ DeepSeek Pool (Kiro → ApinexBond)</button>
+            <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.65rem;" onclick="applyComboTemplate('frontier-heal')">+ Frontier Auto-Heal (Opus → Sonnet → Haiku)</button>
+          </div>
+        </div>
+
+        <!-- Search Bar & Strategy Filter Pills -->
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.15rem;">
+          <div class="search-box" style="flex: 1; max-width: 380px;">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="search-input" id="search-combos" placeholder="Filter combos by name, strategy, target..." oninput="filterCombos(this.value)">
+          </div>
+          <div class="filter-pills" id="combos-strategy-pills">
+            <button class="pill active" onclick="setComboStrategyFilter('all', this)">All Combos (<span id="combo-cnt-all">0</span>)</button>
+            <button class="pill" onclick="setComboStrategyFilter('failover', this)">Failover Priority</button>
+            <button class="pill" onclick="setComboStrategyFilter('round-robin', this)">Round Robin</button>
+            <button class="pill" onclick="setComboStrategyFilter('load-balance', this)">Lowest Latency</button>
+          </div>
+          <div style="display: flex; gap: 0.35rem;">
+            <button class="btn btn-outline btn-sm" id="btn-toggle-combos-view" onclick="toggleCombosView()" title="Toggle View">Grid / Table</button>
+          </div>
+        </div>
+
+        <!-- Rich Visual Cards Container (Primary View) -->
+        <div id="combos-cards-container" style="display: flex; flex-direction: column; gap: 1rem;">
+          <!-- Dynamically populated via JS -->
+        </div>
+
+        <!-- Table View Container (Fallback / Toggle View) -->
+        <div class="card" id="combos-table-card" style="display: none; margin-top: 1rem;">
           <div class="table-container">
             <table>
               <thead>
@@ -1496,6 +1538,7 @@
                   <th>Combo Name</th>
                   <th>Strategy</th>
                   <th>Targets / Failover Order</th>
+                  <th>Live Test</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -1511,12 +1554,30 @@
       <div id="view-providers" class="view-panel">
         <div class="card-header">
           <div>
-            <div class="card-title" style="font-size: 1.3rem;">Connected Providers & Account Pool</div>
-            <div class="card-subtitle">Add multi-account credentials (API keys, OAuth tokens) to enable Fair-Share Token Leveling</div>
+            <div class="card-title" style="font-size: 1.3rem;">Provider Catalog & Connected Pools</div>
+            <div class="card-subtitle">Browse 338+ AI providers across Frontier Labs, Enterprise Cloud, Inference LPUs, and OAuth Agents.</div>
           </div>
           <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-outline btn-sm" onclick="openImportModal()">+ Import From CLI</button>
-            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">+ Add Account</button>
+            <button class="btn btn-outline btn-sm" onclick="syncAllFromOmniRoute()">🔄 Sync from OmniRoute</button>
+            <button class="btn btn-outline btn-sm" onclick="openImportModal()">+ 1-Click Import CLI</button>
+            <button class="btn btn-primary btn-sm" onclick="openAddAccountModal()">+ Connect Provider</button>
+          </div>
+        </div>
+
+        <!-- Catalog Category Pills & Search Bar (OmniRoute Parity) -->
+        <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem;">
+          <div class="search-box" style="flex: 1; max-width: 360px;">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="search-input" id="search-catalog" placeholder="Search 338+ providers by name, protocol..." oninput="filterCatalogCards(this.value)">
+          </div>
+          <div class="filter-pills" id="catalog-category-pills">
+            <button class="pill active" onclick="setCatalogCategoryFilter('all', this)">All (338)</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('connected', this)">Connected (<span id="cat-cnt-connected">7</span>)</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('frontier', this)">Frontier</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('oauth', this)">OAuth</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('inference', this)">LPUs / Fast</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('gateway', this)">Gateways</button>
+            <button class="pill" onclick="setCatalogCategoryFilter('local', this)">Local / Self-Hosted</button>
           </div>
         </div>
 
@@ -2295,24 +2356,27 @@
       </div>
 
       <!-- Guided Kiro Banner -->
+      <!-- Guided Kiro Banner -->
       <div id="kiro-guide-banner" style="display: none; background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 0.85rem; margin-bottom: 1rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
           <div style="font-weight: 600; font-size: 0.85rem; color: #38bdf8; display: flex; align-items: center; gap: 0.4rem;">
             <span>⚡</span> AWS Kiro / CodeWhisperer
           </div>
           <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-            <button type="button" class="btn btn-outline btn-sm" onclick="autoDetectKiroModal()" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
-              ⚡ 1-Click Auto-Import Local CLI
+            <button type="button" class="btn btn-primary btn-sm" onclick="startKiroOAuthFlow('google')" style="font-size: 0.75rem; padding: 0.3rem 0.75rem; background: #38bdf8; color: #000; font-weight: 600; border-color: #38bdf8;">
+              🌐 Sign In with Google
             </button>
-            <button type="button" class="btn btn-outline btn-sm" onclick="testModalCredential()" id="btn-test-modal-cred" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(34, 197, 94, 0.15); color: #4ade80; border-color: rgba(34, 197, 94, 0.3);">
-              ▷ Test &amp; Verify Token
+            <button type="button" class="btn btn-outline btn-sm" onclick="startKiroOAuthFlow('github')" style="font-size: 0.75rem; padding: 0.3rem 0.75rem;">
+              🐙 Sign In with GitHub
+            </button>
+            <button type="button" class="btn btn-outline btn-sm" onclick="autoDetectKiroModal()" style="font-size: 0.72rem; padding: 0.2rem 0.6rem; background: rgba(56, 189, 248, 0.15); color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
+              ⚡ Auto-Import Local CLI
             </button>
           </div>
         </div>
         <div style="font-size: 0.76rem; color: var(--text-muted); line-height: 1.4;">
-          Accepts <strong>API Keys</strong> (tokentype API_KEY), <strong>Bearer JWTs</strong> (ey...), or <strong>AWS SSO / Social Tokens</strong> (aor...). Profile ARN defaults to CodeWhisperer prod if left blank.
+          Authenticate directly via browser popup/device flow. GoRoute exchanges and secures refresh tokens automatically, matching OmniRoute's seamless connection experience.
         </div>
-        <div id="modal-test-feedback" style="display: none; font-size: 0.75rem; margin-top: 0.5rem; padding: 0.35rem 0.6rem; border-radius: 4px;"></div>
       </div>
 
       <div class="form-group">
@@ -2321,11 +2385,11 @@
       </div>
 
       <div class="form-group">
-        <label class="form-label" id="label-acc-secret">API Key</label>
+        <label class="form-label" id="label-acc-secret">API Key / Secret</label>
         <textarea class="form-input" id="modal-acc-secret" placeholder="sk-..." rows="2" style="font-family: 'Geist Mono'; font-size: 0.8rem;"></textarea>
       </div>
 
-      <div class="grid-2" style="margin-bottom: 1rem;">
+      <div class="grid-2" style="margin-bottom: 0.75rem;">
         <div class="form-group" style="margin-bottom: 0;">
           <label class="form-label">Email / User (Optional)</label>
           <input class="form-input" id="modal-acc-email" placeholder="dev@company.com">
@@ -2336,9 +2400,46 @@
         </div>
       </div>
 
-      <div style="display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem;">
-        <button class="btn btn-outline" onclick="closeModal('modal-add-account')">Cancel</button>
-        <button class="btn btn-primary" onclick="submitAddAccount()">+ Add Account</button>
+      <!-- Advanced Connection Options (OmniRoute Parity) -->
+      <details style="margin-bottom: 1rem; background: var(--bg-hover); border: 1px solid var(--border); border-radius: 6px; padding: 0.5rem 0.75rem;">
+        <summary style="font-size: 0.8rem; font-weight: 500; cursor: pointer; color: var(--text-main); user-select: none;">
+          ⚙️ Advanced Connection Options (Custom Headers, Concurrency & Sync)
+        </summary>
+        <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem;">
+          <div class="form-group" style="margin-bottom: 0;">
+            <label class="form-label" style="font-size: 0.75rem;">Custom HTTP Headers (JSON or Key: Value pairs)</label>
+            <textarea class="form-input" id="modal-acc-headers" placeholder='{"User-Agent": "codex_cli_rs/0.156.1", "HTTP-Referer": "https://goroute.internal"}' rows="2" style="font-family: 'Geist Mono'; font-size: 0.75rem;"></textarea>
+          </div>
+          <div class="grid-2">
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.75rem;">Weight / Priority</label>
+              <input type="number" class="form-input" id="modal-acc-weight" value="1.0" step="0.1" min="0.1" max="10.0" style="font-size: 0.8rem;">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+              <label class="form-label" style="font-size: 0.75rem;">Max Concurrency</label>
+              <input type="number" class="form-input" id="modal-acc-concurrency" placeholder="Unlimited" min="1" max="100" style="font-size: 0.8rem;">
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <input type="checkbox" id="modal-acc-sync-models" checked style="accent-color: var(--primary);">
+            <label for="modal-acc-sync-models" style="font-size: 0.78rem; cursor: pointer; color: var(--text-main);">
+              Automatically sync & discover available upstream models on save
+            </label>
+          </div>
+        </div>
+      </details>
+
+      <!-- Live Connection Test Result Banner -->
+      <div id="modal-test-feedback" style="display: none; padding: 0.6rem 0.85rem; border-radius: 6px; font-size: 0.78rem; line-height: 1.4; margin-bottom: 1rem; border: 1px solid transparent;"></div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; margin-top: 0.5rem;">
+        <button type="button" class="btn btn-outline" id="btn-modal-test" onclick="testModalConnection()" style="border-color: rgba(56, 189, 248, 0.4); color: #38bdf8;">
+          ⚡ Test Connection
+        </button>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn btn-outline" onclick="closeModal('modal-add-account')">Cancel</button>
+          <button class="btn btn-primary" onclick="submitAddAccount()">+ Add Account</button>
+        </div>
       </div>
     </div>
   </div>
@@ -2531,7 +2632,7 @@
       } else if (currentView === 'combos') {
         loadCombos();
       } else if (currentView === 'providers') {
-        loadProviders();
+        loadProviders(); loadCatalogCards();
         loadPoolUsage();
       } else if (currentView === 'rtk') {
         loadRTKFilters();
@@ -2918,38 +3019,258 @@
       showToast('🎉 All standard agents configured to GoRoute!');
     }
 
+    let currentComboStrategyFilter = 'all';
+    let currentCombosSearchQuery = '';
+    let isCombosTableView = false;
+
+    function toggleCombosView() {
+      isCombosTableView = !isCombosTableView;
+      const cardsCont = document.getElementById('combos-cards-container');
+      const tableCard = document.getElementById('combos-table-card');
+      const btn = document.getElementById('btn-toggle-combos-view');
+      if (cardsCont && tableCard) {
+        cardsCont.style.display = isCombosTableView ? 'none' : 'flex';
+        tableCard.style.display = isCombosTableView ? 'block' : 'none';
+      }
+      if (btn) {
+        btn.textContent = isCombosTableView ? 'Table View (Active)' : 'Grid View (Active)';
+      }
+    }
+
+    function setComboStrategyFilter(strat, btn) {
+      currentComboStrategyFilter = strat;
+      const pills = document.querySelectorAll('#combos-strategy-pills .pill');
+      pills.forEach(p => p.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderCombosList();
+    }
+
+    function filterCombos(query) {
+      currentCombosSearchQuery = (query || '').toLowerCase().trim();
+      renderCombosList();
+    }
+
     // Load Combos
     async function loadCombos() {
-      const tbody = document.getElementById('combos-tbody');
       try {
         const res = await fetch('/api/combos').then(r => r.json());
         if (!res.combos) return;
         allOverviewCombos = res.combos;
 
-        tbody.innerHTML = res.combos.map(c => `
+        const allCnt = document.getElementById('combo-cnt-all');
+        if (allCnt) allCnt.textContent = res.combos.length;
+
+        renderCombosList();
+      } catch (e) {
+        console.error('loadCombos error:', e);
+      }
+    }
+
+    function renderCombosList() {
+      const cardsContainer = document.getElementById('combos-cards-container');
+      const tbody = document.getElementById('combos-tbody');
+      if (!allOverviewCombos) return;
+
+      const filtered = allOverviewCombos.filter(c => {
+        const matchesStrat = (currentComboStrategyFilter === 'all') || (c.strategy === currentComboStrategyFilter);
+        const matchesSearch = !currentCombosSearchQuery ||
+          c.name.toLowerCase().includes(currentCombosSearchQuery) ||
+          c.strategy.toLowerCase().includes(currentCombosSearchQuery) ||
+          (c.targets && c.targets.some(t => `${t.provider_id}/${t.model}`.toLowerCase().includes(currentCombosSearchQuery)));
+        return matchesStrat && matchesSearch;
+      });
+
+      // Render Cards
+      if (cardsContainer) {
+        if (filtered.length === 0) {
+          cardsContainer.innerHTML = `
+            <div class="card" style="text-align: center; padding: 2.5rem 1rem;">
+              <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">⛓️</div>
+              <div style="font-size: 1rem; font-weight: 600; color: var(--text);">No routing combos found</div>
+              <div style="font-size: 0.8rem; color: var(--text-dim); margin-top: 0.3rem;">Create a new combo or pick a quick template above.</div>
+            </div>
+          `;
+        } else {
+          cardsContainer.innerHTML = filtered.map(c => {
+            const stratColor = c.strategy === 'failover' ? '#38bdf8' : (c.strategy === 'round-robin' ? '#a78bfa' : '#34d399');
+            const stratLabel = (c.strategy || 'failover').toUpperCase();
+            
+            return `
+              <div class="card" style="padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; border: 1px solid var(--border); transition: transform 0.15s, border-color 0.15s;">
+                <!-- Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+                  <div style="display: flex; align-items: center; gap: 0.65rem;">
+                    <div style="width: 34px; height: 34px; border-radius: 8px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.25); display: flex; align-items: center; justify-content: center; font-size: 1.1rem;">
+                      ⛓️
+                    </div>
+                    <div>
+                      <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-family: 'Geist Mono'; font-size: 1.05rem; font-weight: 700; color: var(--text);">${escapeHtml(c.name)}</span>
+                        <button class="btn btn-outline btn-sm" style="padding: 0.1rem 0.35rem; font-size: 0.68rem;" onclick="copyToClipboard('${escapeHtml(c.name)}')" title="Copy Combo Name">Copy</button>
+                        <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: ${stratColor}; border: 1px solid ${stratColor}33; font-size: 0.7rem; font-weight: 600;">${stratLabel}</span>
+                        <span class="badge badge-muted" style="font-size: 0.7rem;">${c.targets ? c.targets.length : 0} Steps</span>
+                      </div>
+                      <div style="font-size: 0.76rem; color: var(--text-dim); margin-top: 0.15rem;">
+                        Endpoint: <code>model: "${escapeHtml(c.name)}"</code> · Cascade failover active
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Actions & Live Test Status -->
+                  <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                    <span id="test-status-${escapeHtml(c.name)}" class="badge badge-muted" style="display: none; font-size: 0.72rem;"></span>
+                    <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="testComboExecution('${escapeHtml(c.name)}', this)">⚡ Test Run</button>
+                    <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="openEditComboModal('${escapeHtml(c.name)}')">✏️ Edit</button>
+                    <button class="btn btn-outline btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="duplicateCombo('${escapeHtml(c.name)}')">📋 Duplicate</button>
+                    <button class="btn btn-danger btn-sm" style="font-size: 0.76rem; padding: 0.25rem 0.6rem;" onclick="deleteCombo('${escapeHtml(c.name)}')">🗑️</button>
+                  </div>
+                </div>
+
+                <!-- Sequential Flow Steps Pipeline -->
+                <div style="background: #101014; border: 1px solid var(--border); border-radius: 8px; padding: 0.85rem; display: flex; align-items: center; gap: 0.6rem; overflow-x: auto;">
+                  ${(c.targets || []).map((t, idx) => `
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                      <div style="background: #17171c; border: 1px solid var(--border); border-radius: 6px; padding: 0.45rem 0.7rem; display: flex; align-items: center; gap: 0.5rem;">
+                        <span style="font-size: 0.72rem; font-weight: 700; color: ${idx === 0 ? '#38bdf8' : 'var(--text-dim)'}; background: rgba(255,255,255,0.06); padding: 0.1rem 0.35rem; border-radius: 4px;">#${idx+1}</span>
+                        <div>
+                          <div style="font-size: 0.72rem; font-weight: 600; color: var(--text-dim); text-transform: uppercase;">${escapeHtml(t.provider_id)}</div>
+                          <div style="font-family: 'Geist Mono'; font-size: 0.78rem; font-weight: 600; color: var(--text);">${escapeHtml(t.model)}</div>
+                        </div>
+                        ${t.quota_percent ? `<span class="badge badge-accent" style="font-size: 0.65rem;">${t.quota_percent}%</span>` : ''}
+                      </div>
+                      ${idx < c.targets.length - 1 ? '<span style="color: var(--text-dim); font-size: 0.85rem; font-weight: 700;">→</span>' : ''}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      // Render Table View (Fallback)
+      if (tbody) {
+        tbody.innerHTML = filtered.map(c => `
           <tr>
-            <td style="font-family: 'Geist Mono'; font-weight: 600; color: var(--text);">${c.name}</td>
-            <td><span class="badge badge-accent">${c.strategy}</span></td>
+            <td style="font-family: 'Geist Mono'; font-weight: 600; color: var(--text);">${escapeHtml(c.name)}</td>
+            <td><span class="badge badge-accent">${escapeHtml(c.strategy)}</span></td>
             <td>
               <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
-                ${c.targets.map((t, i) => `
+                ${(c.targets || []).map((t, i) => `
                   <span class="badge badge-muted" style="display: inline-flex; align-items: center; gap: 0.3rem;">
-                    <span style="color: var(--accent); font-weight: 700;">#${i+1}</span> ${t.provider_id}/${t.model}${t.quota_percent ? ` (${t.quota_percent}%)` : ''}
+                    <span style="color: var(--accent); font-weight: 700;">#${i+1}</span> ${escapeHtml(t.provider_id)}/${escapeHtml(t.model)}
                   </span>
                   ${i < c.targets.length - 1 ? '<span style="color: var(--text-dim); font-size: 0.75rem;">→</span>' : ''}
                 `).join('')}
               </div>
             </td>
             <td>
+              <button class="btn btn-outline btn-sm" onclick="testComboExecution('${escapeHtml(c.name)}', this)">⚡ Test</button>
+            </td>
+            <td>
               <div style="display: flex; gap: 0.4rem;">
-                <button class="btn btn-outline btn-sm" onclick="openEditComboModal('${c.name}')">Edit Chain</button>
-                <button class="btn btn-danger btn-sm" onclick="deleteCombo('${c.name}')">Delete</button>
+                <button class="btn btn-outline btn-sm" onclick="openEditComboModal('${escapeHtml(c.name)}')">Edit</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteCombo('${escapeHtml(c.name)}')">Delete</button>
               </div>
             </td>
           </tr>
         `).join('');
+      }
+    }
+
+    async function testComboExecution(comboName, btnElement) {
+      const originalText = btnElement.innerHTML;
+      btnElement.disabled = true;
+      btnElement.innerHTML = `Testing...`;
+      
+      const statusPill = document.getElementById(`test-status-${comboName}`);
+      if (statusPill) {
+        statusPill.style.display = 'inline-flex';
+        statusPill.className = 'badge badge-muted';
+        statusPill.textContent = 'Pinging...';
+      }
+
+      try {
+        const res = await fetch(`/api/combos/${encodeURIComponent(comboName)}/test`, {
+          method: 'POST'
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`⚡ Combo '${comboName}' responded in ${res.duration_ms}ms!`);
+          if (statusPill) {
+            statusPill.className = 'badge badge-success';
+            statusPill.textContent = `✓ 200 OK (${res.duration_ms}ms)`;
+          }
+        } else {
+          showToast(`⚠️ Combo '${comboName}' error: ${res.error || 'Check provider tokens'}`);
+          if (statusPill) {
+            statusPill.className = 'badge badge-danger';
+            statusPill.textContent = `✕ Error (${res.duration_ms}ms)`;
+          }
+        }
+      } catch (err) {
+        showToast(`❌ Test error: ${err.message}`);
+        if (statusPill) {
+          statusPill.className = 'badge badge-danger';
+          statusPill.textContent = `✕ Network error`;
+        }
+      } finally {
+        btnElement.disabled = false;
+        btnElement.innerHTML = originalText;
+      }
+    }
+
+    function duplicateCombo(comboName) {
+      const combo = (typeof allOverviewCombos !== 'undefined' && allOverviewCombos)
+        ? allOverviewCombos.find(c => c.name === comboName)
+        : null;
+      if (!combo) return;
+      openNewComboModal();
+      document.getElementById('modal-combo-title').textContent = `Duplicate Combo: ${comboName}`;
+      document.getElementById('modal-combo-name').value = `${combo.name}-copy`;
+      document.getElementById('modal-combo-strategy').value = combo.strategy || 'failover';
+      const container = document.getElementById('combo-targets-list');
+      container.innerHTML = '';
+      if (combo.targets && combo.targets.length > 0) {
+        combo.targets.forEach(t => {
+          addComboTargetRow(t.provider_id, t.model, t.quota_percent || '');
+        });
+      }
+    }
+
+    function applyComboTemplate(type) {
+      openNewComboModal();
+      const container = document.getElementById('combo-targets-list');
+      container.innerHTML = '';
+      if (type === 'claude-cascade') {
+        document.getElementById('modal-combo-name').value = 'claude-cascade';
+        document.getElementById('modal-combo-strategy').value = 'failover';
+        addComboTargetRow('agentrouter', 'gpt-6-astra');
+        addComboTargetRow('antigravity', 'claude-sonnet-4-6');
+        addComboTargetRow('kiro', 'claude-sonnet-4.5');
+      } else if (type === 'deepseek-pool') {
+        document.getElementById('modal-combo-name').value = 'deepseek-pool';
+        document.getElementById('modal-combo-strategy').value = 'round-robin';
+        addComboTargetRow('kiro', 'deepseek-3.2');
+        addComboTargetRow('antigravity', 'gemini-3.7-flash-low');
+        addComboTargetRow('openai-compatible', 'free/deepseek-v4-pro');
+      } else if (type === 'frontier-heal') {
+        document.getElementById('modal-combo-name').value = 'frontier-heal';
+        document.getElementById('modal-combo-strategy').value = 'failover';
+        addComboTargetRow('antigravity', 'claude-opus-4-6-thinking');
+        addComboTargetRow('antigravity', 'claude-sonnet-4-6');
+        addComboTargetRow('kiro', 'claude-haiku-4.5');
+      }
+    }
+
+    async function syncCombosFromOmniRoute() {
+      try {
+        const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json()).catch(() => ({}));
+        showToast('🔄 Synchronized combo state from OmniRoute!');
+        loadCombos();
       } catch (e) {
-        console.error('loadCombos error:', e);
+        showToast('🔄 Reloaded combos from local storage');
+        loadCombos();
       }
     }
 
@@ -3276,9 +3597,12 @@
               Type: <strong style="color: var(--text);">${p.details?.type}</strong><br>
               Accounts: <strong style="color: var(--text);">${p.details?.accounts || 1} active</strong>
             </div>
-            <div style="display: flex; gap: 0.5rem; justify-content: space-between;">
-              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProviderDetails('${p.id}')">Manage Models & Playground →</button>
-              <button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); testProvider('${p.id}')">⚡ Test</button>
+            <div style="display: flex; gap: 0.5rem; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+              <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProviderDetails('${p.id}')">Manage & Playground →</button>
+              <div style="display: flex; gap: 0.35rem;">
+                <button class="btn btn-outline btn-sm" title="Sync Models from Upstream /v1/models" onclick="event.stopPropagation(); syncProviderModelsDirect('${p.id}')">🔄 Sync</button>
+                <button class="btn btn-outline btn-sm" title="Test Connection Ping" onclick="event.stopPropagation(); testProvider('${p.id}')">⚡ Ping</button>
+              </div>
             </div>
           </div>
         `).join('');
@@ -4047,7 +4371,7 @@
         if (res.status === 'ok') {
           showToast('✅ Successfully imported Kiro credentials into pool!');
           closeModal('modal-add-account');
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
           loadQuotaWidgetData(true);
@@ -4163,6 +4487,30 @@
         payload.project_id = project;
       }
 
+      const headersInput = document.getElementById('modal-acc-headers');
+      if (headersInput && headersInput.value.trim()) {
+        try {
+          payload.headers = JSON.parse(headersInput.value.trim());
+        } catch(e) {
+          const h = {};
+          headersInput.value.split('\n').forEach(line => {
+            const idx = line.indexOf(':');
+            if (idx > 0) h[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+          });
+          if (Object.keys(h).length > 0) payload.headers = h;
+        }
+      }
+
+      const weightInput = document.getElementById('modal-acc-weight');
+      if (weightInput && parseFloat(weightInput.value)) {
+        payload.weight = parseFloat(weightInput.value);
+      }
+
+      const syncModelsInput = document.getElementById('modal-acc-sync-models');
+      if (syncModelsInput) {
+        payload.sync_models = syncModelsInput.checked;
+      }
+
       try {
         const res = await fetch(`/api/providers/${provider}/accounts`, {
           method: 'POST',
@@ -4171,11 +4519,14 @@
         }).then(r => r.json());
 
         if (res.status === 'ok') {
-          showToast(`✅ Account '${accountId}' added to ${pool}!`);
+          const syncNote = res.synced_count > 0 ? ` (${res.synced_count} models discovered)` : '';
+          showToast(`✅ Account '${accountId}' added to ${pool}${syncNote}!`);
           closeModal('modal-add-account');
           document.getElementById('modal-acc-id').value = '';
           document.getElementById('modal-acc-secret').value = '';
-          loadProviders();
+          const testFb = document.getElementById('modal-test-feedback');
+          if (testFb) testFb.style.display = 'none';
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
           loadQuotaWidgetData(true);
@@ -4187,13 +4538,116 @@
       }
     }
 
-    async async function syncAllFromOmniRoute() {
+    async function testModalConnection() {
+      const btn = document.getElementById('btn-modal-test');
+      const fb = document.getElementById('modal-test-feedback');
+      if (!btn || !fb) return;
+
+      const provider = document.getElementById('modal-acc-provider').value;
+      const baseUrl = document.getElementById('modal-acc-baseurl') ? document.getElementById('modal-acc-baseurl').value.trim() : '';
+      const secret = document.getElementById('modal-acc-secret').value.trim();
+      const project = document.getElementById('modal-acc-project').value.trim();
+      const meta = PROVIDER_META[provider] || { type: 'openai', auth: 'apikey' };
+
+      if (meta.auth !== 'none' && !secret) {
+        fb.style.display = 'block';
+        fb.style.background = 'rgba(239, 68, 68, 0.12)';
+        fb.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+        fb.style.color = '#f87171';
+        fb.innerHTML = '⚠️ Please enter an API key or refresh token to test connection.';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Testing...';
+      fb.style.display = 'block';
+      fb.style.background = 'rgba(56, 189, 248, 0.1)';
+      fb.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+      fb.style.color = '#38bdf8';
+      fb.innerHTML = '🔄 Connecting to upstream provider and validating credentials...';
+
+      const payload = {
+        provider: provider,
+        type: meta.type || 'openai',
+        base_url: baseUrl,
+        api_key: secret,
+        refresh_token: secret,
+        profile_arn: project
+      };
+
+      const headersInput = document.getElementById('modal-acc-headers');
+      if (headersInput && headersInput.value.trim()) {
+        try {
+          payload.headers = JSON.parse(headersInput.value.trim());
+        } catch(e) {
+          const h = {};
+          headersInput.value.split('\n').forEach(line => {
+            const idx = line.indexOf(':');
+            if (idx > 0) h[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+          });
+          if (Object.keys(h).length > 0) payload.headers = h;
+        }
+      }
+
+      try {
+        const res = await fetch('/api/providers/test-connection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(r => r.json());
+
+        if (res.valid || res.status === 'ok') {
+          fb.style.background = 'rgba(16, 185, 129, 0.12)';
+          fb.style.borderColor = 'rgba(16, 185, 129, 0.35)';
+          fb.style.color = '#34d399';
+          let modelText = '';
+          if (res.models && res.models.length > 0) {
+            modelText = `<div style="margin-top: 0.35rem; font-size: 0.73rem; color: var(--text-dim);">Available: <code>${res.models.slice(0, 6).join('</code>, <code>')}</code>${res.models.length > 6 ? ` +${res.models.length - 6} more` : ''}</div>`;
+          }
+          fb.innerHTML = `<strong>✓ Connection Verified (${res.latency_ms}ms)</strong>: Upstream endpoint responded 200 OK.${modelText}`;
+        } else {
+          fb.style.background = 'rgba(239, 68, 68, 0.12)';
+          fb.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+          fb.style.color = '#f87171';
+          fb.innerHTML = `<strong>✕ Verification Failed (${res.latency_ms || 0}ms)</strong>: ${res.error || 'Connection failed'}`;
+        }
+      } catch(err) {
+        fb.style.background = 'rgba(239, 68, 68, 0.12)';
+        fb.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+        fb.style.color = '#f87171';
+        fb.innerHTML = `<strong>✕ Network Error</strong>: ${err.message}`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '⚡ Test Connection';
+      }
+    }
+
+    async function syncProviderModelsDirect(providerId) {
+      showToast(`🔄 Querying /v1/models for ${providerId}...`);
+      try {
+        const res = await fetch(`/api/providers/${providerId}/sync-models`, {
+          method: 'POST'
+        }).then(r => r.json());
+
+        if (res.status === 'ok') {
+          showToast(`✅ Synced ${res.count} models for ${providerId}!`);
+          loadCatalogCards();
+          loadProviders();
+        } else {
+          showToast(`⚠️ Sync notice: ${res.error || 'No models returned'}`);
+        }
+      } catch(e) {
+        showToast(`❌ Error syncing models: ${e.message}`);
+      }
+    }
+
+    async function syncAllFromOmniRoute() {
       showToast('🔄 Synchronizing all accounts from OmniRoute database...');
       try {
         const res = await fetch('/api/providers/sync-omniroute', { method: 'POST' }).then(r => r.json());
         if (res.status === 'ok') {
           showToast(`✅ ${res.message || 'Synced all connections from OmniRoute!'}`);
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
           loadQuotaWidgetData(true);
@@ -4205,14 +4659,14 @@
       }
     }
 
-    function importCli(type) {
+    async function importCli(type) {
       showToast(`Importing ${type} credentials...`);
       try {
         const res = await fetch(`/api/providers/import-${type}`, { method: 'POST' }).then(r => r.json());
         if (res.status === 'ok') {
           showToast(`✅ ${res.message || 'Import successful!'}`);
           closeModal('modal-import');
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
           loadStats();
         } else {
@@ -4229,7 +4683,7 @@
         const res = await fetch(`/api/providers/${providerId}/accounts/${accountId}`, { method: 'DELETE' }).then(r => r.json());
         if (res.status === 'ok') {
           showToast(`🗑️ Account '${accountId}' removed`);
-          loadProviders();
+          loadProviders(); loadCatalogCards();
           loadPoolUsage();
         } else {
           showToast(`⚠️ ${res.error || 'Failed to delete'}`);
@@ -5260,6 +5714,237 @@
       loadQuotaWidgetData();
       initSSEStream();
     });
+  
+    // Kiro Interactive Device OAuth Flow (OmniRoute Parity)
+    let kiroOAuthPollTimer = null;
+    let kiroOAuthDeviceCode = null;
+
+    async function startKiroOAuthFlow(socialProvider) {
+      closeModal('modal-add-account');
+      document.getElementById('modal-kiro-oauth').classList.add('active');
+      document.getElementById('kiro-oauth-loading').style.display = 'block';
+      document.getElementById('kiro-oauth-content').style.display = 'none';
+      document.getElementById('kiro-oauth-success').style.display = 'none';
+
+      try {
+        const res = await fetch(`/api/oauth/kiro/device-authorize?provider=${socialProvider || 'google'}`).then(r => r.json());
+        if (res.authUrl && res.deviceCode) {
+          kiroOAuthDeviceCode = res.deviceCode;
+          document.getElementById('kiro-oauth-code').textContent = res.userCode;
+          const link = document.getElementById('kiro-oauth-link');
+          link.href = res.authUrl;
+          
+          document.getElementById('kiro-oauth-loading').style.display = 'none';
+          document.getElementById('kiro-oauth-content').style.display = 'block';
+          
+          // Automatically pop open window in browser
+          window.open(res.authUrl, '_blank');
+
+          // Start polling
+          startKiroOAuthPolling(res.deviceCode, res.interval || 5);
+        } else {
+          alert('Failed to start device authorization: ' + (res.error || 'Unknown error'));
+          closeKiroOAuthModal();
+        }
+      } catch (e) {
+        alert('Error initiating Kiro OAuth: ' + e.message);
+        closeKiroOAuthModal();
+      }
+    }
+
+    function startKiroOAuthPolling(deviceCode, intervalSec) {
+      if (kiroOAuthPollTimer) clearInterval(kiroOAuthPollTimer);
+      const pollMs = Math.max(intervalSec * 1000, 3000);
+
+      kiroOAuthPollTimer = setInterval(async () => {
+        try {
+          const res = await fetch('/api/oauth/kiro/device-poll', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ deviceCode: deviceCode, pool: 'pool1' })
+          }).then(r => r.json());
+
+          if (res.success) {
+            clearInterval(kiroOAuthPollTimer);
+            kiroOAuthPollTimer = null;
+            document.getElementById('kiro-oauth-content').style.display = 'none';
+            document.getElementById('kiro-oauth-success').style.display = 'block';
+            document.getElementById('kiro-oauth-success-msg').textContent = res.message || 'Connected successfully!';
+            showToast('✅ Connected new Kiro account!');
+            loadProviders(); loadCatalogCards();
+            loadPoolUsage();
+            loadStats();
+            if (typeof reloadCurrentProviderDetails === 'function' && currentProviderId === 'kiro') {
+              reloadCurrentProviderDetails();
+            }
+          } else if (res.pending) {
+            // Still waiting for user confirmation
+          } else if (res.error) {
+            clearInterval(kiroOAuthPollTimer);
+            document.getElementById('kiro-oauth-status').textContent = '⚠️ Authorization: ' + res.error;
+          }
+        } catch (e) {
+          console.error('Polling error:', e);
+        }
+      }, pollMs);
+    }
+
+    function closeKiroOAuthModal() {
+      if (kiroOAuthPollTimer) {
+        clearInterval(kiroOAuthPollTimer);
+        kiroOAuthPollTimer = null;
+      }
+      document.getElementById('modal-kiro-oauth').classList.remove('active');
+    }
+
+  
+    let currentCatalogCategory = 'all';
+    let currentCatalogSearch = '';
+    let globalCatalogList = [];
+
+    async function loadCatalogCards() {
+      try {
+        const res = await fetch('/api/catalog').then(r => r.json());
+        if (res.data && Array.isArray(res.data)) {
+          globalCatalogList = res.data;
+          renderCatalogCards();
+        }
+      } catch (e) {
+        console.error('Failed to load catalog cards:', e);
+      }
+    }
+
+    function setCatalogCategoryFilter(cat, btn) {
+      currentCatalogCategory = cat;
+      document.querySelectorAll('#catalog-category-pills .pill').forEach(p => p.classList.remove('active'));
+      if (btn) btn.classList.add('active');
+      renderCatalogCards();
+    }
+
+    function filterCatalogCards(query) {
+      currentCatalogSearch = (query || '').toLowerCase().trim();
+      renderCatalogCards();
+    }
+
+    function renderCatalogCards() {
+      const container = document.getElementById('providers-cards-container');
+      if (!container) return;
+
+      const activeProvMap = {};
+      (window.currentProvidersList || []).forEach(p => {
+        activeProvMap[p.id] = p;
+      });
+
+      const connectedCnt = Object.keys(activeProvMap).length;
+      const cntSpan = document.getElementById('cat-cnt-connected');
+      if (cntSpan) cntSpan.textContent = connectedCnt;
+
+      let list = globalCatalogList.length > 0 ? globalCatalogList : (window.currentProvidersList || []);
+
+      if (currentCatalogCategory === 'connected') {
+        list = list.filter(item => activeProvMap[item.id]);
+      } else if (currentCatalogCategory !== 'all') {
+        list = list.filter(item => item.category === currentCatalogCategory);
+      }
+
+      if (currentCatalogSearch) {
+        const q = currentCatalogSearch;
+        list = list.filter(item => (item.id && item.id.toLowerCase().includes(q)) || (item.name && item.name.toLowerCase().includes(q)) || (item.description && item.description.toLowerCase().includes(q)));
+      }
+
+      if (list.length === 0) {
+        container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 2rem;">No providers match your search.</div>`;
+        return;
+      }
+
+      // Render top 48 to keep performance snappy, with live quick-connect button
+      container.innerHTML = list.slice(0, 48).map(entry => {
+        const isConnected = !!activeProvMap[entry.id];
+        const provData = activeProvMap[entry.id];
+        const accCount = provData ? (provData.accounts ? provData.accounts.length : 1) : 0;
+        const emoji = getProviderEmoji(entry.id);
+
+        return `
+          <div class="project-card" onclick="openProviderDetails('${entry.id}')">
+            <div class="project-card-header">
+              <div class="project-card-identity">
+                <div class="project-avatar">${emoji}</div>
+                <div>
+                  <div class="project-title">${entry.name || entry.id}</div>
+                  <div class="project-endpoint" title="${entry.base_url || entry.id}">${entry.base_url || entry.id}</div>
+                </div>
+              </div>
+              <span class="badge ${isConnected ? 'badge-success' : 'badge-muted'}">
+                <span class="${isConnected ? 'pulse-dot' : ''}"></span> ${isConnected ? `${accCount} connected` : 'Available'}
+              </span>
+            </div>
+            <div class="project-meta-row" style="font-size: 0.75rem;">
+              <span>Type: <strong style="color: var(--text);">${entry.auth_type || 'apikey'}</strong></span>
+              <span>Category: <strong style="color: var(--text);">${entry.category || 'cloud'}</strong></span>
+            </div>
+            <div style="display: flex; gap: 0.5rem; justify-content: space-between; margin-top: 0.25rem;">
+              ${isConnected 
+                ? `<button class="btn btn-outline btn-sm" onclick="event.stopPropagation(); testProvider('${entry.id}')">⚡ Test</button>
+                   <button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); openProviderDetails('${entry.id}')">Manage →</button>`
+                : `<button class="btn btn-primary btn-sm" style="width: 100%;" onclick="event.stopPropagation(); openAddAccountModal(null, '${entry.id}')">+ Connect</button>`
+              }
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
   </script>
+
+  <!-- MODAL: KIRO OAUTH DEVICE FLOW (OmniRoute Parity) -->
+  <div class="modal-backdrop" id="modal-kiro-oauth">
+    <div class="modal-box" style="max-width: 480px; text-align: center;">
+      <div style="width: 56px; height: 56px; border-radius: 50%; background: rgba(56, 189, 248, 0.15); display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem auto; font-size: 1.75rem;">
+        ⚡
+      </div>
+      <div class="card-title" style="justify-content: center; margin-bottom: 0.25rem;">Connect Kiro AI Account</div>
+      <div style="font-size: 0.82rem; color: var(--text-dim); margin-bottom: 1.5rem;">
+        Authenticate in your browser. GoRoute will automatically detect your login and link the new account.
+      </div>
+
+      <div id="kiro-oauth-loading" style="padding: 1.5rem 0;">
+        <div style="display: inline-block; width: 28px; height: 28px; border: 3px solid rgba(56, 189, 248, 0.2); border-top-color: #38bdf8; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.75rem;">Generating secure device authorization...</div>
+      </div>
+
+      <div id="kiro-oauth-content" style="display: none;">
+        <div style="background: var(--bg-alt); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;">
+          <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.35rem;">Your Verification Code</div>
+          <div id="kiro-oauth-code" style="font-family: 'Geist Mono', monospace; font-size: 1.8rem; font-weight: 700; letter-spacing: 0.15em; color: #38bdf8;">----</div>
+        </div>
+
+        <div style="margin-bottom: 1.5rem;">
+          <a id="kiro-oauth-link" href="#" target="_blank" class="btn btn-primary" style="width: 100%; padding: 0.65rem 1rem; font-size: 0.88rem; background: #38bdf8; color: #000; border-color: #38bdf8; font-weight: 600; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;">
+            <span>Open Browser Verification Window ↗</span>
+          </a>
+          <div style="font-size: 0.72rem; color: var(--text-dim); margin-top: 0.5rem;">
+            A new browser tab will open. Confirm the code matches and click <strong>Allow</strong>.
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+          <span class="pulse-dot" style="background: #38bdf8;"></span>
+          <span id="kiro-oauth-status">Waiting for browser authentication...</span>
+        </div>
+      </div>
+
+      <div id="kiro-oauth-success" style="display: none; padding: 1rem 0;">
+        <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">✅</div>
+        <div style="font-size: 1.1rem; font-weight: 600; color: #10b981; margin-bottom: 0.25rem;">Connection Successful!</div>
+        <div id="kiro-oauth-success-msg" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1.5rem;">Kiro account has been linked to your routing pool.</div>
+        <button class="btn btn-primary" onclick="closeKiroOAuthModal()" style="width: 100%;">Done</button>
+      </div>
+
+      <div style="margin-top: 1.5rem; border-top: 1px solid var(--border); padding-top: 1rem; display: flex; justify-content: flex-end;">
+        <button class="btn btn-outline btn-sm" onclick="closeKiroOAuthModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
